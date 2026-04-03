@@ -635,6 +635,11 @@ function buildMarketSectionTitle(market, event) {
     return `${periodPrefix}${teamName} ${market.specifier?.label || market.specifier?.points || ""}`.trim();
   }
 
+  if (market.type === "team_goals_exact") {
+    const teamName = market.specifier?.team === "home" ? getParticipant(event, "home").name : getParticipant(event, "away").name;
+    return `${periodPrefix}${teamName} Goals`.trim();
+  }
+
   if (market.specifier?.label) {
     return `${periodPrefix}${marketGroupLabel(market.type)} ${market.specifier.label}`.trim();
   }
@@ -1098,9 +1103,11 @@ function marketGroupLabel(type) {
     total_goals: "Totals",
     both_teams_to_score: "Both Teams To Score",
     team_total_goals: "Team Totals",
+    team_goals_exact: "Team Goals",
     double_chance: "Double Chance",
     draw_no_bet: "Draw No Bet",
     correct_score: "Correct Score",
+    exact_total_goals: "Exact Total Goals",
   };
 
   return labels[type] || type;
@@ -1115,7 +1122,7 @@ function primaryMarketGroupKey(market) {
     return "second_half";
   }
 
-  if (["total_goals", "team_total_goals", "both_teams_to_score", "correct_score"].includes(market?.type)) {
+  if (["total_goals", "team_total_goals", "team_goals_exact", "both_teams_to_score", "correct_score", "exact_total_goals"].includes(market?.type)) {
     return "goals";
   }
 
@@ -1130,7 +1137,9 @@ function marketSectionOrder(market) {
     draw_no_bet: 4,
     both_teams_to_score: 5,
     team_total_goals: 6,
-    correct_score: 7,
+    team_goals_exact: 7,
+    exact_total_goals: 8,
+    correct_score: 9,
   };
 
   return order[market?.type] || 99;

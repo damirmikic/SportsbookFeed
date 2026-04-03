@@ -814,6 +814,42 @@ function extractP4578SupplementalMarkets(ev, homeName, awayName) {
       if (selections.length === 2) {
         markets.push(createSupplementalMarketRecord("draw_no_bet", period, null, selections, special));
       }
+      continue;
+    }
+
+    if (name === normalizeMarketName(`${homeName} goals`) || name === normalizeMarketName(`${homeName} goals 1st half`)) {
+      const selections = contestants
+        .map((item) => mapExactGoalsSelection(item))
+        .filter(Boolean);
+      if (selections.length) {
+        markets.push(createSupplementalMarketRecord("team_goals_exact", period, {
+          team: "home",
+          teamName: homeName,
+        }, selections, special));
+      }
+      continue;
+    }
+
+    if (name === normalizeMarketName(`${awayName} goals`) || name === normalizeMarketName(`${awayName} goals 1st half`)) {
+      const selections = contestants
+        .map((item) => mapExactGoalsSelection(item))
+        .filter(Boolean);
+      if (selections.length) {
+        markets.push(createSupplementalMarketRecord("team_goals_exact", period, {
+          team: "away",
+          teamName: awayName,
+        }, selections, special));
+      }
+      continue;
+    }
+
+    if (name === "exact total goals" || name === "exact total goals 1st half") {
+      const selections = contestants
+        .map((item) => mapExactGoalsSelection(item))
+        .filter(Boolean);
+      if (selections.length) {
+        markets.push(createSupplementalMarketRecord("exact_total_goals", period, null, selections, special));
+      }
     }
   }
 
@@ -902,6 +938,16 @@ function mapSpecialSelection(contestant, id, fallbackName) {
     odds,
     sourceSelectionId: contestant?.i ?? contestant?.l ?? null,
   };
+}
+
+function mapExactGoalsSelection(contestant) {
+  const label = String(contestant?.n || "").trim();
+  if (!label) {
+    return null;
+  }
+
+  const normalizedId = label.replace(/\s+/g, "").replace(/\+/g, "plus");
+  return mapSpecialSelection(contestant, normalizedId, label);
 }
 
 function normalizeMarketName(value) {
