@@ -1,6 +1,7 @@
 const state = {
   generatedAt: null,
   search: "",
+  filterMode: "all",
   leagues: [],
   providerFeed: { events: [], markets: [] },
   selectedLeagueKey: null,
@@ -18,6 +19,8 @@ const leagueTotalEl = document.getElementById("leagueTotal");
 const matchTotalEl = document.getElementById("matchTotal");
 const generatedStatusEl = document.getElementById("generatedStatus");
 const searchInputEl = document.getElementById("searchInput");
+const traderNameInputEl = document.getElementById("traderNameInput");
+const traderFilterGroupEl = document.getElementById("traderFilterGroup");
 const heroTitleEl = document.getElementById("heroTitle");
 const heroSourceEl = document.getElementById("heroSource");
 const heroMatchCountEl = document.getElementById("heroMatchCount");
@@ -29,6 +32,19 @@ searchInputEl.addEventListener("input", (event) => {
   state.search = event.target.value.trim().toLowerCase();
   render();
 });
+
+traderNameInputEl.value = state.traderName;
+traderNameInputEl.addEventListener("input", (event) => {
+  state.traderName = event.target.value.trim() || "local-trader";
+  localStorage.setItem("sportsbook-trader-name", state.traderName);
+});
+
+for (const button of traderFilterGroupEl.querySelectorAll("[data-filter-mode]")) {
+  button.addEventListener("click", () => {
+    state.filterMode = button.dataset.filterMode || "all";
+    render();
+  });
+}
 
 refreshBtnEl.addEventListener("click", () => {
   refreshBtnEl.classList.add("spinning");
@@ -152,12 +168,21 @@ function buildLeagueCollection() {
 }
 
 function render() {
-  const filteredLeagues = state.leagues.filter((league) => {
-    if (!state.search) {
-      return true;
-    }
-    return `${league.name} ${league.subtitle || ""}`.toLowerCase().includes(state.search);
-  });
+  const filteredLeagues = state.leagues
+    .map((league) => ({
+      ...league,
+      matches: league.matches.filter((match) => matchPassesCurrentFilters(match)),
+      count: league.matches.filter((match) => matchPassesCurrentFilters(match)).length,
+    }))
+    .filter((league) => {
+      if (!league.matches.length) {
+        return false;
+      }
+      if (!state.search) {
+        return true;
+      }
+      return `${league.name} ${league.subtitle || ""}`.toLowerCase().includes(state.search);
+    });
 
   if (!filteredLeagues.some((league) => league.key === state.selectedLeagueKey)) {
     state.selectedLeagueKey = filteredLeagues[0]?.key || null;
@@ -176,12 +201,42 @@ function render() {
     state.selectedMarketKey = marketGroups[0]?.key || null;
   }
 
-  leagueTotalEl.textContent = String(state.leagues.length);
-  matchTotalEl.textContent = String(state.leagues.reduce((sum, league) => sum + league.matches.length, 0));
+  leagueTotalEl.textContent = String(filteredLeagues.length);
+  matchTotalEl.textContent = String(filteredLeagues.reduce((sum, league) => sum + league.matches.length, 0));
+
+  syncTraderFilterButtons();
 
   renderLeagueGroups(filteredLeagues);
   renderHero(selectedLeague);
   renderMatches(selectedLeague);
+}
+
+function syncTraderFilterButtons() {
+  for (const button of traderFilterGroupEl.querySelectorAll("[data-filter-mode]")) {
+    button.classList.toggle("is-active", button.dataset.filterMode === state.filterMode);
+  }
+}
+
+function matchPassesCurrentFilters(event) {
+  if (!event) {
+    return false;
+  }
+
+  const markets = getFeedMarketsForEvent(event);
+  const hasSuspendedMarket = markets.some((market) => market.status === "suspended");
+  const hasManualMarket = markets.some((market) => (market.selections || []).some((selection) => selection.manualOverride?.odds != null));
+  const eventSuspended = event.tradingStatus === "suspended";
+
+  if (state.filterMode === "suspended") {
+    return eventSuspended || hasSuspendedMarket;
+  }
+  if (state.filterMode === "manual") {
+    return hasManualMarket;
+  }
+  if (state.filterMode === "overrides") {
+    return eventSuspended || hasSuspendedMarket || hasManualMarket;
+  }
+  return true;
 }
 
 function renderLeagueGroups(leagues) {

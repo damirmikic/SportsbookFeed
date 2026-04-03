@@ -72,6 +72,7 @@
       display: flex;
       gap: 6px;
       align-items: center;
+      flex-wrap: wrap;
       margin-left: auto;
     }
     .pill {
@@ -89,6 +90,65 @@
     }
     .pill strong { color: var(--accent); font-weight: 800; }
     .pill-status { font-size: 11px; }
+    .trader-panel {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 6px;
+      border: 1px solid var(--border-hi);
+      border-radius: 8px;
+      background: rgba(255,255,255,0.04);
+    }
+    .trader-name-field {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .trader-name-field input {
+      width: 132px;
+      height: 28px;
+      padding: 0 10px;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 6px;
+      background: rgba(255,255,255,0.08);
+      color: #f3f7fb;
+      font: inherit;
+      font-size: 12px;
+      letter-spacing: normal;
+      text-transform: none;
+      outline: none;
+    }
+    .trader-name-field input:focus {
+      border-color: #71c9cb;
+    }
+    .filter-chip-group {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+    .filter-chip {
+      height: 28px;
+      padding: 0 10px;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.03);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .filter-chip.is-active {
+      background: rgba(201,107,44,0.16);
+      border-color: rgba(201,107,44,0.36);
+      color: #ffd9bb;
+    }
 
     /* ── LAYOUT ─────────────────────────────────────────────────── */
     .layout {

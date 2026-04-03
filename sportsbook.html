@@ -23,6 +23,18 @@
         <div class="pill pill-countdown" id="countdownPill" style="display:none">
           <span id="countdownVal" class="cd-low">reconnecting…</span>
         </div>
+        <div class="trader-panel">
+          <label class="trader-name-field" for="traderNameInput">
+            <span>Trader</span>
+            <input id="traderNameInput" type="text" maxlength="32" placeholder="trader name" />
+          </label>
+          <div class="filter-chip-group" id="traderFilterGroup">
+            <button class="filter-chip is-active" type="button" data-filter-mode="all">All</button>
+            <button class="filter-chip" type="button" data-filter-mode="suspended">Suspended</button>
+            <button class="filter-chip" type="button" data-filter-mode="manual">Manual</button>
+            <button class="filter-chip" type="button" data-filter-mode="overrides">Overrides</button>
+          </div>
+        </div>
         <button class="refresh-btn" id="refreshBtn" type="button" title="Refresh now">
           <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M1 4v4h4"/><path d="M15 12v-4h-4"/>
