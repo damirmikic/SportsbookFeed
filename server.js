@@ -23,6 +23,11 @@ const fs   = require("fs");
 const path = require("path");
 const { buildProviderFeed } = require("./lib/provider-feed");
 const {
+  getFeedSettingsPath,
+  loadFeedSettings,
+  saveFeedSettings,
+} = require("./lib/feed-settings");
+const {
   clearEventState,
   clearMarketState,
   getMarketStatePath,
@@ -42,6 +47,7 @@ const {
 } = require("./lib/manual-odds");
 
 const DIR = __dirname;
+const FEED_SETTINGS_PATH = getFeedSettingsPath();
 const MANUAL_ODDS_PATH = getManualOddsPath();
 const MARKET_STATE_PATH = getMarketStatePath();
 const SNAPSHOT_PATH = path.join(DIR, "odds.json");
@@ -156,6 +162,18 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // ── Snapshot: immediate JSON of current cache for fast initial render ──
+  if (pathname === "/snapshot" && req.method === "GET") {
+    if (!cache) {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify(cache));
+    return;
+  }
+
   // ── Debug: inspect raw cache structure ────────────────────────
   if (pathname === "/debug" && req.method === "GET") {
     if (!cache) {
@@ -186,6 +204,13 @@ const server = http.createServer((req, res) => {
     const store = loadManualOddsStore(MANUAL_ODDS_PATH);
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
     res.end(JSON.stringify(store, null, 2));
+    return;
+  }
+
+  if (pathname === "/feed-settings" && req.method === "GET") {
+    const settings = loadFeedSettings(FEED_SETTINGS_PATH);
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify(settings, null, 2));
     return;
   }
 
@@ -335,6 +360,38 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (pathname === "/feed-settings" && req.method === "POST") {
+    collectJsonBody(req)
+      .then((payload) => {
+        const saved = saveFeedSettings({
+          ...loadFeedSettings(FEED_SETTINGS_PATH),
+          firstHalfRatio: payload?.firstHalfRatio,
+        }, FEED_SETTINGS_PATH);
+
+        rebuildSnapshotFromCurrentSources({ feedSettings: saved })
+          .then((parsed) => {
+            cache = parsed;
+            saveWarmCache(parsed);
+            logFetchSummary(parsed);
+            broadcast(cache);
+            res.writeHead(202, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({
+              feedSettings: saved,
+              feed: parsed,
+            }));
+          })
+          .catch((fetchError) => {
+            res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ error: fetchError.message }));
+          });
+      })
+      .catch((error) => {
+        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: error.message }));
+      });
+    return;
+  }
+
   // ── Manual refresh trigger ─────────────────────────────────────
   if (pathname === "/refresh" && req.method === "POST") {
     refreshOdds();
@@ -415,6 +472,7 @@ function rebuildSnapshotFromCurrentSources(overrides = {}) {
       sources: base?.sources || {},
       manualOdds: overrides.manualOdds || base?.manualOdds || loadManualOddsStore(MANUAL_ODDS_PATH),
       marketState: overrides.marketState || base?.marketState || loadMarketStateStore(MARKET_STATE_PATH),
+      feedSettings: overrides.feedSettings || base?.feedSettings || loadFeedSettings(FEED_SETTINGS_PATH),
     };
     return Promise.resolve(hydrateSnapshot(next));
   } catch (error) {
@@ -431,9 +489,11 @@ function hydrateSnapshot(snapshot) {
   if (next.sources) {
     const manualOddsStore = next.manualOdds || loadManualOddsStore(MANUAL_ODDS_PATH);
     const marketStateStore = next.marketState || loadMarketStateStore(MARKET_STATE_PATH);
+    const feedSettings = next.feedSettings || loadFeedSettings(FEED_SETTINGS_PATH);
     next.manualOdds = manualOddsStore;
     next.marketState = marketStateStore;
-    next.providerFeed = buildProviderFeed(next, { manualOddsStore, marketStateStore });
+    next.feedSettings = feedSettings;
+    next.providerFeed = buildProviderFeed(next, { manualOddsStore, marketStateStore, feedSettings });
   }
 
   return next;

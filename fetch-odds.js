@@ -717,6 +717,8 @@ function normalizeEvent(ev, context) {
   const participants = Array.isArray(ev.participants) ? ev.participants : [];
   const homeP = participants.find((p) => String(p.type || "").toUpperCase() === "HOME");
   const awayP = participants.find((p) => String(p.type || "").toUpperCase() === "AWAY");
+  const homeName = homeP?.name ?? homeP?.englishName ?? null;
+  const awayName = awayP?.name ?? awayP?.englishName ?? null;
 
   // 1X2 odds from period 0 moneyLine
   const period0 = ev.periods?.["0"] ?? {};
@@ -743,16 +745,171 @@ function normalizeEvent(ev, context) {
     sportId: context.sportId,
     leagueCode: context.leagueCode ?? null,
     competition: context.leagueName ?? null,
-    home: homeP?.name ?? homeP?.englishName ?? null,
-    away: awayP?.name ?? awayP?.englishName ?? null,
+    home: homeName,
+    away: awayName,
     startsAt,
     odds,
     totals25,
     mainTotals,
+    supplementalMarkets: extractP4578SupplementalMarkets(ev, homeName, awayName),
   };
 
   match.lambdas = computeLambdasFromModule(match);
   return match;
+}
+
+function extractP4578SupplementalMarkets(ev, homeName, awayName) {
+  const markets = [];
+  const periods = ev?.periods && typeof ev.periods === "object" ? ev.periods : {};
+
+  pushTeamTotalsMarkets(markets, periods["0"], "ft", homeName, awayName);
+  pushTeamTotalsMarkets(markets, periods["1"], "1h", homeName, awayName);
+
+  const specialEvents = Array.isArray(ev?.specials)
+    ? ev.specials.flatMap((group) => Array.isArray(group?.events) ? group.events : [])
+    : [];
+
+  for (const special of specialEvents) {
+    const name = normalizeMarketName(special?.name);
+    if (!name) {
+      continue;
+    }
+
+    const period = name.includes("1st half") ? "1h" : "ft";
+    const contestants = Array.isArray(special?.contestants) ? special.contestants : [];
+
+    if (name === "both teams to score?" || name === "both teams to score? 1st half") {
+      const selections = [
+        mapSpecialSelection(contestants, "yes", "Yes"),
+        mapSpecialSelection(contestants, "no", "No"),
+      ].filter(Boolean);
+      if (selections.length === 2) {
+        markets.push(createSupplementalMarketRecord("both_teams_to_score", period, null, selections, special));
+      }
+      continue;
+    }
+
+    if (name === "double chance" || name === "double chance 1st half") {
+      const homeOrDraw = contestants.find((item) => normalizeContestantName(item?.n) === `${normalizeContestantName(homeName)} or draw`);
+      const drawOrAway = contestants.find((item) => normalizeContestantName(item?.n) === `draw or ${normalizeContestantName(awayName)}`);
+      const homeOrAway = contestants.find((item) => normalizeContestantName(item?.n) === `${normalizeContestantName(homeName)} or ${normalizeContestantName(awayName)}`);
+      const selections = [
+        mapSpecialSelection(homeOrDraw, "home_draw", homeOrDraw?.n),
+        mapSpecialSelection(homeOrAway, "home_away", homeOrAway?.n),
+        mapSpecialSelection(drawOrAway, "draw_away", drawOrAway?.n),
+      ].filter(Boolean);
+      if (selections.length === 3) {
+        markets.push(createSupplementalMarketRecord("double_chance", period, null, selections, special));
+      }
+      continue;
+    }
+
+    if (name === "draw no bet" || name === "draw no bet 1st half") {
+      const homeSelection = contestants.find((item) => normalizeContestantName(item?.n) === normalizeContestantName(homeName));
+      const awaySelection = contestants.find((item) => normalizeContestantName(item?.n) === normalizeContestantName(awayName));
+      const selections = [
+        mapSpecialSelection(homeSelection, "home", homeSelection?.n || homeName),
+        mapSpecialSelection(awaySelection, "away", awaySelection?.n || awayName),
+      ].filter(Boolean);
+      if (selections.length === 2) {
+        markets.push(createSupplementalMarketRecord("draw_no_bet", period, null, selections, special));
+      }
+    }
+  }
+
+  return markets;
+}
+
+function pushTeamTotalsMarkets(markets, period, marketPeriod, homeName, awayName) {
+  if (!period || typeof period !== "object") {
+    return;
+  }
+
+  const homeLines = Array.isArray(period?.teamTotals?.homeLines) ? period.teamTotals.homeLines : [];
+  const awayLines = Array.isArray(period?.teamTotals?.awayLines) ? period.teamTotals.awayLines : [];
+
+  for (const line of homeLines) {
+    const mapped = mapTeamTotalLine(line, "home", homeName, marketPeriod);
+    if (mapped) {
+      markets.push(mapped);
+    }
+  }
+
+  for (const line of awayLines) {
+    const mapped = mapTeamTotalLine(line, "away", awayName, marketPeriod);
+    if (mapped) {
+      markets.push(mapped);
+    }
+  }
+}
+
+function mapTeamTotalLine(line, team, teamName, period) {
+  if (!isUsableOverUnderLine(line)) {
+    return null;
+  }
+
+  const points = normalizeLinePoints(line?.points);
+  if (points == null) {
+    return null;
+  }
+
+  return {
+    type: "team_total_goals",
+    period,
+    specifier: {
+      team,
+      teamName,
+      points,
+      label: formatPointsLabel(points),
+    },
+    sourceMarketId: line?.lineId ?? null,
+    selections: [
+      {
+        id: "over",
+        name: `Over ${formatPointsLabel(points)}`,
+        odds: Number(line.overOdds),
+        sourceSelectionId: `${line?.lineId ?? "team-total"}:over`,
+      },
+      {
+        id: "under",
+        name: `Under ${formatPointsLabel(points)}`,
+        odds: Number(line.underOdds),
+        sourceSelectionId: `${line?.lineId ?? "team-total"}:under`,
+      },
+    ],
+  };
+}
+
+function createSupplementalMarketRecord(type, period, specifier, selections, sourceEvent) {
+  return {
+    type,
+    period,
+    specifier,
+    sourceMarketId: sourceEvent?.id ?? null,
+    selections,
+  };
+}
+
+function mapSpecialSelection(contestant, id, fallbackName) {
+  const odds = Number(contestant?.p);
+  if (!Number.isFinite(odds) || odds <= 1) {
+    return null;
+  }
+
+  return {
+    id,
+    name: contestant?.n || fallbackName || id,
+    odds,
+    sourceSelectionId: contestant?.i ?? contestant?.l ?? null,
+  };
+}
+
+function normalizeMarketName(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function normalizeContestantName(value) {
+  return String(value || "").trim().toLowerCase();
 }
 
 function findOverUnderLine(period, targetPoints) {

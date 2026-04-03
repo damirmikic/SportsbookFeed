@@ -28,6 +28,11 @@
             <span>Trader</span>
             <input id="traderNameInput" type="text" maxlength="32" placeholder="trader name" />
           </label>
+          <label class="ratio-field" for="firstHalfRatioInput">
+            <span>1H Split</span>
+            <input id="firstHalfRatioInput" type="number" min="0.05" max="0.95" step="0.01" placeholder="0.45" />
+            <small id="secondHalfRatioLabel">2H 0.55</small>
+          </label>
           <div class="filter-chip-group" id="traderFilterGroup">
             <button class="filter-chip is-active" type="button" data-filter-mode="all">All</button>
             <button class="filter-chip" type="button" data-filter-mode="suspended">Suspended</button>

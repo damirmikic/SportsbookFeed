@@ -10,6 +10,7 @@ const state = {
   editingCell: null,
   inlineEditValue: "",
   traderName: localStorage.getItem("sportsbook-trader-name") || "local-trader",
+  firstHalfRatio: readFirstHalfRatio(),
   oddsSnapshot: new Map(),
 };
 
@@ -20,6 +21,8 @@ const matchTotalEl = document.getElementById("matchTotal");
 const generatedStatusEl = document.getElementById("generatedStatus");
 const searchInputEl = document.getElementById("searchInput");
 const traderNameInputEl = document.getElementById("traderNameInput");
+const firstHalfRatioInputEl = document.getElementById("firstHalfRatioInput");
+const secondHalfRatioLabelEl = document.getElementById("secondHalfRatioLabel");
 const traderFilterGroupEl = document.getElementById("traderFilterGroup");
 const heroTitleEl = document.getElementById("heroTitle");
 const heroSourceEl = document.getElementById("heroSource");
@@ -39,6 +42,29 @@ traderNameInputEl.addEventListener("input", (event) => {
   localStorage.setItem("sportsbook-trader-name", state.traderName);
 });
 
+firstHalfRatioInputEl.value = state.firstHalfRatio.toFixed(2);
+syncFirstHalfRatioLabel();
+firstHalfRatioInputEl.addEventListener("change", async () => {
+  const parsed = Number(firstHalfRatioInputEl.value);
+  if (!Number.isFinite(parsed)) {
+    firstHalfRatioInputEl.value = state.firstHalfRatio.toFixed(2);
+    return;
+  }
+
+  const nextRatio = clampFirstHalfRatio(parsed);
+  firstHalfRatioInputEl.value = nextRatio.toFixed(2);
+
+  try {
+    generatedStatusEl.textContent = "Live - updating 1H split...";
+    await submitFeedSettingsUpdate({ firstHalfRatio: nextRatio });
+    generatedStatusEl.textContent = "Live - 1H split updated";
+  } catch (error) {
+    firstHalfRatioInputEl.value = state.firstHalfRatio.toFixed(2);
+    syncFirstHalfRatioLabel();
+    generatedStatusEl.textContent = `Feed settings error: ${error.message}`;
+  }
+});
+
 for (const button of traderFilterGroupEl.querySelectorAll("[data-filter-mode]")) {
   button.addEventListener("click", () => {
     state.filterMode = button.dataset.filterMode || "all";
@@ -54,7 +80,23 @@ refreshBtnEl.addEventListener("click", () => {
   });
 });
 
+fetchSnapshot();
 connectSSE();
+
+function fetchSnapshot() {
+  if (location.protocol === "file:") return;
+  fetch("/snapshot")
+    .then((res) => {
+      if (!res.ok || res.status === 204) return null;
+      return res.json();
+    })
+    .then((data) => {
+      if (data && !state.generatedAt) {
+        ingestData(data);
+      }
+    })
+    .catch(() => {});
+}
 
 function connectSSE() {
   if (location.protocol === "file:") {
@@ -98,6 +140,10 @@ function connectSSE() {
 function ingestData(data) {
   const previousGeneratedAt = state.generatedAt;
   state.generatedAt = data.generatedAt || null;
+  const feedSettingsRatio = clampFirstHalfRatio(data?.feedSettings?.firstHalfRatio);
+  state.firstHalfRatio = feedSettingsRatio;
+  firstHalfRatioInputEl.value = state.firstHalfRatio.toFixed(2);
+  syncFirstHalfRatioLabel();
   state.providerFeed = normalizeProviderFeed(data.providerFeed);
   state.leagues = buildLeagueCollection();
 
@@ -366,20 +412,18 @@ function getMatchKey(event) {
 }
 
 function buildMarketGroups(event) {
-  const groups = new Map();
+  const markets = getFeedMarketsForEvent(event);
+  const definitions = [
+    { key: "main_markets", label: "Main Markets" },
+    { key: "goals", label: "Goals" },
+    { key: "first_half", label: "1st Half" },
+    { key: "second_half", label: "2nd Half" },
+  ];
 
-  for (const market of getFeedMarketsForEvent(event)) {
-    if (!groups.has(market.type)) {
-      groups.set(market.type, {
-        key: market.type,
-        label: marketGroupLabel(market.type),
-        count: 0,
-      });
-    }
-    groups.get(market.type).count += 1;
-  }
-
-  return [...groups.values()].sort((a, b) => marketGroupOrder(a.key) - marketGroupOrder(b.key) || a.label.localeCompare(b.label));
+  return definitions.map((group) => ({
+    ...group,
+    count: markets.filter((market) => primaryMarketGroupKey(market) === group.key).length,
+  }));
 }
 
 function getFeedMarketsForEvent(event) {
@@ -522,11 +566,12 @@ function renderMarketDetailTable(event, group) {
 
 function buildMarketSections(event, key) {
   return getFeedMarketsForEvent(event)
-    .filter((market) => market.type === key)
+    .filter((market) => primaryMarketGroupKey(market) === key)
     .map((market) => ({
       marketId: market.marketId,
       status: market.status || "open",
       title: buildMarketSectionTitle(market, event),
+      sortOrder: marketSectionOrder(market),
       margins: {
         active: formatMarginLabel(computeMarketMargin(market, "active")),
         feed: formatMarginLabel(computeMarketMargin(market, "feed")),
@@ -539,6 +584,7 @@ function buildMarketSections(event, key) {
         value: selection,
       })),
     }))
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title))
     .filter((section) => section.rows.length);
 }
 
@@ -583,20 +629,21 @@ function renderMarketSection(section, fallbackLabel) {
 
 function buildMarketSectionTitle(market, event) {
   event = event || {};
+  const periodPrefix = market.specifier?.period === "1h" ? "1H " : "";
   if (market.type === "team_total_goals") {
     const teamName = market.specifier?.team === "home" ? getParticipant(event, "home").name : getParticipant(event, "away").name;
-    return `${teamName} ${market.specifier?.label || market.specifier?.points || ""}`.trim();
+    return `${periodPrefix}${teamName} ${market.specifier?.label || market.specifier?.points || ""}`.trim();
   }
 
   if (market.specifier?.label) {
-    return `${marketGroupLabel(market.type)} ${market.specifier.label}`.trim();
+    return `${periodPrefix}${marketGroupLabel(market.type)} ${market.specifier.label}`.trim();
   }
 
   if (market.specifier?.variant) {
-    return `${marketGroupLabel(market.type)} ${market.specifier.variant}`.trim();
+    return `${periodPrefix}${marketGroupLabel(market.type)} ${market.specifier.variant}`.trim();
   }
 
-  return marketGroupLabel(market.type);
+  return `${periodPrefix}${marketGroupLabel(market.type)}`.trim();
 }
 
 function computeMarketMargin(market, columnKey) {
@@ -604,7 +651,7 @@ function computeMarketMargin(market, columnKey) {
     .map((selection) => {
       if (columnKey === "active") return Number(selection?.odds);
       if (columnKey === "feed") return Number(selection?.fairOdds);
-      return Number(selection?.sourceOdds);
+      return getRawComparisonOdds(selection);
     })
     .filter((price) => Number.isFinite(price) && price > 1);
 
@@ -625,7 +672,7 @@ function renderProviderPriceCell(row, columnKey, index) {
   const marketSuspended = value?.marketStatus === "suspended";
   const activeOdds = Number(value?.odds);
   const feedOdds = Number(value?.fairOdds);
-  const rawOdds = Number(value?.sourceOdds);
+  const rawOdds = getRawComparisonOdds(value);
   const tone = index % 2 === 0 ? " alt" : "";
 
   if (columnKey === "active") {
@@ -655,7 +702,6 @@ function renderProviderPriceCell(row, columnKey, index) {
       marketId: row.marketId,
       selectionId: row.selectionId,
       manualCurrent: value?.manualOverride?.odds,
-      feedOdds,
       clickable: true,
     });
   }
@@ -670,12 +716,22 @@ function renderProviderPriceCell(row, columnKey, index) {
 
   return renderMatrixPrice({
     price: rawOdds,
-    label: "Raw",
+    label: value?.compare?.p4578?.period === "1h" ? "P4578 1H" : "P4578",
     className: `matrix-price is-raw${tone}`,
   });
 }
 
-function renderMatrixPrice({ price, label, className, marketId = "", selectionId = "", manualCurrent = null, feedOdds = null, clickable = false }) {
+function getRawComparisonOdds(selection) {
+  const compareOdds = Number(selection?.compare?.p4578?.odds);
+  if (Number.isFinite(compareOdds) && compareOdds > 1) {
+    return compareOdds;
+  }
+
+  const sourceOdds = Number(selection?.sourceOdds);
+  return Number.isFinite(sourceOdds) && sourceOdds > 1 ? sourceOdds : null;
+}
+
+function renderMatrixPrice({ price, label, className, marketId = "", selectionId = "", manualCurrent = null, clickable = false }) {
   if (!Number.isFinite(price)) {
     return `<div class="${className} is-missing"><strong>—</strong></div>`;
   }
@@ -738,6 +794,11 @@ function renderInsightsPanel(event, group, league) {
       <div class="insight-row"><span>Away λ</span><strong>${escapeHtml(formatLambda(analytics.lambdaAway) || "—")}</strong></div>
       <div class="insight-row"><span>Mu</span><strong>${escapeHtml(formatLambda(analytics.mu) || "—")}</strong></div>
       <div class="insight-row"><span>Rho</span><strong>${escapeHtml(analytics.rho != null ? Number(analytics.rho).toFixed(3) : "—")}</strong></div>
+      <div class="insight-row"><span>1H Split</span><strong>${escapeHtml(formatRatio(analytics.firstHalfRatio) || "—")}</strong></div>
+      <div class="insight-row"><span>1H Home λ</span><strong>${escapeHtml(formatLambda(analytics.firstHalf?.lambdaHome) || "—")}</strong></div>
+      <div class="insight-row"><span>1H Away λ</span><strong>${escapeHtml(formatLambda(analytics.firstHalf?.lambdaAway) || "—")}</strong></div>
+      <div class="insight-row"><span>1H Mu</span><strong>${escapeHtml(formatLambda(analytics.firstHalf?.mu) || "—")}</strong></div>
+      <div class="insight-row"><span>2H Split</span><strong>${escapeHtml(formatRatio(analytics.secondHalfRatio) || "—")}</strong></div>
     </div>
     <div class="insight-card">
       <div class="insight-title">Timeline Hooks</div>
@@ -895,6 +956,25 @@ async function submitEventStateUpdate(payload) {
   return data;
 }
 
+async function submitFeedSettingsUpdate(payload) {
+  const response = await fetch("/feed-settings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.error || `Failed to save feed settings (${response.status})`);
+  }
+
+  if (data?.feed) {
+    ingestData(data.feed);
+  }
+
+  return data;
+}
+
 function cloneProviderFeed() {
   return JSON.parse(JSON.stringify(state.providerFeed));
 }
@@ -1026,7 +1106,23 @@ function marketGroupLabel(type) {
   return labels[type] || type;
 }
 
-function marketGroupOrder(type) {
+function primaryMarketGroupKey(market) {
+  const period = market?.specifier?.period || "ft";
+  if (period === "1h") {
+    return "first_half";
+  }
+  if (period === "2h") {
+    return "second_half";
+  }
+
+  if (["total_goals", "team_total_goals", "both_teams_to_score", "correct_score"].includes(market?.type)) {
+    return "goals";
+  }
+
+  return "main_markets";
+}
+
+function marketSectionOrder(market) {
   const order = {
     match_winner: 1,
     total_goals: 2,
@@ -1037,11 +1133,38 @@ function marketGroupOrder(type) {
     correct_score: 7,
   };
 
-  return order[type] || 99;
+  return order[market?.type] || 99;
 }
 
 function formatLambda(value) {
   return Number.isFinite(Number(value)) ? Number(value).toFixed(2) : null;
+}
+
+function readFirstHalfRatio() {
+  const stored = Number(localStorage.getItem("sportsbook-first-half-ratio"));
+  return clampFirstHalfRatio(Number.isFinite(stored) ? stored : 0.45);
+}
+
+function clampFirstHalfRatio(value) {
+  if (!Number.isFinite(value)) {
+    return 0.45;
+  }
+
+  return Math.min(0.95, Math.max(0.05, round(value, 2)));
+}
+
+function syncFirstHalfRatioLabel() {
+  localStorage.setItem("sportsbook-first-half-ratio", String(state.firstHalfRatio));
+  secondHalfRatioLabelEl.textContent = `2H ${formatRatio(1 - state.firstHalfRatio) || "0.55"}`;
+}
+
+function formatRatio(value) {
+  return Number.isFinite(Number(value)) ? Number(value).toFixed(2) : null;
+}
+
+function round(value, decimals = 2) {
+  const factor = 10 ** decimals;
+  return Math.round(value * factor) / factor;
 }
 
 function escapeHtml(value) {
