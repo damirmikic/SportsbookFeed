@@ -368,6 +368,7 @@ function renderMatchBoard(event) {
   const date = event.scheduledStart ? new Date(event.scheduledStart) : null;
   const matchWinnerMarket = findFeedMarket(event, "match_winner");
   const mainTotalsMarket = findPrimaryTotalsMarket(event);
+  const matchSuspended = event?.tradingStatus === "suspended";
 
   return `
     <div class="board-headline">
@@ -377,6 +378,11 @@ function renderMatchBoard(event) {
         <span>${escapeHtml(event.provider || "source")}</span>
         <span>•</span>
         <span>${escapeHtml(date ? date.toLocaleString() : "Unscheduled")}</span>
+      </div>
+      <div class="board-trading-bar">
+        <span class="match-status-pill${matchSuspended ? " is-suspended" : " is-open"}">${escapeHtml(matchSuspended ? "Match Suspended" : "Match Open")}</span>
+        <button class="match-state-btn${matchSuspended ? "" : " is-active"}" type="button" data-event-state-id="${escapeHtml(event.eventId)}" data-event-state-value="open">Open Match</button>
+        <button class="match-state-btn is-danger${matchSuspended ? " is-active" : ""}" type="button" data-event-state-id="${escapeHtml(event.eventId)}" data-event-state-value="suspended">Suspend Match</button>
       </div>
       <div class="board-head-grid">
         <div class="board-fixture">
@@ -463,6 +469,8 @@ function buildMarketSections(event, key) {
   return getFeedMarketsForEvent(event)
     .filter((market) => market.type === key)
     .map((market) => ({
+      marketId: market.marketId,
+      status: market.status || "open",
       title: buildMarketSectionTitle(market, event),
       margins: {
         active: formatMarginLabel(computeMarketMargin(market, "active")),
@@ -480,11 +488,19 @@ function buildMarketSections(event, key) {
 }
 
 function renderMarketSection(section, fallbackLabel) {
+  const isSuspended = section.status === "suspended";
   return `
-    <section class="market-line-section">
+    <section class="market-line-section${isSuspended ? " is-suspended" : ""}">
       <div class="market-line-header">
-        <div class="market-line-title">${escapeHtml(section.title || fallbackLabel)}</div>
-        <div class="market-line-meta">${section.rows.length} selections</div>
+        <div>
+          <div class="market-line-title">${escapeHtml(section.title || fallbackLabel)}</div>
+          <div class="market-line-meta">${section.rows.length} selections</div>
+        </div>
+        <div class="market-line-actions">
+          <span class="market-status-pill${isSuspended ? " is-suspended" : " is-open"}">${escapeHtml(isSuspended ? "Suspended" : "Open")}</span>
+          <button class="market-state-btn${section.status === "open" ? " is-active" : ""}" type="button" data-market-state-id="${escapeHtml(section.marketId)}" data-market-state-value="open">Open</button>
+          <button class="market-state-btn is-danger${section.status === "suspended" ? " is-active" : ""}" type="button" data-market-state-id="${escapeHtml(section.marketId)}" data-market-state-value="suspended">Suspend</button>
+        </div>
       </div>
       <table class="detail-table matrix-table">
         <thead>
@@ -551,12 +567,17 @@ function formatMarginLabel(margin) {
 
 function renderProviderPriceCell(row, columnKey, index) {
   const value = row?.value || null;
+  const marketSuspended = value?.marketStatus === "suspended";
   const activeOdds = Number(value?.odds);
   const feedOdds = Number(value?.fairOdds);
   const rawOdds = Number(value?.sourceOdds);
   const tone = index % 2 === 0 ? " alt" : "";
 
   if (columnKey === "active") {
+    if (marketSuspended) {
+      return `<div class="matrix-price is-active is-suspended${tone}"><strong>SUSP</strong><small>market</small></div>`;
+    }
+
     const snapshotKey = `${row.marketId}:${row.selectionId}:active`;
     const prev = state.oddsSnapshot.get(snapshotKey);
 
@@ -671,6 +692,60 @@ function renderInsightsPanel(event, group, league) {
 }
 
 function bindManualPriceEditors() {
+  for (const button of mainContentEl.querySelectorAll("[data-event-state-id][data-event-state-value]")) {
+    button.addEventListener("click", async () => {
+      const eventId = button.dataset.eventStateId;
+      const status = button.dataset.eventStateValue;
+      if (!eventId || !status) {
+        return;
+      }
+
+      const previousFeed = cloneProviderFeed();
+      applyOptimisticEventState(eventId, status);
+      generatedStatusEl.textContent = status === "suspended" ? "Live - suspending match..." : "Live - opening match...";
+
+      try {
+        await submitEventStateUpdate({
+          eventId,
+          status,
+          trader: state.traderName,
+          reason: status === "suspended" ? "manual suspend match" : "manual reopen match",
+        });
+        generatedStatusEl.textContent = status === "suspended" ? "Live - match suspended" : "Live - match reopened";
+      } catch (error) {
+        restoreProviderFeed(previousFeed);
+        generatedStatusEl.textContent = `Match state error: ${error.message}`;
+      }
+    });
+  }
+
+  for (const button of mainContentEl.querySelectorAll("[data-market-state-id][data-market-state-value]")) {
+    button.addEventListener("click", async () => {
+      const marketId = button.dataset.marketStateId;
+      const status = button.dataset.marketStateValue;
+      if (!marketId || !status) {
+        return;
+      }
+
+      const previousFeed = cloneProviderFeed();
+      applyOptimisticMarketState(marketId, status);
+      generatedStatusEl.textContent = status === "suspended" ? "Live - suspending market..." : "Live - opening market...";
+
+      try {
+        await submitMarketStateUpdate({
+          marketId,
+          status,
+          trader: state.traderName,
+          reason: status === "suspended" ? "manual suspend" : "manual reopen",
+        });
+        generatedStatusEl.textContent = status === "suspended" ? "Live - market suspended" : "Live - market reopened";
+      } catch (error) {
+        restoreProviderFeed(previousFeed);
+        generatedStatusEl.textContent = `Market state error: ${error.message}`;
+      }
+    });
+  }
+
   for (const button of mainContentEl.querySelectorAll("[data-manual-market-id][data-manual-selection-id]")) {
     button.addEventListener("click", () => {
       state.editingCell = {
@@ -711,7 +786,7 @@ async function submitManualPriceOverride(payload) {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data?.error || "Failed to save manual odds");
+    throw new Error(data?.error || `Failed to save manual odds (${response.status})`);
   }
 
   if (data?.feed) {
@@ -719,6 +794,124 @@ async function submitManualPriceOverride(payload) {
   }
 
   return data;
+}
+
+async function submitMarketStateUpdate(payload) {
+  const response = await fetch("/market-state", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const hint = response.status === 404
+      ? "Endpoint /market-state not found. Restart node server.js."
+      : null;
+    throw new Error(data?.error || hint || `Failed to save market state (${response.status})`);
+  }
+
+  if (data?.feed) {
+    ingestData(data.feed);
+  }
+
+  return data;
+}
+
+async function submitEventStateUpdate(payload) {
+  const response = await fetch("/event-state", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const hint = response.status === 404
+      ? "Endpoint /event-state not found. Restart node server.js."
+      : null;
+    throw new Error(data?.error || hint || `Failed to save event state (${response.status})`);
+  }
+
+  if (data?.feed) {
+    ingestData(data.feed);
+  }
+
+  return data;
+}
+
+function cloneProviderFeed() {
+  return JSON.parse(JSON.stringify(state.providerFeed));
+}
+
+function restoreProviderFeed(feed) {
+  state.providerFeed = feed && typeof feed === "object" ? feed : { events: [], markets: [] };
+  state.leagues = buildLeagueCollection();
+  render();
+}
+
+function applyOptimisticEventState(eventId, status) {
+  const normalized = status === "suspended" ? "suspended" : "open";
+
+  state.providerFeed.events = state.providerFeed.events.map((event) => (
+    event.eventId === eventId
+      ? {
+          ...event,
+          tradingStatus: normalized,
+          tradingStateOverride: normalized === "suspended" ? { eventId, status: normalized } : null,
+        }
+      : event
+  ));
+
+  state.providerFeed.markets = state.providerFeed.markets.map((market) => {
+    if (market.eventId !== eventId) {
+      return market;
+    }
+
+    const nextStatus = normalized === "suspended"
+      ? "suspended"
+      : (market.tradingStateOverride?.status || "open");
+
+    return {
+      ...market,
+      status: nextStatus,
+      selections: (market.selections || []).map((selection) => ({
+        ...selection,
+        marketStatus: nextStatus,
+      })),
+    };
+  });
+
+  state.leagues = buildLeagueCollection();
+  render();
+}
+
+function applyOptimisticMarketState(marketId, status) {
+  const normalized = status === "suspended" ? "suspended" : "open";
+
+  state.providerFeed.markets = state.providerFeed.markets.map((market) => {
+    if (market.marketId !== marketId) {
+      return market;
+    }
+
+    const event = state.providerFeed.events.find((item) => item.eventId === market.eventId) || null;
+    const nextStatus = event?.tradingStatus === "suspended"
+      ? "suspended"
+      : normalized;
+
+    return {
+      ...market,
+      status: nextStatus,
+      tradingStateOverride: normalized === "suspended" ? { marketId, status: normalized } : null,
+      selections: (market.selections || []).map((selection) => ({
+        ...selection,
+        marketStatus: nextStatus,
+      })),
+    };
+  });
+
+  state.leagues = buildLeagueCollection();
+  render();
 }
 
 async function saveInlineEdit(input) {

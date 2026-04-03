@@ -21,6 +21,16 @@
 const http = require("http");
 const fs   = require("fs");
 const path = require("path");
+const { buildProviderFeed } = require("./lib/provider-feed");
+const {
+  clearEventState,
+  clearMarketState,
+  getMarketStatePath,
+  loadMarketStateStore,
+  saveMarketStateStore,
+  upsertEventState,
+  upsertMarketState,
+} = require("./lib/market-state");
 const {
   clearManualMarket,
   clearManualSelection,
@@ -33,6 +43,7 @@ const {
 
 const DIR = __dirname;
 const MANUAL_ODDS_PATH = getManualOddsPath();
+const MARKET_STATE_PATH = getMarketStatePath();
 const SNAPSHOT_PATH = path.join(DIR, "odds.json");
 
 // ── Parse our own flags, pass the rest straight to fetch-odds.js ──
@@ -77,11 +88,7 @@ let refreshing = false;
 function loadWarmCache() {
   try {
     const raw = fs.readFileSync(SNAPSHOT_PATH, "utf8");
-    const parsed = JSON.parse(raw);
-    if (!parsed.generatedAt) {
-      parsed.generatedAt = new Date().toISOString();
-    }
-    cache = parsed;
+    cache = hydrateSnapshot(JSON.parse(raw));
     console.log(`[${ts()}] Loaded warm cache from odds.json.`);
   } catch {
     cache = null;
@@ -101,42 +108,21 @@ function refreshOdds() {
   refreshing = true;
   console.log(`[${ts()}] Fetching odds…`);
 
-  const chunks = [];
-  const child  = require("child_process").spawn(
-    process.execPath,
-    [path.join(DIR, "fetch-odds.js"), ...fetchArgs],
-    { cwd: DIR, stdio: ["ignore", "pipe", "inherit"] }
-  );
-
-  child.stdout.on("data", (d) => chunks.push(d));
-
-  child.on("exit", (code) => {
-    refreshing = false;
-    if (code !== 0) {
-      console.error(`[${ts()}] fetch-odds.js exited with code ${code}`);
-      broadcast({ error: `fetch-odds.js failed (exit ${code})`, generatedAt: new Date().toISOString() });
-      return;
-    }
-    try {
-      const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-      if (!parsed.generatedAt) parsed.generatedAt = new Date().toISOString();
+  fetchOddsSnapshot()
+    .then((parsed) => {
       cache = parsed;
       saveWarmCache(parsed);
-      // Log a summary of what each source returned
-      for (const [src, val] of Object.entries(parsed.sources || {})) {
-        if (val?.error) {
-          console.error(`  [${src}] ERROR: ${val.error}`);
-        } else {
-          const mc = Array.isArray(val?.matches) ? val.matches.length : 0;
-          console.log(`  [${src}] ${mc} matches`);
-        }
-      }
+      logFetchSummary(parsed);
       console.log(`[${ts()}] Broadcasting to ${sseClients.size} client(s).`);
       broadcast(cache);
-    } catch (e) {
-      console.error(`[${ts()}] Failed to parse fetch-odds output: ${e.message}`);
-    }
-  });
+    })
+    .catch((error) => {
+      console.error(`[${ts()}] ${error.message}`);
+      broadcast({ error: error.message, generatedAt: new Date().toISOString() });
+    })
+    .finally(() => {
+      refreshing = false;
+    });
 }
 
 // ── HTTP server ────────────────────────────────────────────────────
@@ -203,6 +189,20 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (pathname === "/market-state" && req.method === "GET") {
+    const store = loadMarketStateStore(MARKET_STATE_PATH);
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify(store, null, 2));
+    return;
+  }
+
+  if (pathname === "/event-state" && req.method === "GET") {
+    const store = loadMarketStateStore(MARKET_STATE_PATH);
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify(store, null, 2));
+    return;
+  }
+
   if (pathname === "/manual-odds" && req.method === "POST") {
     collectJsonBody(req)
       .then((payload) => {
@@ -218,7 +218,7 @@ const server = http.createServer((req, res) => {
         const nextStore = resolveNextManualOddsStore(currentStore, payload, mode, marketId, selectionId);
 
         const saved = saveManualOddsStore(nextStore, MANUAL_ODDS_PATH);
-        fetchOddsSnapshot()
+        rebuildSnapshotFromCurrentSources({ manualOdds: saved })
           .then((parsed) => {
             cache = parsed;
             saveWarmCache(parsed);
@@ -228,6 +228,98 @@ const server = http.createServer((req, res) => {
             res.end(JSON.stringify({
               status: mode === "clear_market" || (payload?.odds == null || String(payload.odds).trim() === "") ? "cleared" : "saved",
               manualOdds: saved,
+              feed: parsed,
+            }));
+          })
+          .catch((fetchError) => {
+            res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ error: fetchError.message }));
+          });
+      })
+      .catch((error) => {
+        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: error.message }));
+      });
+    return;
+  }
+
+  if (pathname === "/market-state" && req.method === "POST") {
+    collectJsonBody(req)
+      .then((payload) => {
+        const marketId = String(payload?.marketId || "").trim();
+        const status = String(payload?.status || "").trim().toLowerCase();
+
+        if (!marketId) {
+          throw new Error("marketId is required");
+        }
+
+        const currentStore = loadMarketStateStore(MARKET_STATE_PATH);
+        const nextStore = status === "open"
+          ? clearMarketState(currentStore, marketId)
+          : upsertMarketState(currentStore, {
+              marketId,
+              status,
+              trader: payload.trader,
+              reason: payload.reason,
+            });
+
+        const saved = saveMarketStateStore(nextStore, MARKET_STATE_PATH);
+        rebuildSnapshotFromCurrentSources({ marketState: saved })
+          .then((parsed) => {
+            cache = parsed;
+            saveWarmCache(parsed);
+            logFetchSummary(parsed);
+            broadcast(cache);
+            res.writeHead(202, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({
+              status,
+              marketState: saved,
+              feed: parsed,
+            }));
+          })
+          .catch((fetchError) => {
+            res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ error: fetchError.message }));
+          });
+      })
+      .catch((error) => {
+        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: error.message }));
+      });
+    return;
+  }
+
+  if (pathname === "/event-state" && req.method === "POST") {
+    collectJsonBody(req)
+      .then((payload) => {
+        const eventId = String(payload?.eventId || "").trim();
+        const status = String(payload?.status || "").trim().toLowerCase();
+
+        if (!eventId) {
+          throw new Error("eventId is required");
+        }
+
+        const currentStore = loadMarketStateStore(MARKET_STATE_PATH);
+        const nextStore = status === "open"
+          ? clearEventState(currentStore, eventId)
+          : upsertEventState(currentStore, {
+              eventId,
+              status,
+              trader: payload.trader,
+              reason: payload.reason,
+            });
+
+        const saved = saveMarketStateStore(nextStore, MARKET_STATE_PATH);
+        rebuildSnapshotFromCurrentSources({ marketState: saved })
+          .then((parsed) => {
+            cache = parsed;
+            saveWarmCache(parsed);
+            logFetchSummary(parsed);
+            broadcast(cache);
+            res.writeHead(202, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({
+              status,
+              marketState: saved,
               feed: parsed,
             }));
           })
@@ -285,6 +377,77 @@ setInterval(refreshOdds, INTERVAL_MS);
 
 function ts() {
   return new Date().toLocaleTimeString();
+}
+
+function fetchOddsSnapshot() {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    const child = require("child_process").spawn(
+      process.execPath,
+      [path.join(DIR, "fetch-odds.js"), ...fetchArgs],
+      { cwd: DIR, stdio: ["ignore", "pipe", "inherit"] }
+    );
+
+    child.stdout.on("data", (d) => chunks.push(d));
+    child.on("error", (error) => reject(new Error(`Failed to start fetch-odds.js: ${error.message}`)));
+    child.on("exit", (code) => {
+      if (code !== 0) {
+        reject(new Error(`fetch-odds.js failed (exit ${code})`));
+        return;
+      }
+
+      try {
+        resolve(hydrateSnapshot(JSON.parse(Buffer.concat(chunks).toString("utf8"))));
+      } catch (error) {
+        reject(new Error(`Failed to parse fetch-odds output: ${error.message}`));
+      }
+    });
+  });
+}
+
+function rebuildSnapshotFromCurrentSources(overrides = {}) {
+  try {
+    const base = cache?.sources
+      ? cache
+      : hydrateSnapshot(JSON.parse(fs.readFileSync(SNAPSHOT_PATH, "utf8")));
+    const next = {
+      generatedAt: new Date().toISOString(),
+      sources: base?.sources || {},
+      manualOdds: overrides.manualOdds || base?.manualOdds || loadManualOddsStore(MANUAL_ODDS_PATH),
+      marketState: overrides.marketState || base?.marketState || loadMarketStateStore(MARKET_STATE_PATH),
+    };
+    return Promise.resolve(hydrateSnapshot(next));
+  } catch (error) {
+    return fetchOddsSnapshot();
+  }
+}
+
+function hydrateSnapshot(snapshot) {
+  const next = snapshot && typeof snapshot === "object" ? { ...snapshot } : {};
+  if (!next.generatedAt) {
+    next.generatedAt = new Date().toISOString();
+  }
+
+  if (next.sources) {
+    const manualOddsStore = next.manualOdds || loadManualOddsStore(MANUAL_ODDS_PATH);
+    const marketStateStore = next.marketState || loadMarketStateStore(MARKET_STATE_PATH);
+    next.manualOdds = manualOddsStore;
+    next.marketState = marketStateStore;
+    next.providerFeed = buildProviderFeed(next, { manualOddsStore, marketStateStore });
+  }
+
+  return next;
+}
+
+function logFetchSummary(parsed) {
+  for (const [src, val] of Object.entries(parsed.sources || {})) {
+    if (val?.error) {
+      console.error(`  [${src}] ERROR: ${val.error}`);
+    } else {
+      const mc = Array.isArray(val?.matches) ? val.matches.length : 0;
+      console.log(`  [${src}] ${mc} matches`);
+    }
+  }
 }
 
 function collectJsonBody(req) {
