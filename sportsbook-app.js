@@ -154,9 +154,13 @@ function ingestData(data) {
   render();
 
   const isNew = previousGeneratedAt && previousGeneratedAt !== state.generatedAt;
+  const p4578Progress = data?.sources?.p4578?.progress || null;
+  const progressSuffix = p4578Progress && !p4578Progress.complete
+    ? ` - loading leagues ${p4578Progress.fetchedLeagueCount + p4578Progress.failedLeagueCount}/${p4578Progress.totalLeagueTargetCount}`
+    : "";
   generatedStatusEl.textContent = state.generatedAt
-    ? `Live - updated ${new Date(state.generatedAt).toLocaleTimeString()}${isNew ? " - new data" : ""}`
-    : "Live";
+    ? `Live - updated ${new Date(state.generatedAt).toLocaleTimeString()}${isNew ? " - new data" : ""}${progressSuffix}`
+    : `Live${progressSuffix}`;
 }
 
 function normalizeProviderFeed(feed) {

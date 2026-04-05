@@ -51,6 +51,7 @@ const FEED_SETTINGS_PATH = getFeedSettingsPath();
 const MANUAL_ODDS_PATH = getManualOddsPath();
 const MARKET_STATE_PATH = getMarketStatePath();
 const SNAPSHOT_PATH = path.join(DIR, "odds.json");
+const DEFAULT_P4578_MAX_LEAGUES = 200;
 
 // ── Parse our own flags, pass the rest straight to fetch-odds.js ──
 const rawArgs = process.argv.slice(2);
@@ -68,6 +69,24 @@ for (let i = 0; i < rawArgs.length; i++) {
   } else {
     fetchArgs.push(a);
   }
+}
+
+const hasFetchArg = (flag) => fetchArgs.includes(flag);
+const hasScopedP4578Request =
+  hasFetchArg("--p4578-league-code") ||
+  hasFetchArg("--p4578-event-id");
+const hasExplicitSource = hasFetchArg("--source");
+
+if (!hasExplicitSource && !hasScopedP4578Request) {
+  fetchArgs.push("--source", "p4578");
+}
+
+if (!hasFetchArg("--p4578-fetch-events") && !hasScopedP4578Request) {
+  fetchArgs.push("--p4578-fetch-events");
+}
+
+if (!hasFetchArg("--p4578-max-leagues") && !hasScopedP4578Request) {
+  fetchArgs.push("--p4578-max-leagues", String(DEFAULT_P4578_MAX_LEAGUES));
 }
 
 // ── SSE clients ────────────────────────────────────────────────────
@@ -423,7 +442,7 @@ server.listen(PORT, () => {
   console.log("");
   console.log(`  Sportsbook server → http://localhost:${PORT}`);
   console.log(`  Odds pushed via SSE every ${INTERVAL_MS / 1000}s`);
-  if (fetchArgs.length) console.log(`  fetch-odds args: ${fetchArgs.join(" ")}`);
+  console.log(`  effective fetch-odds args: ${fetchArgs.length ? fetchArgs.join(" ") : "(none)"}`);
   console.log("");
 });
 
@@ -439,13 +458,29 @@ function ts() {
 function fetchOddsSnapshot() {
   return new Promise((resolve, reject) => {
     const chunks = [];
-    const child = require("child_process").spawn(
-      process.execPath,
-      [path.join(DIR, "fetch-odds.js"), ...fetchArgs],
-      { cwd: DIR, stdio: ["ignore", "pipe", "inherit"] }
+    const child = require("child_process").fork(
+      path.join(DIR, "fetch-odds.js"),
+      fetchArgs,
+      { cwd: DIR, stdio: ["ignore", "pipe", "inherit", "ipc"] }
     );
 
     child.stdout.on("data", (d) => chunks.push(d));
+    child.on("message", (message) => {
+      if (message?.type !== "progress" || !message.snapshot) {
+        return;
+      }
+
+      try {
+        const partial = hydrateSnapshot(message.snapshot);
+        cache = partial;
+        console.log(
+          `[${ts()}] Progressive update: ${partial?.sources?.p4578?.progress?.fetchedLeagueCount ?? 0}/${partial?.sources?.p4578?.progress?.totalLeagueTargetCount ?? 0} leagues.`
+        );
+        broadcast(partial);
+      } catch (error) {
+        console.error(`[${ts()}] Failed to hydrate progressive snapshot: ${error.message}`);
+      }
+    });
     child.on("error", (error) => reject(new Error(`Failed to start fetch-odds.js: ${error.message}`)));
     child.on("exit", (code) => {
       if (code !== 0) {

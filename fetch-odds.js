@@ -9,50 +9,20 @@ const { loadManualOddsStore } = require("./lib/manual-odds");
 const DEFAULT_TIPSPORT_HAR = "C:/Users/kvoter2/Downloads/www.tipsport.cz.har";
 const DEFAULT_TIPSPORT_DETECTOR = "C:/Users/kvoter2/Downloads/api-detector-export (1).json";
 const DEFAULT_P4578_HAR = "C:/Users/kvoter2/Downloads/www.p4578.com.har";
+const DEFAULT_P4578_MAX_LEAGUES = 200;
+const DEFAULT_P4578_CHUNK_SIZE = 50;
+const REQUEST_TIMEOUT_MS = 10_000;
 const TIPSPORT_MUTED = true;
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const tipsportHarPath = path.resolve(args.tipsportHar || DEFAULT_TIPSPORT_HAR);
-  const tipsportDetectorPath = path.resolve(args.tipsportDetector || DEFAULT_TIPSPORT_DETECTOR);
-  const p4578HarPath = path.resolve(args.p4578Har || DEFAULT_P4578_HAR);
-  const manualOddsStore = loadManualOddsStore(args.manualOddsFile);
-
-  const result = {
-    generatedAt: new Date().toISOString(),
-    sources: {},
-  };
-
-  if (!args.source || args.source === "tipsport") {
-    if (TIPSPORT_MUTED) {
-      result.sources.tipsport = {
-        muted: true,
-        matches: [],
-        warning: "Tipsport odds are temporarily muted.",
-      };
-    } else {
-      try {
-        result.sources.tipsport = await fetchTipsportOdds(tipsportHarPath, tipsportDetectorPath, args);
-      } catch (e) {
-        result.sources.tipsport = { error: e.message, matches: [] };
-        console.error(`[tipsport] ${e.message}`);
+  const result = await fetchOddsData(args, {
+    onProgress(snapshot) {
+      if (typeof process.send === "function") {
+        process.send({ type: "progress", snapshot });
       }
-    }
-  }
-
-  if (!args.source || args.source === "p4578") {
-    try {
-      result.sources.p4578 = await fetchP4578Data(p4578HarPath, args);
-    } catch (e) {
-      result.sources.p4578 = { error: e.message, matches: [], leagues: [] };
-      console.error(`[p4578] ${e.message}`);
-    }
-  }
-
-  result.providerFeed = buildProviderFeed(result, { manualOddsStore });
-  result.manualOdds = manualOddsStore;
-
-
+    },
+  });
   const output = JSON.stringify(result, null, 2);
   if (args.out) {
     const outPath = path.resolve(args.out);
@@ -105,6 +75,9 @@ function parseArgs(argv) {
     } else if (current === "--p4578-max-leagues" && next) {
       args.p4578MaxLeagues = Number(next);
       i += 1;
+    } else if (current === "--p4578-chunk-size" && next) {
+      args.p4578ChunkSize = Number(next);
+      i += 1;
     } else if (current === "--p4578-event-id" && next) {
       args.p4578EventId = Number(next);
       i += 1;
@@ -134,10 +107,73 @@ function printHelp() {
       "  --p4578-sport-id <n>       Override p4578 sport id (default: inferred from HAR or 29)",
       "  --p4578-league-code <code> Fetch a specific p4578 league odds payload",
       "  --p4578-fetch-events       Fetch events for multiple p4578 leagues",
-      "  --p4578-max-leagues <n>    Limit how many p4578 leagues are expanded into events",
+      `  --p4578-max-leagues <n>    Limit how many p4578 leagues are expanded into events (default: ${DEFAULT_P4578_MAX_LEAGUES})`,
+      `  --p4578-chunk-size <n>     Emit progressive updates every N leagues (default: ${DEFAULT_P4578_CHUNK_SIZE})`,
       "  --p4578-event-id <id>      Fetch a specific p4578 event odds payload",
     ].join("\n")
   );
+}
+
+async function fetchOddsData(args, options = {}) {
+  const tipsportHarPath = path.resolve(args.tipsportHar || DEFAULT_TIPSPORT_HAR);
+  const tipsportDetectorPath = path.resolve(args.tipsportDetector || DEFAULT_TIPSPORT_DETECTOR);
+  const p4578HarPath = path.resolve(args.p4578Har || DEFAULT_P4578_HAR);
+  const manualOddsStore = loadManualOddsStore(args.manualOddsFile);
+  const emitProgress = typeof options.onProgress === "function" ? options.onProgress : null;
+
+  const result = {
+    generatedAt: new Date().toISOString(),
+    sources: {},
+  };
+
+  if (!args.source || args.source === "tipsport") {
+    if (TIPSPORT_MUTED) {
+      result.sources.tipsport = {
+        muted: true,
+        matches: [],
+        warning: "Tipsport odds are temporarily muted.",
+      };
+    } else {
+      try {
+        result.sources.tipsport = await fetchTipsportOdds(tipsportHarPath, tipsportDetectorPath, args);
+      } catch (e) {
+        result.sources.tipsport = { error: e.message, matches: [] };
+        console.error(`[tipsport] ${e.message}`);
+      }
+    }
+  }
+
+  if (!args.source || args.source === "p4578") {
+    try {
+      result.sources.p4578 = await fetchP4578Data(p4578HarPath, args, {
+        onProgress(partialSource) {
+          result.generatedAt = new Date().toISOString();
+          result.sources.p4578 = partialSource;
+          if (emitProgress) {
+            emitProgress(buildProgressSnapshot(result, manualOddsStore));
+          }
+        },
+      });
+    } catch (e) {
+      result.sources.p4578 = { error: e.message, matches: [], leagues: [] };
+      console.error(`[p4578] ${e.message}`);
+    }
+  }
+
+  result.generatedAt = new Date().toISOString();
+  result.providerFeed = buildProviderFeed(result, { manualOddsStore });
+  result.manualOdds = manualOddsStore;
+  return result;
+}
+
+function buildProgressSnapshot(result, manualOddsStore) {
+  return {
+    generatedAt: result.generatedAt,
+    sources: {
+      ...result.sources,
+    },
+    manualOdds: manualOddsStore,
+  };
 }
 
 async function fetchTipsportOdds(harPath, detectorPath, args) {
@@ -501,7 +537,7 @@ async function fetchWithCookies(url, options, jar) {
   return response;
 }
 
-async function fetchP4578Data(harPath, args) {
+async function fetchP4578Data(harPath, args, options = {}) {
   const har = readHar(harPath);
   const leaguesEntry = findEntry(har, (entry) =>
     entry.request.method === "GET" &&
@@ -532,8 +568,8 @@ async function fetchP4578Data(harPath, args) {
   periodsUrl.searchParams.set("_", String(Date.now()));
 
   const [leaguesResponse, periodsResponse] = await Promise.all([
-    fetch(leaguesUrl, { headers: discoveryHeaders }),
-    fetch(periodsUrl, { headers: discoveryHeaders }),
+    fetchWithRetry(leaguesUrl, { headers: discoveryHeaders }),
+    fetchWithRetry(periodsUrl, { headers: discoveryHeaders }),
   ]);
 
   if (!leaguesResponse.ok) {
@@ -551,7 +587,7 @@ async function fetchP4578Data(harPath, args) {
   const leagueList = Array.isArray(leagues) ? leagues : [];
   const selectedLeagueCode =
     args.p4578LeagueCode || leagueList.find((league) => league?.leagueCode)?.leagueCode || null;
-  const shouldFetchLeagueEvents = Boolean(args.p4578FetchEvents || selectedLeagueCode);
+  const shouldFetchLeagueEvents = Boolean(args.p4578FetchEvents || args.p4578LeagueCode);
   const leagueTargets = shouldFetchLeagueEvents
     ? pickP4578LeagueTargets(leagueList, args)
     : [];
@@ -570,8 +606,12 @@ async function fetchP4578Data(harPath, args) {
   if (leagueTargets.length > 0) {
     const fetchedLeagueResults = [];
     const failedLeagueResults = [];
+    const chunkSize = Number.isFinite(args.p4578ChunkSize) && args.p4578ChunkSize > 0
+      ? args.p4578ChunkSize
+      : DEFAULT_P4578_CHUNK_SIZE;
 
-    for (const league of leagueTargets) {
+    for (let index = 0; index < leagueTargets.length; index += 1) {
+      const league = leagueTargets[index];
       const leagueOddsUrl = buildP4578LeagueOddsUrl({
         baseUrl: leaguesEntry.request.url,
         sportId,
@@ -614,32 +654,23 @@ async function fetchP4578Data(harPath, args) {
         });
       }
 
+      updateP4578LeagueAggregation(result, fetchedLeagueResults, failedLeagueResults, selectedLeagueCode, {
+        complete: false,
+        totalLeagueTargetCount: leagueTargets.length,
+        chunkSize,
+      });
+      if ((index + 1) % chunkSize === 0 || index === leagueTargets.length - 1) {
+        options.onProgress?.(cloneJsonCompatible(result));
+      }
+
       await sleep(350);
     }
 
-    result.request.leagueOddsUrls = fetchedLeagueResults.map((entry) => entry.requestUrl);
-    result.leagueCode = selectedLeagueCode;
-    result.fetchedLeagueCount = fetchedLeagueResults.length;
-    result.failedLeagueCount = failedLeagueResults.length;
-    result.failedLeagues = failedLeagueResults;
-    result.leagueResults = fetchedLeagueResults.map((entry) => ({
-      leagueCode: entry.leagueCode,
-      leagueName: entry.leagueName,
-      matchCount: entry.matchCount,
-      matches: entry.matches,
-    }));
-    result.matchesByLeague = Object.fromEntries(
-      fetchedLeagueResults.map((entry) => [entry.leagueCode, entry.matches])
-    );
-    result.matches = dedupeByEventId(
-      fetchedLeagueResults.flatMap((entry) => entry.matches)
-    );
-
-    const selectedLeagueResult = fetchedLeagueResults.find((entry) => entry.leagueCode === selectedLeagueCode) || null;
-    if (selectedLeagueResult) {
-      result.request.leagueOddsUrl = selectedLeagueResult.requestUrl;
-      result.leagueOdds = selectedLeagueResult.raw;
-    }
+    updateP4578LeagueAggregation(result, fetchedLeagueResults, failedLeagueResults, selectedLeagueCode, {
+      complete: true,
+      totalLeagueTargetCount: leagueTargets.length,
+      chunkSize,
+    });
   }
 
   if (Number.isFinite(args.p4578EventId)) {
@@ -647,7 +678,7 @@ async function fetchP4578Data(harPath, args) {
       baseUrl: leaguesEntry.request.url,
       eventId: args.p4578EventId,
     });
-    const eventOddsResponse = await fetch(eventOddsUrl, { headers: discoveryHeaders });
+    const eventOddsResponse = await fetchWithRetry(eventOddsUrl, { headers: discoveryHeaders });
     if (!eventOddsResponse.ok) {
       throw new Error(
         `p4578 event odds request failed: ${eventOddsResponse.status} ${eventOddsResponse.statusText}`
@@ -1764,7 +1795,18 @@ async function fetchWithRetry(url, options = {}, retryCount = 3) {
   let lastError = null;
 
   for (let attempt = 0; attempt <= retryCount; attempt += 1) {
-    const response = await fetch(url, options);
+    let response;
+    try {
+      response = await fetchWithTimeout(url, options);
+    } catch (error) {
+      lastError = error;
+      if (attempt === retryCount) {
+        break;
+      }
+      await sleep(1000 * (attempt + 1));
+      continue;
+    }
+
     if (response.status !== 429) {
       return response;
     }
@@ -1786,6 +1828,68 @@ async function fetchWithRetry(url, options = {}, retryCount = 3) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function updateP4578LeagueAggregation(
+  result,
+  fetchedLeagueResults,
+  failedLeagueResults,
+  selectedLeagueCode,
+  progress = {}
+) {
+  result.request.leagueOddsUrls = fetchedLeagueResults.map((entry) => entry.requestUrl);
+  result.leagueCode = selectedLeagueCode;
+  result.fetchedLeagueCount = fetchedLeagueResults.length;
+  result.failedLeagueCount = failedLeagueResults.length;
+  result.failedLeagues = failedLeagueResults;
+  result.leagueResults = fetchedLeagueResults.map((entry) => ({
+    leagueCode: entry.leagueCode,
+    leagueName: entry.leagueName,
+    matchCount: entry.matchCount,
+    matches: entry.matches,
+  }));
+  result.matchesByLeague = Object.fromEntries(
+    fetchedLeagueResults.map((entry) => [entry.leagueCode, entry.matches])
+  );
+  result.matches = dedupeByEventId(
+    fetchedLeagueResults.flatMap((entry) => entry.matches)
+  );
+  result.progress = {
+    complete: Boolean(progress.complete),
+    chunkSize: progress.chunkSize ?? DEFAULT_P4578_CHUNK_SIZE,
+    fetchedLeagueCount: fetchedLeagueResults.length,
+    failedLeagueCount: failedLeagueResults.length,
+    totalLeagueTargetCount: progress.totalLeagueTargetCount ?? fetchedLeagueResults.length + failedLeagueResults.length,
+  };
+
+  const selectedLeagueResult = fetchedLeagueResults.find((entry) => entry.leagueCode === selectedLeagueCode) || null;
+  if (selectedLeagueResult) {
+    result.request.leagueOddsUrl = selectedLeagueResult.requestUrl;
+    result.leagueOdds = selectedLeagueResult.raw;
+  }
+}
+
+function cloneJsonCompatible(value) {
+  return value == null ? value : JSON.parse(JSON.stringify(value));
+}
+
+async function fetchWithTimeout(url, options = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error(`Request timed out after ${REQUEST_TIMEOUT_MS}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function readHar(filePath) {
@@ -1816,7 +1920,7 @@ function pickP4578LeagueTargets(leagueList, args) {
 
   const maxLeagues = Number.isFinite(args.p4578MaxLeagues) && args.p4578MaxLeagues > 0
     ? args.p4578MaxLeagues
-    : leagueList.length;
+    : DEFAULT_P4578_MAX_LEAGUES;
 
   return [...leagueList]
     .sort((a, b) => (Number(b?.totalEvents) || 0) - (Number(a?.totalEvents) || 0))
@@ -1889,7 +1993,15 @@ function buildHeaders(headerList, overrides = {}) {
   return { ...headers, ...overrides };
 }
 
-main().catch((error) => {
-  console.error(error.message || String(error));
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error.message || String(error));
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  fetchOddsData,
+  fetchP4578Data,
+  parseArgs,
+};
