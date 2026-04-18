@@ -9,6 +9,7 @@ const { loadManualOddsStore } = require("./lib/manual-odds");
 const DEFAULT_TIPSPORT_HAR = "C:/Users/kvoter2/Downloads/www.tipsport.cz.har";
 const DEFAULT_TIPSPORT_DETECTOR = "C:/Users/kvoter2/Downloads/api-detector-export (1).json";
 const DEFAULT_P4578_HAR = "C:/Users/kvoter2/Downloads/www.p4578.com.har";
+const DEFAULT_P4578_BASE_URL = "https://www.pinnacle888.com";
 const DEFAULT_P4578_MAX_LEAGUES = 200;
 const DEFAULT_P4578_CHUNK_SIZE = 50;
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -49,6 +50,9 @@ function parseArgs(argv) {
       i += 1;
     } else if (current === "--p4578-har" && next) {
       args.p4578Har = next;
+      i += 1;
+    } else if (current === "--p4578-base-url" && next) {
+      args.p4578BaseUrl = next;
       i += 1;
     } else if (current === "--source" && next) {
       args.source = next;
@@ -100,6 +104,7 @@ function printHelp() {
       "  --tipsport-har <path>      Override Tipsport HAR path",
       "  --tipsport-detector <path> Override Tipsport API detector export path",
       "  --p4578-har <path>         Override p4578 HAR path",
+      `  --p4578-base-url <url>     Override p4578 base URL (default: ${DEFAULT_P4578_BASE_URL})`,
       "  --out <path>               Write JSON output as UTF-8 to a file",
       "  --manual-odds-file <path>  Override manual odds JSON path",
       "  --tipsport-limit <n>       Override Tipsport offer limit",
@@ -117,7 +122,7 @@ function printHelp() {
 async function fetchOddsData(args, options = {}) {
   const tipsportHarPath = path.resolve(args.tipsportHar || DEFAULT_TIPSPORT_HAR);
   const tipsportDetectorPath = path.resolve(args.tipsportDetector || DEFAULT_TIPSPORT_DETECTOR);
-  const p4578HarPath = path.resolve(args.p4578Har || DEFAULT_P4578_HAR);
+  const p4578HarPath = args.p4578Har ? path.resolve(args.p4578Har) : path.resolve(DEFAULT_P4578_HAR);
   const manualOddsStore = loadManualOddsStore(args.manualOddsFile);
   const emitProgress = typeof options.onProgress === "function" ? options.onProgress : null;
 
@@ -538,51 +543,35 @@ async function fetchWithCookies(url, options, jar) {
 }
 
 async function fetchP4578Data(harPath, args, options = {}) {
-  const har = readHar(harPath);
-  const leaguesEntry = findEntry(har, (entry) =>
-    entry.request.method === "GET" &&
-    entry.request.url.includes("/sports-service/sv/euro/leagues?")
-  );
-  const periodsEntry = findEntry(har, (entry) =>
-    entry.request.method === "GET" &&
-    entry.request.url.includes("/sports-service/sv/odds/periods")
-  );
-
-  if (!leaguesEntry || !periodsEntry) {
-    throw new Error(`p4578 discovery requests are missing from HAR: ${harPath}`);
-  }
-
-  const discoveryHeaders = buildHeaders(leaguesEntry.request.headers, {
-    accept: "application/json, text/plain, */*",
-  });
-  const leaguesUrl = new URL(leaguesEntry.request.url);
-  const periodsUrl = new URL(periodsEntry.request.url);
-
+  const bootstrap = getP4578BootstrapContext(harPath, args);
+  const discoveryHeaders = bootstrap.headers;
   const sportId =
     Number.isFinite(args.p4578SportId)
       ? args.p4578SportId
-      : Number(leaguesUrl.searchParams.get("sportId")) || 29;
+      : Number(bootstrap.leaguesUrl.searchParams.get("sportId")) || 29;
 
-  leaguesUrl.searchParams.set("sportId", String(sportId));
-  leaguesUrl.searchParams.set("_", String(Date.now()));
-  periodsUrl.searchParams.set("_", String(Date.now()));
+  bootstrap.leaguesUrl.searchParams.set("sportId", String(sportId));
+  bootstrap.leaguesUrl.searchParams.set("_", String(Date.now()));
+  bootstrap.periodsUrl.searchParams.set("_", String(Date.now()));
 
-  const [leaguesResponse, periodsResponse] = await Promise.all([
-    fetchWithRetry(leaguesUrl, { headers: discoveryHeaders }),
-    fetchWithRetry(periodsUrl, { headers: discoveryHeaders }),
-  ]);
-
+  const leaguesResponse = await fetchWithRetry(bootstrap.leaguesUrl, { headers: discoveryHeaders });
   if (!leaguesResponse.ok) {
     throw new Error(`p4578 leagues request failed: ${leaguesResponse.status} ${leaguesResponse.statusText}`);
   }
-  if (!periodsResponse.ok) {
-    throw new Error(`p4578 odds/periods request failed: ${periodsResponse.status} ${periodsResponse.statusText}`);
+
+  let periods = [];
+  let periodsWarning = null;
+  try {
+    const periodsResponse = await fetchWithRetry(bootstrap.periodsUrl, { headers: discoveryHeaders });
+    if (!periodsResponse.ok) {
+      throw new Error(`${periodsResponse.status} ${periodsResponse.statusText}`);
+    }
+    periods = await periodsResponse.json();
+  } catch (error) {
+    periodsWarning = `p4578 odds/periods request failed: ${error.message}`;
   }
 
-  const [leagues, periods] = await Promise.all([
-    leaguesResponse.json(),
-    periodsResponse.json(),
-  ]);
+  const leagues = await leaguesResponse.json();
 
   const leagueList = Array.isArray(leagues) ? leagues : [];
   const selectedLeagueCode =
@@ -594,14 +583,18 @@ async function fetchP4578Data(harPath, args, options = {}) {
 
   const result = {
     request: {
-      leaguesUrl: leaguesUrl.toString(),
-      periodsUrl: periodsUrl.toString(),
+      bootstrap: bootstrap.kind,
+      leaguesUrl: bootstrap.leaguesUrl.toString(),
+      periodsUrl: bootstrap.periodsUrl.toString(),
     },
     sportId,
     leagueCount: leagueList.length,
     leagues: leagueList,
     periods,
   };
+  if (periodsWarning) {
+    result.warning = periodsWarning;
+  }
 
   if (leagueTargets.length > 0) {
     const fetchedLeagueResults = [];
@@ -613,7 +606,7 @@ async function fetchP4578Data(harPath, args, options = {}) {
     for (let index = 0; index < leagueTargets.length; index += 1) {
       const league = leagueTargets[index];
       const leagueOddsUrl = buildP4578LeagueOddsUrl({
-        baseUrl: leaguesEntry.request.url,
+        baseUrl: bootstrap.baseUrl,
         sportId,
         leagueCode: league.leagueCode,
       });
@@ -675,7 +668,7 @@ async function fetchP4578Data(harPath, args, options = {}) {
 
   if (Number.isFinite(args.p4578EventId)) {
     const eventOddsUrl = buildP4578EventOddsUrl({
-      baseUrl: leaguesEntry.request.url,
+      baseUrl: bootstrap.baseUrl,
       eventId: args.p4578EventId,
     });
     const eventOddsResponse = await fetchWithRetry(eventOddsUrl, { headers: discoveryHeaders });
@@ -780,6 +773,7 @@ function normalizeEvent(ev, context) {
     away: awayName,
     startsAt,
     odds,
+    moneyLineSourceMarketId: ml.lineId ?? null,
     totals25,
     mainTotals,
     supplementalMarkets: extractP4578SupplementalMarkets(ev, homeName, awayName),
@@ -793,6 +787,11 @@ function extractP4578SupplementalMarkets(ev, homeName, awayName) {
   const markets = [];
   const periods = ev?.periods && typeof ev.periods === "object" ? ev.periods : {};
 
+  pushMoneyLineMarket(markets, periods["1"], "1h");
+  pushOverUnderMarkets(markets, periods["0"], "ft");
+  pushOverUnderMarkets(markets, periods["1"], "1h");
+  pushHandicapMarkets(markets, periods["0"], "ft", homeName, awayName);
+  pushHandicapMarkets(markets, periods["1"], "1h", homeName, awayName);
   pushTeamTotalsMarkets(markets, periods["0"], "ft", homeName, awayName);
   pushTeamTotalsMarkets(markets, periods["1"], "1h", homeName, awayName);
 
@@ -885,6 +884,172 @@ function extractP4578SupplementalMarkets(ev, homeName, awayName) {
   }
 
   return markets;
+}
+
+function pushMoneyLineMarket(markets, period, marketPeriod) {
+  const moneyLine = mapMoneyLineMarket(period?.moneyLine, marketPeriod);
+  if (moneyLine) {
+    markets.push(moneyLine);
+  }
+}
+
+function mapMoneyLineMarket(moneyLine, period) {
+  if (!isUsableMoneyLine(moneyLine)) {
+    return null;
+  }
+
+  return {
+    type: "match_winner",
+    period,
+    specifier: null,
+    sourceMarketId: moneyLine?.lineId ?? null,
+    selections: [
+      {
+        id: "home",
+        name: "Home",
+        odds: Number(moneyLine.homePrice),
+        sourceSelectionId: `${moneyLine?.lineId ?? "moneyline"}:home`,
+      },
+      {
+        id: "draw",
+        name: "Draw",
+        odds: Number(moneyLine.drawPrice),
+        sourceSelectionId: `${moneyLine?.lineId ?? "moneyline"}:draw`,
+      },
+      {
+        id: "away",
+        name: "Away",
+        odds: Number(moneyLine.awayPrice),
+        sourceSelectionId: `${moneyLine?.lineId ?? "moneyline"}:away`,
+      },
+    ],
+  };
+}
+
+function isUsableMoneyLine(moneyLine) {
+  return Boolean(
+    moneyLine &&
+    !moneyLine.offline &&
+    !moneyLine.unavailable &&
+    Number.isFinite(Number(moneyLine.homePrice)) &&
+    Number.isFinite(Number(moneyLine.drawPrice)) &&
+    Number.isFinite(Number(moneyLine.awayPrice))
+  );
+}
+
+function pushOverUnderMarkets(markets, period, marketPeriod) {
+  if (!period || typeof period !== "object") {
+    return;
+  }
+
+  const lines = Array.isArray(period?.overUnder) ? period.overUnder : [];
+  for (const line of lines) {
+    const mapped = mapOverUnderMarketLine(line, marketPeriod);
+    if (mapped) {
+      markets.push(mapped);
+    }
+  }
+}
+
+function mapOverUnderMarketLine(line, period) {
+  if (!isUsableOverUnderLine(line)) {
+    return null;
+  }
+
+  const points = normalizeLinePoints(line?.points);
+  if (points == null) {
+    return null;
+  }
+
+  return {
+    type: "total_goals",
+    period,
+    specifier: {
+      points,
+      label: formatPointsLabel(points),
+    },
+    sourceMarketId: line?.lineId ?? null,
+    selections: [
+      {
+        id: "over",
+        name: `Over ${formatPointsLabel(points)}`,
+        odds: Number(line.overOdds),
+        sourceSelectionId: `${line?.lineId ?? "total-goals"}:over`,
+      },
+      {
+        id: "under",
+        name: `Under ${formatPointsLabel(points)}`,
+        odds: Number(line.underOdds),
+        sourceSelectionId: `${line?.lineId ?? "total-goals"}:under`,
+      },
+    ],
+  };
+}
+
+function pushHandicapMarkets(markets, period, marketPeriod, homeName, awayName) {
+  if (!period || typeof period !== "object") {
+    return;
+  }
+
+  const lines = Array.isArray(period?.handicap) ? period.handicap : [];
+  for (const line of lines) {
+    const mapped = mapHandicapLine(line, marketPeriod, homeName, awayName);
+    if (mapped) {
+      markets.push(mapped);
+    }
+  }
+}
+
+function mapHandicapLine(line, period, homeName, awayName) {
+  if (!isUsableHandicapLine(line)) {
+    return null;
+  }
+
+  const homeSpread = normalizeLinePoints(line?.homeSpread);
+  const awaySpread = normalizeLinePoints(line?.awaySpread);
+  if (homeSpread == null || awaySpread == null) {
+    return null;
+  }
+
+  return {
+    type: "asian_handicap",
+    period,
+    specifier: {
+      points: homeSpread,
+      label: formatSignedPointsLabel(homeSpread),
+      homeSpread,
+      awaySpread,
+      homeLabel: formatSignedPointsLabel(homeSpread),
+      awayLabel: formatSignedPointsLabel(awaySpread),
+    },
+    sourceMarketId: line?.lineId ?? null,
+    selections: [
+      {
+        id: "home",
+        name: `${homeName || "Home"} ${formatSignedPointsLabel(homeSpread)}`,
+        odds: Number(line.homeOdds),
+        sourceSelectionId: `${line?.lineId ?? "handicap"}:home`,
+      },
+      {
+        id: "away",
+        name: `${awayName || "Away"} ${formatSignedPointsLabel(awaySpread)}`,
+        odds: Number(line.awayOdds),
+        sourceSelectionId: `${line?.lineId ?? "handicap"}:away`,
+      },
+    ],
+  };
+}
+
+function isUsableHandicapLine(line) {
+  return Boolean(
+    line &&
+    !line.offline &&
+    !line.unavailable &&
+    Number.isFinite(Number(line.homeOdds)) &&
+    Number.isFinite(Number(line.awayOdds)) &&
+    normalizeLinePoints(line.homeSpread) !== null &&
+    normalizeLinePoints(line.awaySpread) !== null
+  );
 }
 
 function pushTeamTotalsMarkets(markets, period, marketPeriod, homeName, awayName) {
@@ -1056,6 +1221,18 @@ function mapOverUnderLine(line, selection) {
 
 function formatPointsLabel(points) {
   return Number.isInteger(points) ? String(points) : String(points);
+}
+
+function formatSignedPointsLabel(points) {
+  if (!Number.isFinite(points)) {
+    return "";
+  }
+
+  if (points > 0) {
+    return `+${formatPointsLabel(points)}`;
+  }
+
+  return formatPointsLabel(points);
 }
 
 // ---------------------------------------------------------------------------
@@ -1896,6 +2073,41 @@ function readHar(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
 
+function getP4578BootstrapContext(harPath, args) {
+  if (harPath && fs.existsSync(harPath)) {
+    const har = readHar(harPath);
+    const leaguesEntry = findEntry(har, (entry) =>
+      entry.request.method === "GET" &&
+      entry.request.url.includes("/sports-service/sv/euro/leagues?")
+    );
+    const periodsEntry = findEntry(har, (entry) =>
+      entry.request.method === "GET" &&
+      entry.request.url.includes("/sports-service/sv/odds/periods")
+    );
+
+    if (leaguesEntry && periodsEntry) {
+      return {
+        kind: "har",
+        baseUrl: leaguesEntry.request.url,
+        leaguesUrl: new URL(leaguesEntry.request.url),
+        periodsUrl: new URL(periodsEntry.request.url),
+        headers: buildHeaders(leaguesEntry.request.headers, {
+          accept: "application/json, text/plain, */*",
+        }),
+      };
+    }
+  }
+
+  const baseUrl = normalizeP4578BaseUrl(args.p4578BaseUrl || DEFAULT_P4578_BASE_URL);
+  return {
+    kind: "direct",
+    baseUrl,
+    leaguesUrl: buildP4578LeaguesUrl(baseUrl, args),
+    periodsUrl: buildP4578PeriodsUrl(baseUrl),
+    headers: buildDefaultP4578Headers(baseUrl),
+  };
+}
+
 function parseHarJsonResponse(entry) {
   try {
     const text = entry?.response?.content?.text;
@@ -1946,6 +2158,23 @@ function buildP4578LeagueOddsUrl({ baseUrl, sportId, leagueCode }) {
   return url.toString();
 }
 
+function buildP4578LeaguesUrl(baseUrl, args) {
+  const url = new URL("/sports-service/sv/euro/leagues", baseUrl);
+  url.searchParams.set("sportId", String(Number.isFinite(args.p4578SportId) ? args.p4578SportId : 29));
+  url.searchParams.set("locale", "en_US");
+  url.searchParams.set("_", String(Date.now()));
+  url.searchParams.set("withCredentials", "true");
+  return url;
+}
+
+function buildP4578PeriodsUrl(baseUrl) {
+  const url = new URL("/sports-service/sv/odds/periods", baseUrl);
+  url.searchParams.set("locale", "en_US");
+  url.searchParams.set("_", String(Date.now()));
+  url.searchParams.set("withCredentials", "true");
+  return url;
+}
+
 function buildP4578EventOddsUrl({ baseUrl, eventId }) {
   const url = new URL("/sports-service/sv/euro/odds/event", baseUrl);
   url.searchParams.set("eventId", String(eventId));
@@ -1956,6 +2185,24 @@ function buildP4578EventOddsUrl({ baseUrl, eventId }) {
   url.searchParams.set("_", String(Date.now()));
   url.searchParams.set("withCredentials", "true");
   return url.toString();
+}
+
+function normalizeP4578BaseUrl(input) {
+  const url = new URL(input);
+  url.pathname = "/";
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
+function buildDefaultP4578Headers(baseUrl) {
+  const origin = new URL(baseUrl).origin;
+  return {
+    accept: "application/json, text/plain, */*",
+    "accept-language": "en-US,en;q=0.9",
+    origin,
+    referer: `${origin}/`,
+  };
 }
 
 function buildHeaders(headerList, overrides = {}) {

@@ -572,6 +572,7 @@ function buildMarketSections(event, key) {
   return getFeedMarketsForEvent(event)
     .filter((market) => primaryMarketGroupKey(market) === key)
     .map((market) => ({
+      market,
       marketId: market.marketId,
       status: market.status || "open",
       title: buildMarketSectionTitle(market, event),
@@ -588,8 +589,58 @@ function buildMarketSections(event, key) {
         value: selection,
       })),
     }))
-    .sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title))
+    .sort(compareMarketSections)
     .filter((section) => section.rows.length);
+}
+
+function compareMarketSections(a, b) {
+  const orderDelta = Number(a.sortOrder || 99) - Number(b.sortOrder || 99);
+  if (orderDelta !== 0) {
+    return orderDelta;
+  }
+
+  const marketA = a.market || {};
+  const marketB = b.market || {};
+  const type = marketA.type;
+  if (type && type === marketB.type) {
+    if (type === "team_total_goals") {
+      const teamDelta = teamSortRank(marketA.specifier?.team) - teamSortRank(marketB.specifier?.team);
+      if (teamDelta !== 0) {
+        return teamDelta;
+      }
+      const pointsDelta = numericSortValue(marketA.specifier?.points) - numericSortValue(marketB.specifier?.points);
+      if (pointsDelta !== 0) {
+        return pointsDelta;
+      }
+    }
+
+    if (type === "total_goals" || type === "asian_handicap") {
+      const pointsDelta = numericSortValue(marketA.specifier?.points) - numericSortValue(marketB.specifier?.points);
+      if (pointsDelta !== 0) {
+        return pointsDelta;
+      }
+    }
+  }
+
+  return String(a.title || "").localeCompare(String(b.title || ""), undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+function numericSortValue(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function teamSortRank(team) {
+  if (team === "home") {
+    return 0;
+  }
+  if (team === "away") {
+    return 1;
+  }
+  return 2;
 }
 
 function renderMarketSection(section, fallbackLabel) {
@@ -642,6 +693,13 @@ function buildMarketSectionTitle(market, event) {
   if (market.type === "team_goals_exact") {
     const teamName = market.specifier?.team === "home" ? getParticipant(event, "home").name : getParticipant(event, "away").name;
     return `${periodPrefix}${teamName} Goals`.trim();
+  }
+
+  if (market.type === "asian_handicap") {
+    const homeName = getParticipant(event, "home").name;
+    const homeLabel = market.specifier?.homeLabel || market.specifier?.label || market.specifier?.points || "";
+    const awayLabel = market.specifier?.awayLabel || "";
+    return `${periodPrefix}${homeName} ${homeLabel}${awayLabel ? ` / Away ${awayLabel}` : ""}`.trim();
   }
 
   if (market.specifier?.label) {
@@ -1104,6 +1162,7 @@ function findPrimaryTotalsMarket(event) {
 function marketGroupLabel(type) {
   const labels = {
     match_winner: "1X2",
+    asian_handicap: "Asian Handicap",
     total_goals: "Totals",
     both_teams_to_score: "Both Teams To Score",
     team_total_goals: "Team Totals",
@@ -1136,14 +1195,15 @@ function primaryMarketGroupKey(market) {
 function marketSectionOrder(market) {
   const order = {
     match_winner: 1,
-    total_goals: 2,
-    double_chance: 3,
-    draw_no_bet: 4,
-    both_teams_to_score: 5,
-    team_total_goals: 6,
-    team_goals_exact: 7,
-    exact_total_goals: 8,
-    correct_score: 9,
+    asian_handicap: 2,
+    total_goals: 3,
+    double_chance: 4,
+    draw_no_bet: 5,
+    both_teams_to_score: 6,
+    team_total_goals: 7,
+    team_goals_exact: 8,
+    exact_total_goals: 9,
+    correct_score: 10,
   };
 
   return order[market?.type] || 99;
