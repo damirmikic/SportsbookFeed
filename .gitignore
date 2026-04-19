@@ -1,0 +1,19 @@
+# Generated runtime data
+odds.json
+manual-odds.json
+market-state.json
+
+# Local editor and agent settings
+.vscode/
+.claude/
+.continue/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS files
+.DS_Store
