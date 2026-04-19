@@ -12,6 +12,7 @@ const DEFAULT_P4578_HAR = "C:/Users/kvoter2/Downloads/www.p4578.com.har";
 const DEFAULT_P4578_BASE_URL = "https://www.pinnacle888.com";
 const DEFAULT_P4578_MAX_LEAGUES = 200;
 const DEFAULT_P4578_CHUNK_SIZE = 50;
+const DEFAULT_P4578_EVENT_ENRICHMENT_CHUNK_SIZE = 6;
 const REQUEST_TIMEOUT_MS = 10_000;
 const TIPSPORT_MUTED = true;
 
@@ -624,17 +625,26 @@ async function fetchP4578Data(harPath, args, options = {}) {
           const keys = leagueOdds && typeof leagueOdds === "object" ? Object.keys(leagueOdds) : ["(not an object)"];
           console.error(`[p4578] first league response top-level keys: ${keys.join(", ")}`);
         }
-        const leagueMatches = normalizeLeagueOdds(leagueOdds, {
+        const leagueContext = {
           source: "p4578",
           sportId,
           leagueCode: league.leagueCode,
           leagueName: league.name || league.englishName || league.leagueCode,
+        };
+        const rawLeagueEvents = findEventsArray(leagueOdds);
+        const leagueEnrichment = await enrichP4578EventsWithEventOdds(rawLeagueEvents, leagueContext, {
+          baseUrl: bootstrap.baseUrl,
+          headers: discoveryHeaders,
+          har: bootstrap.har || null,
         });
+        const leagueMatches = leagueEnrichment.matches;
 
         fetchedLeagueResults.push({
           leagueCode: league.leagueCode,
           leagueName: league.name || league.englishName || league.leagueCode,
           requestUrl: leagueOddsUrl,
+          eventRequestUrls: leagueEnrichment.requestUrls,
+          eventFetchFailures: leagueEnrichment.failures,
           matchCount: leagueMatches.length,
           matches: leagueMatches,
           raw: leagueOdds,
@@ -681,7 +691,12 @@ async function fetchP4578Data(harPath, args, options = {}) {
     result.request.eventOddsUrl = eventOddsUrl;
     result.eventId = args.p4578EventId;
     result.eventOdds = await eventOddsResponse.json();
-    const eventMatches = normalizeLeagueOdds(result.eventOdds, {
+    const eventMatch = normalizeP4578EventOddsPayload(result.eventOdds, {
+      source: "p4578",
+      sportId,
+      leagueCode: selectedLeagueCode,
+    });
+    const eventMatches = eventMatch ? [eventMatch] : normalizeLeagueOdds(result.eventOdds, {
       source: "p4578",
       sportId,
       leagueCode: selectedLeagueCode,
@@ -695,6 +710,158 @@ async function fetchP4578Data(harPath, args, options = {}) {
 function normalizeLeagueOdds(payload, context) {
   const events = findEventsArray(payload);
   return dedupeByEventId(events.map((ev) => normalizeEvent(ev, context)));
+}
+
+function normalizeP4578EventOddsPayload(payload, context, baseEvent = null) {
+  const eventRecord = buildP4578EventRecord(payload, baseEvent);
+  if (!eventRecord) {
+    return null;
+  }
+
+  const info = payload && typeof payload === "object" ? payload.info : null;
+  return normalizeEvent(eventRecord, {
+    ...context,
+    leagueCode: context?.leagueCode ?? info?.leagueCode ?? null,
+    leagueName: context?.leagueName ?? info?.leagueName ?? null,
+    sportId: context?.sportId ?? info?.sportId ?? null,
+  });
+}
+
+function buildP4578EventRecord(payload, baseEvent = null) {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const normal = payload.normal;
+  const sourceEvent = isEventLike(baseEvent)
+    ? baseEvent
+    : (isEventLike(normal) ? normal : null);
+  if (!sourceEvent) {
+    return null;
+  }
+
+  const mergedPeriods = mergeP4578Periods(baseEvent?.periods, normal?.periods);
+
+  return {
+    ...sourceEvent,
+    ...(isEventLike(normal) ? normal : {}),
+    periods: mergedPeriods,
+    specials: Array.isArray(payload.specials) ? payload.specials : (Array.isArray(normal?.specials) ? normal.specials : []),
+    corners: payload.corners && typeof payload.corners === "object" ? payload.corners : null,
+  };
+}
+
+function mergeP4578Periods(basePeriods, overridePeriods) {
+  const base = basePeriods && typeof basePeriods === "object" ? basePeriods : {};
+  const override = overridePeriods && typeof overridePeriods === "object" ? overridePeriods : {};
+  const merged = {};
+
+  for (const key of new Set([...Object.keys(base), ...Object.keys(override)])) {
+    const basePeriod = base[key];
+    const overridePeriod = override[key];
+    if (basePeriod && typeof basePeriod === "object" && overridePeriod && typeof overridePeriod === "object") {
+      merged[key] = {
+        ...basePeriod,
+        ...overridePeriod,
+      };
+      continue;
+    }
+
+    merged[key] = overridePeriod ?? basePeriod;
+  }
+
+  return merged;
+}
+
+async function enrichP4578EventsWithEventOdds(events, context, options = {}) {
+  const rawEvents = Array.isArray(events) ? events : [];
+  if (!rawEvents.length) {
+    return { matches: [], requestUrls: [], failures: [] };
+  }
+
+  const matches = [];
+  const requestUrls = [];
+  const failures = [];
+
+  for (let index = 0; index < rawEvents.length; index += DEFAULT_P4578_EVENT_ENRICHMENT_CHUNK_SIZE) {
+    const batch = rawEvents.slice(index, index + DEFAULT_P4578_EVENT_ENRICHMENT_CHUNK_SIZE);
+    const batchResults = await Promise.all(
+      batch.map(async (event) => enrichP4578EventWithOdds(event, context, options))
+    );
+
+    for (const result of batchResults) {
+      if (result.requestUrl) {
+        requestUrls.push(result.requestUrl);
+      }
+      if (result.failure) {
+        failures.push(result.failure);
+      }
+      if (result.match) {
+        matches.push(result.match);
+      }
+    }
+  }
+
+  return {
+    matches: dedupeByEventId(matches),
+    requestUrls,
+    failures,
+  };
+}
+
+async function enrichP4578EventWithOdds(event, context, options = {}) {
+  const fallbackMatch = normalizeEvent(event, context);
+  const eventId = Number(event?.id ?? event?.eventId);
+  const shouldFetchEventOdds = Number.isFinite(eventId) && Number(event?.moreBet) > 0;
+  if (!shouldFetchEventOdds) {
+    return {
+      match: fallbackMatch,
+      requestUrl: null,
+      failure: null,
+    };
+  }
+
+  const requestUrl = buildP4578EventOddsUrl({
+    baseUrl: options.baseUrl,
+    eventId,
+  });
+
+  try {
+    const response = await fetchWithRetry(requestUrl, { headers: options.headers });
+    if (!response.ok) {
+      throw new Error(`${response.status} ${response.statusText}`);
+    }
+
+    const payload = await response.json();
+    const match = normalizeP4578EventOddsPayload(payload, context, event) || fallbackMatch;
+    return {
+      match,
+      requestUrl,
+      failure: null,
+    };
+  } catch (error) {
+    const harPayload = findP4578EventOddsInHar(options.har, eventId);
+    if (harPayload) {
+      const match = normalizeP4578EventOddsPayload(harPayload, context, event) || fallbackMatch;
+      return {
+        match,
+        requestUrl,
+        failure: {
+          eventId,
+          error: `live fetch failed; used HAR fallback (${error.message || String(error)})`,
+        },
+      };
+    }
+
+    return {
+      match: fallbackMatch,
+      requestUrl,
+      failure: {
+        eventId,
+        error: error.message || String(error),
+      },
+    };
+  }
 }
 
 // Find the events array wherever it lives in the payload.
@@ -794,6 +961,7 @@ function extractP4578SupplementalMarkets(ev, homeName, awayName) {
   pushHandicapMarkets(markets, periods["1"], "1h", homeName, awayName);
   pushTeamTotalsMarkets(markets, periods["0"], "ft", homeName, awayName);
   pushTeamTotalsMarkets(markets, periods["1"], "1h", homeName, awayName);
+  pushCornerMarkets(markets, ev?.corners, homeName, awayName);
 
   const specialEvents = Array.isArray(ev?.specials)
     ? ev.specials.flatMap((group) => Array.isArray(group?.events) ? group.events : [])
@@ -810,8 +978,8 @@ function extractP4578SupplementalMarkets(ev, homeName, awayName) {
 
     if (name === "both teams to score?" || name === "both teams to score? 1st half") {
       const selections = [
-        mapSpecialSelection(contestants, "yes", "Yes"),
-        mapSpecialSelection(contestants, "no", "No"),
+        mapNamedSpecialSelection(contestants, "yes", "yes", "Yes"),
+        mapNamedSpecialSelection(contestants, "no", "no", "No"),
       ].filter(Boolean);
       if (selections.length === 2) {
         markets.push(createSupplementalMarketRecord("both_teams_to_score", period, null, selections, special));
@@ -843,6 +1011,34 @@ function extractP4578SupplementalMarkets(ev, homeName, awayName) {
       ].filter(Boolean);
       if (selections.length === 2) {
         markets.push(createSupplementalMarketRecord("draw_no_bet", period, null, selections, special));
+      }
+      continue;
+    }
+
+    if (name === normalizeMarketName(`${homeName} to win to nil?`) || name === normalizeMarketName(`${homeName} to win to nil? 1st half`)) {
+      const selections = [
+        mapNamedSpecialSelection(contestants, "yes", "yes", "Yes"),
+        mapNamedSpecialSelection(contestants, "no", "no", "No"),
+      ].filter(Boolean);
+      if (selections.length === 2) {
+        markets.push(createSupplementalMarketRecord("team_to_win_to_nil", period, {
+          team: "home",
+          teamName: homeName,
+        }, selections, special));
+      }
+      continue;
+    }
+
+    if (name === normalizeMarketName(`${awayName} to win to nil?`) || name === normalizeMarketName(`${awayName} to win to nil? 1st half`)) {
+      const selections = [
+        mapNamedSpecialSelection(contestants, "yes", "yes", "Yes"),
+        mapNamedSpecialSelection(contestants, "no", "no", "No"),
+      ].filter(Boolean);
+      if (selections.length === 2) {
+        markets.push(createSupplementalMarketRecord("team_to_win_to_nil", period, {
+          team: "away",
+          teamName: awayName,
+        }, selections, special));
       }
       continue;
     }
@@ -884,6 +1080,18 @@ function extractP4578SupplementalMarkets(ev, homeName, awayName) {
   }
 
   return markets;
+}
+
+function pushCornerMarkets(markets, cornersEvent, homeName, awayName) {
+  if (!cornersEvent || typeof cornersEvent !== "object") {
+    return;
+  }
+
+  const periods = cornersEvent?.periods && typeof cornersEvent.periods === "object" ? cornersEvent.periods : {};
+  pushCornerOverUnderMarkets(markets, periods["0"], "ft");
+  pushCornerOverUnderMarkets(markets, periods["1"], "1h");
+  pushCornerTeamTotalsMarkets(markets, periods["0"], "ft", homeName, awayName);
+  pushCornerTeamTotalsMarkets(markets, periods["1"], "1h", homeName, awayName);
 }
 
 function pushMoneyLineMarket(markets, period, marketPeriod) {
@@ -986,6 +1194,55 @@ function mapOverUnderMarketLine(line, period) {
   };
 }
 
+function pushCornerOverUnderMarkets(markets, period, marketPeriod) {
+  if (!period || typeof period !== "object") {
+    return;
+  }
+
+  const lines = Array.isArray(period?.overUnder) ? period.overUnder : [];
+  for (const line of lines) {
+    const mapped = mapCornerOverUnderMarketLine(line, marketPeriod);
+    if (mapped) {
+      markets.push(mapped);
+    }
+  }
+}
+
+function mapCornerOverUnderMarketLine(line, period) {
+  if (!isUsableOverUnderLine(line)) {
+    return null;
+  }
+
+  const points = normalizeLinePoints(line?.points);
+  if (points == null) {
+    return null;
+  }
+
+  return {
+    type: "total_corners",
+    period,
+    specifier: {
+      points,
+      label: formatPointsLabel(points),
+    },
+    sourceMarketId: line?.lineId ?? null,
+    selections: [
+      {
+        id: "over",
+        name: `Over ${formatPointsLabel(points)}`,
+        odds: Number(line.overOdds),
+        sourceSelectionId: `${line?.lineId ?? "total-corners"}:over`,
+      },
+      {
+        id: "under",
+        name: `Under ${formatPointsLabel(points)}`,
+        odds: Number(line.underOdds),
+        sourceSelectionId: `${line?.lineId ?? "total-corners"}:under`,
+      },
+    ],
+  };
+}
+
 function pushHandicapMarkets(markets, period, marketPeriod, homeName, awayName) {
   if (!period || typeof period !== "object") {
     return;
@@ -1008,6 +1265,33 @@ function mapHandicapLine(line, period, homeName, awayName) {
   const homeSpread = normalizeLinePoints(line?.homeSpread);
   const awaySpread = normalizeLinePoints(line?.awaySpread);
   if (homeSpread == null || awaySpread == null) {
+    return null;
+  }
+
+  if (homeSpread === 0 && awaySpread === 0) {
+    return {
+      type: "draw_no_bet",
+      period,
+      specifier: null,
+      sourceMarketId: line?.lineId ?? null,
+      selections: [
+        {
+          id: "home",
+          name: homeName || "Home",
+          odds: Number(line.homeOdds),
+          sourceSelectionId: `${line?.lineId ?? "handicap"}:home`,
+        },
+        {
+          id: "away",
+          name: awayName || "Away",
+          odds: Number(line.awayOdds),
+          sourceSelectionId: `${line?.lineId ?? "handicap"}:away`,
+        },
+      ],
+    };
+  }
+
+  if (!(homeSpread === -1.5 && awaySpread === 1.5)) {
     return null;
   }
 
@@ -1112,6 +1396,66 @@ function mapTeamTotalLine(line, team, teamName, period) {
   };
 }
 
+function pushCornerTeamTotalsMarkets(markets, period, marketPeriod, homeName, awayName) {
+  if (!period || typeof period !== "object") {
+    return;
+  }
+
+  const homeLines = Array.isArray(period?.teamTotals?.homeLines) ? period.teamTotals.homeLines : [];
+  const awayLines = Array.isArray(period?.teamTotals?.awayLines) ? period.teamTotals.awayLines : [];
+
+  for (const line of homeLines) {
+    const mapped = mapCornerTeamTotalLine(line, "home", homeName, marketPeriod);
+    if (mapped) {
+      markets.push(mapped);
+    }
+  }
+
+  for (const line of awayLines) {
+    const mapped = mapCornerTeamTotalLine(line, "away", awayName, marketPeriod);
+    if (mapped) {
+      markets.push(mapped);
+    }
+  }
+}
+
+function mapCornerTeamTotalLine(line, team, teamName, period) {
+  if (!isUsableOverUnderLine(line)) {
+    return null;
+  }
+
+  const points = normalizeLinePoints(line?.points);
+  if (points == null) {
+    return null;
+  }
+
+  return {
+    type: "team_total_corners",
+    period,
+    specifier: {
+      team,
+      teamName,
+      points,
+      label: formatPointsLabel(points),
+    },
+    sourceMarketId: line?.lineId ?? null,
+    selections: [
+      {
+        id: "over",
+        name: `Over ${formatPointsLabel(points)}`,
+        odds: Number(line.overOdds),
+        sourceSelectionId: `${line?.lineId ?? "team-total-corners"}:over`,
+      },
+      {
+        id: "under",
+        name: `Under ${formatPointsLabel(points)}`,
+        odds: Number(line.underOdds),
+        sourceSelectionId: `${line?.lineId ?? "team-total-corners"}:under`,
+      },
+    ],
+  };
+}
+
 function createSupplementalMarketRecord(type, period, specifier, selections, sourceEvent) {
   return {
     type,
@@ -1134,6 +1478,13 @@ function mapSpecialSelection(contestant, id, fallbackName) {
     odds,
     sourceSelectionId: contestant?.i ?? contestant?.l ?? null,
   };
+}
+
+function mapNamedSpecialSelection(contestants, lookupName, id, fallbackName) {
+  const contestant = Array.isArray(contestants)
+    ? contestants.find((item) => normalizeContestantName(item?.n) === normalizeContestantName(lookupName))
+    : null;
+  return mapSpecialSelection(contestant, id, fallbackName);
 }
 
 function mapExactGoalsSelection(contestant) {
@@ -2088,6 +2439,7 @@ function getP4578BootstrapContext(harPath, args) {
     if (leaguesEntry && periodsEntry) {
       return {
         kind: "har",
+        har,
         baseUrl: leaguesEntry.request.url,
         leaguesUrl: new URL(leaguesEntry.request.url),
         periodsUrl: new URL(periodsEntry.request.url),
@@ -2101,6 +2453,7 @@ function getP4578BootstrapContext(harPath, args) {
   const baseUrl = normalizeP4578BaseUrl(args.p4578BaseUrl || DEFAULT_P4578_BASE_URL);
   return {
     kind: "direct",
+    har: null,
     baseUrl,
     leaguesUrl: buildP4578LeaguesUrl(baseUrl, args),
     periodsUrl: buildP4578PeriodsUrl(baseUrl),
@@ -2119,6 +2472,20 @@ function parseHarJsonResponse(entry) {
 
 function findEntry(har, predicate) {
   return har.log.entries.find(predicate) || null;
+}
+
+function findP4578EventOddsInHar(har, eventId) {
+  if (!har || !Number.isFinite(Number(eventId))) {
+    return null;
+  }
+
+  const entry = findEntry(har, (candidate) =>
+    candidate?.request?.method === "GET" &&
+    String(candidate?.request?.url || "").includes("/sports-service/sv/euro/odds/event") &&
+    String(candidate?.request?.url || "").includes(`eventId=${Number(eventId)}`)
+  );
+
+  return entry ? parseHarJsonResponse(entry) : null;
 }
 
 function pickP4578LeagueTargets(leagueList, args) {

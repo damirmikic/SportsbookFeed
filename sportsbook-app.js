@@ -7,6 +7,7 @@ const state = {
   selectedLeagueKey: null,
   selectedMatchKey: null,
   selectedMarketKey: null,
+  selectedPriceGroupKeys: {},
   editingCell: null,
   inlineEditValue: "",
   traderName: localStorage.getItem("sportsbook-trader-name") || "local-trader",
@@ -364,6 +365,8 @@ function renderMatches(league) {
   const selectedMatch = league.matches.find((match) => getMatchKey(match) === state.selectedMatchKey) || league.matches[0];
   const groups = buildMarketGroups(selectedMatch);
   const selectedGroup = groups.find((group) => group.key === state.selectedMarketKey) || groups[0];
+  const priceGroups = selectedGroup ? buildPriceGroups(selectedMatch, selectedGroup.key) : [];
+  const selectedPriceGroup = selectedGroup ? getSelectedPriceGroup(selectedGroup.key, priceGroups) : null;
 
   mainContentEl.innerHTML = `
     <div class="trading-shell">
@@ -384,10 +387,10 @@ function renderMatches(league) {
           </div>
         </aside>
         <section class="market-table-wrap">
-          ${renderMarketDetailTable(selectedMatch, selectedGroup)}
+          ${renderMarketDetailTable(selectedMatch, selectedGroup, selectedPriceGroup, priceGroups)}
         </section>
         <aside class="market-notes">
-          ${renderInsightsPanel(selectedMatch, selectedGroup, league)}
+          ${renderInsightsPanel(selectedMatch, selectedGroup, selectedPriceGroup, league)}
         </aside>
       </div>
     </div>
@@ -408,6 +411,18 @@ function renderMatches(league) {
     });
   }
 
+  for (const button of mainContentEl.querySelectorAll("[data-price-group-key][data-parent-market-group]")) {
+    button.addEventListener("click", () => {
+      const parentGroup = button.dataset.parentMarketGroup;
+      const priceGroup = button.dataset.priceGroupKey;
+      if (!parentGroup || !priceGroup) {
+        return;
+      }
+      state.selectedPriceGroupKeys[parentGroup] = priceGroup;
+      render();
+    });
+  }
+
   bindManualPriceEditors();
 }
 
@@ -419,7 +434,10 @@ function buildMarketGroups(event) {
   const markets = getFeedMarketsForEvent(event);
   const definitions = [
     { key: "main_markets", label: "Main Markets" },
+    { key: "corners", label: "Corners" },
+    { key: "specials", label: "Specials" },
     { key: "goals", label: "Goals" },
+    { key: "others", label: "Others" },
     { key: "first_half", label: "1st Half" },
     { key: "second_half", label: "2nd Half" },
   ];
@@ -428,6 +446,217 @@ function buildMarketGroups(event) {
     ...group,
     count: markets.filter((market) => primaryMarketGroupKey(market) === group.key).length,
   }));
+}
+
+function buildPriceGroups(event, marketGroupKey) {
+  const definitions = priceGroupDefinitionsForMarketGroup(marketGroupKey);
+  return definitions.map((group) => ({
+    ...group,
+    count: getFeedMarketsForEvent(event).filter((market) => marketMatchesPriceGroup(market, group)).length,
+  }));
+}
+
+function getSelectedPriceGroup(marketGroupKey, priceGroups) {
+  if (!priceGroups.length) {
+    delete state.selectedPriceGroupKeys[marketGroupKey];
+    return null;
+  }
+
+  const storedKey = state.selectedPriceGroupKeys[marketGroupKey];
+  const existing = storedKey ? priceGroups.find((group) => group.key === storedKey) : null;
+  if (existing) {
+    return existing;
+  }
+
+  const fallback = priceGroups.find((group) => group.count > 0) || priceGroups[0];
+  state.selectedPriceGroupKeys[marketGroupKey] = fallback.key;
+  return fallback;
+}
+
+function priceGroupDefinitionsForMarketGroup(marketGroupKey) {
+  if (marketGroupKey === "main_markets") {
+    return [
+      createPriceGroup("main_1x2", "1X2", ["match_winner"]),
+      createPriceGroup("main_total", "Total", ["total_goals"]),
+      createPriceGroup("main_handicap", "Handicap", ["asian_handicap"]),
+      createPriceGroup("main_double_chance", "Double Chance", ["double_chance"]),
+      createPriceGroup("main_draw_no_bet", "Draw No Bet", ["draw_no_bet"]),
+      createPriceGroup("main_halftime_fulltime", "Halftime/Fulltime", ["halftime_fulltime", "half_time_full_time", "halftime_full_time", "ht_ft", "half_time_fulltime"]),
+      createPriceGroup("main_btts", "Both Teams To Score", ["both_teams_to_score"]),
+      createPriceGroup("main_correct_score", "Correct Score", ["correct_score"]),
+    ];
+  }
+
+  const definitions = [];
+  const typeLabels = {
+    corners: [
+      createPriceGroup("corners_total", "Total Corners", ["total_corners"]),
+      createPriceGroup("corners_first_half", "1st Half Corners", ["total_corners"], { period: "1h" }),
+      createPriceGroup("corners_home_total", "Home Total Corners", ["team_total_corners"], { team: "home" }),
+      createPriceGroup("corners_away_total", "Away Total Corners", ["team_total_corners"], { team: "away" }),
+    ],
+    specials: [
+      createPriceGroup("specials_home_both_halves", "Home To Win Both Halves", ["team_to_win_both_halves"], { team: "home" }),
+      createPriceGroup("specials_away_both_halves", "Away To Win Both Halves", ["team_to_win_both_halves"], { team: "away" }),
+      createPriceGroup("specials_home_either_half", "Home To Win Either Half", ["team_to_win_either_half"], { team: "home" }),
+      createPriceGroup("specials_away_either_half", "Away To Win Either Half", ["team_to_win_either_half"], { team: "away" }),
+      createPriceGroup("specials_home_win_to_nil", "Home Win To Nil", ["team_to_win_to_nil"], { team: "home" }),
+      createPriceGroup("specials_away_win_to_nil", "Away Win To Nil", ["team_to_win_to_nil"], { team: "away" }),
+      createPriceGroup("specials_1x2_total", "1X2 & Total", ["match_result_and_total"]),
+      createPriceGroup("specials_1x2_btts", "1X2 & Both Teams To Score", ["match_result_and_btts"]),
+      createPriceGroup("specials_total_btts", "Total & Both Teams To Score", ["total_and_btts"]),
+    ],
+    goals: [
+      createPriceGroup("goals_first_goal", "1st Goal", ["first_goal", "first_team_to_score"]),
+      createPriceGroup("goals_odd_even", "Odd/Even", ["odd_even_goals", "total_goals_odd_even"]),
+      createPriceGroup("goals_home_total", "Home Total", ["team_total_goals"], { team: "home" }),
+      createPriceGroup("goals_away_total", "Away Total", ["team_total_goals"], { team: "away" }),
+      createPriceGroup("goals_which_team_to_score", "Which Team To Score", ["which_team_to_score", "team_to_score"]),
+      createPriceGroup("goals_home_exact", "Home Exact Goals", ["team_goals_exact"], { team: "home" }),
+      createPriceGroup("goals_away_exact", "Away Exact Goals", ["team_goals_exact"], { team: "away" }),
+      createPriceGroup("goals_range_6_plus", "Goal Range (6+)", ["goal_range_6_plus", "goal_range"], { variant: ["6+", "6_plus", "6plus"] }),
+      createPriceGroup("goals_range_7_plus", "Goal Range (7+)", ["goal_range_7_plus", "goal_range"], { variant: ["7+", "7_plus", "7plus"] }),
+      createPriceGroup("goals_highest_scoring_half", "Highest Scoring Half", ["highest_scoring_half"]),
+      createPriceGroup("goals_home_clean_sheet", "Home Clean Sheet", ["clean_sheet"], { team: "home" }),
+      createPriceGroup("goals_away_clean_sheet", "Away Clean Sheet", ["clean_sheet"], { team: "away" }),
+      createPriceGroup("goals_home_both_halves", "Home To Score In Both Halves", ["team_to_score_in_both_halves"], { team: "home" }),
+      createPriceGroup("goals_away_both_halves", "Away To Score In Both Halves", ["team_to_score_in_both_halves"], { team: "away" }),
+      createPriceGroup("goals_both_halves_over_15", "Both Halves Over 1.5", ["both_halves_total_goals"], { outcome: ["over"], points: ["1.5", 1.5] }),
+      createPriceGroup("goals_both_halves_under_15", "Both Halves Under 1.5", ["both_halves_total_goals"], { outcome: ["under"], points: ["1.5", 1.5] }),
+      createPriceGroup("goals_home_highest_half", "Home Highest Scoring Half", ["team_highest_scoring_half"], { team: "home" }),
+      createPriceGroup("goals_away_highest_half", "Away Highest Scoring Half", ["team_highest_scoring_half"], { team: "away" }),
+      createPriceGroup("goals_home_odd_even", "Home Odd/Even", ["team_odd_even_goals"], { team: "home" }),
+      createPriceGroup("goals_away_odd_even", "Away Odd/Even", ["team_odd_even_goals"], { team: "away" }),
+    ],
+    others: [
+      createPriceGroup("others_dc_btts", "Double Chance & Both Teams To Score", ["double_chance_and_btts"]),
+      createPriceGroup("others_1h_dc_btts", "1st Half - Double Chance & Both Teams To Score", ["double_chance_and_btts"], { period: "1h" }),
+      createPriceGroup("others_2h_dc_btts", "2nd Half - Double Chance & Both Teams To Score", ["double_chance_and_btts"], { period: "2h" }),
+      createPriceGroup("others_multiscores", "Multiscores", ["multiscores"]),
+      createPriceGroup("others_multigoals", "Multigoals", ["multigoals"]),
+      createPriceGroup("others_1h_multigoals", "1st Half - Multigoals", ["multigoals"], { period: "1h" }),
+      createPriceGroup("others_2h_multigoals", "2nd Half - Multigoals", ["multigoals"], { period: "2h" }),
+      createPriceGroup("others_home_multigoals", "Home Multigoals", ["team_multigoals"], { team: "home" }),
+      createPriceGroup("others_away_multigoals", "Away Multigoals", ["team_multigoals"], { team: "away" }),
+      createPriceGroup("others_match_dc_1h_btts", "Double Chance (match) & 1st Half Both Teams Score", ["double_chance_match_and_btts_half"], { period: "1h" }),
+      createPriceGroup("others_match_dc_2h_btts", "Double Chance (match) & 2nd Half Both Teams Score", ["double_chance_match_and_btts_half"], { period: "2h" }),
+      createPriceGroup("others_exact_goals", "Exact Goals", ["exact_goals"]),
+      createPriceGroup("others_halves_btts", "1st/2nd Half Both Teams To Score", ["half_btts_combo"]),
+      createPriceGroup("others_2h_1x2_total", "2nd Half - 1X2 & Total", ["match_result_and_total"], { period: "2h" }),
+      createPriceGroup("others_2h_1x2_btts", "2nd Half - 1X2 & Both Teams To Score", ["match_result_and_btts"], { period: "2h" }),
+      createPriceGroup("others_dc_total", "Double Chance & Total", ["double_chance_and_total"]),
+      createPriceGroup("others_htft_total", "Halftime/Fulltime & Total", ["halftime_fulltime_and_total"]),
+      createPriceGroup("others_htft_1h_total", "Halftime/Fulltime & 1st Half Total", ["halftime_fulltime_and_first_half_total"]),
+      createPriceGroup("others_htft_exact_goals", "Halftime/Fulltime & Exact Goals", ["halftime_fulltime_and_exact_goals"]),
+      createPriceGroup("others_1h_or_match_result", "1st Half Result Or Match Result", ["first_half_result_or_match_result"]),
+    ],
+    first_half: [
+      createPriceGroup("first_half_1x2", "1st Half - 1X2", ["match_winner"]),
+      createPriceGroup("first_half_total", "1st Half - Total", ["total_goals"]),
+      createPriceGroup("first_half_handicap", "1st Half - Handicap", ["asian_handicap"]),
+      createPriceGroup("first_half_exact_goals_2_plus", "1st Half - Exact Goals (2+)", ["exact_total_goals", "goal_range"], { variant: ["2+", "2_plus", "2plus"] }),
+      createPriceGroup("first_half_exact_goals_3_plus", "1st Half - Exact Goals (3+)", ["exact_total_goals", "goal_range"], { variant: ["3+", "3_plus", "3plus"] }),
+      createPriceGroup("first_half_double_chance", "1st Half - Double Chance", ["double_chance"]),
+      createPriceGroup("first_half_draw_no_bet", "1st Half - Draw No Bet", ["draw_no_bet"]),
+      createPriceGroup("first_half_correct_score", "1st Half - Correct Score", ["correct_score"]),
+      createPriceGroup("first_half_btts", "1st Half - Both Teams To Score", ["both_teams_to_score"]),
+      createPriceGroup("first_half_home_total", "1st Half - Home Total", ["team_total_goals"], { team: "home" }),
+      createPriceGroup("first_half_away_total", "1st Half - Away Total", ["team_total_goals"], { team: "away" }),
+      createPriceGroup("first_half_first_goal", "1st Half - 1st Goal", ["first_goal", "first_team_to_score"]),
+      createPriceGroup("first_half_home_clean_sheet", "1st Half - Home Clean Sheet", ["clean_sheet"], { team: "home" }),
+      createPriceGroup("first_half_away_clean_sheet", "1st Half - Away Clean Sheet", ["clean_sheet"], { team: "away" }),
+      createPriceGroup("first_half_odd_even", "1st Half - Odd/Even", ["odd_even_goals", "total_goals_odd_even"]),
+    ],
+    second_half: [
+      createPriceGroup("second_half_1x2", "2nd Half - 1X2", ["match_winner"]),
+      createPriceGroup("second_half_total", "2nd Half - Total", ["total_goals"]),
+      createPriceGroup("second_half_handicap", "2nd Half - Handicap", ["asian_handicap"]),
+      createPriceGroup("second_half_exact_goals_2_plus", "2nd Half - Exact Goals (2+)", ["exact_total_goals", "goal_range"], { variant: ["2+", "2_plus", "2plus"] }),
+      createPriceGroup("second_half_exact_goals_3_plus", "2nd Half - Exact Goals (3+)", ["exact_total_goals", "goal_range"], { variant: ["3+", "3_plus", "3plus"] }),
+      createPriceGroup("second_half_double_chance", "2nd Half - Double Chance", ["double_chance"]),
+      createPriceGroup("second_half_draw_no_bet", "2nd Half - Draw No Bet", ["draw_no_bet"]),
+      createPriceGroup("second_half_correct_score", "2nd Half - Correct Score", ["correct_score"]),
+      createPriceGroup("second_half_btts", "2nd Half - Both Teams To Score", ["both_teams_to_score"]),
+      createPriceGroup("second_half_home_total", "2nd Half - Home Total", ["team_total_goals"], { team: "home" }),
+      createPriceGroup("second_half_away_total", "2nd Half - Away Total", ["team_total_goals"], { team: "away" }),
+      createPriceGroup("second_half_first_goal", "2nd Half - 1st Goal", ["first_goal", "first_team_to_score"]),
+      createPriceGroup("second_half_home_clean_sheet", "2nd Half - Home Clean Sheet", ["clean_sheet"], { team: "home" }),
+      createPriceGroup("second_half_away_clean_sheet", "2nd Half - Away Clean Sheet", ["clean_sheet"], { team: "away" }),
+      createPriceGroup("second_half_odd_even", "2nd Half - Odd/Even", ["odd_even_goals", "total_goals_odd_even"]),
+    ],
+  };
+
+  return typeLabels[marketGroupKey] || definitions;
+}
+
+function createPriceGroup(key, label, marketTypes, options = {}) {
+  return {
+    key,
+    label,
+    marketTypes,
+    matchAllWithinPrimaryGroup: options.matchAllWithinPrimaryGroup === true,
+    team: options.team || null,
+    variant: Array.isArray(options.variant) ? options.variant.map(String) : null,
+    outcome: Array.isArray(options.outcome) ? options.outcome.map((value) => String(value).toLowerCase()) : null,
+    points: Array.isArray(options.points) ? options.points.map(String) : null,
+    period: options.period || null,
+  };
+}
+
+function marketMatchesPriceGroup(market, group) {
+  if (!market || !group) {
+    return false;
+  }
+
+  if (group.matchAllWithinPrimaryGroup) {
+    return true;
+  }
+
+  if (!Array.isArray(group.marketTypes) || !group.marketTypes.includes(market.type)) {
+    return false;
+  }
+
+  if (group.team && market?.specifier?.team !== group.team) {
+    return false;
+  }
+
+  if (group.period && (market?.specifier?.period || "ft") !== group.period) {
+    return false;
+  }
+
+  if (group.variant) {
+    const variantValues = [
+      market?.specifier?.variant,
+      market?.specifier?.range,
+      market?.specifier?.label,
+    ].filter(Boolean).map(String);
+
+    if (!variantValues.some((value) => group.variant.includes(value))) {
+      return false;
+    }
+  }
+
+  if (group.outcome) {
+    const outcomeValue = String(
+      market?.specifier?.outcome ??
+      market?.specifier?.side ??
+      market?.specifier?.selection ??
+      ""
+    ).toLowerCase();
+
+    if (!group.outcome.includes(outcomeValue)) {
+      return false;
+    }
+  }
+
+  if (group.points) {
+    const pointsValue = String(market?.specifier?.points ?? "");
+    if (!group.points.includes(pointsValue)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function getFeedMarketsForEvent(event) {
@@ -546,15 +775,12 @@ function summaryOdds(label, value, raw = false) {
   `;
 }
 
-function renderMarketDetailTable(event, group) {
+function renderMarketDetailTable(event, group, selectedPriceGroup, priceGroups) {
   if (!group) {
     return `<div class="empty-state"><strong>No market selected</strong>Choose a market group on the left.</div>`;
   }
 
-  const sections = buildMarketSections(event, group.key);
-  if (!sections.length) {
-    return `<div class="empty-state"><strong>No prices available</strong>The selected market has no active prices.</div>`;
-  }
+  const sections = buildMarketSections(event, group.key, selectedPriceGroup);
 
   return `
     <div class="workspace-header">
@@ -564,17 +790,44 @@ function renderMarketDetailTable(event, group) {
       </div>
       <div class="workspace-badge">${sections.reduce((sum, section) => sum + section.rows.length, 0)} rows</div>
     </div>
-    ${sections.map((section) => renderMarketSection(section, group.label)).join("")}
+    ${priceGroups?.length ? `
+      <div class="price-group-nav">
+        ${priceGroups.map((priceGroup) => `
+          <button
+            class="price-group-btn${priceGroup.key === selectedPriceGroup?.key ? " is-active" : ""}${priceGroup.count === 0 ? " is-empty" : ""}"
+            type="button"
+            data-parent-market-group="${escapeHtml(group.key)}"
+            data-price-group-key="${escapeHtml(priceGroup.key)}"
+          >
+            <span>${escapeHtml(priceGroup.label)}</span>
+            <strong>${priceGroup.count}</strong>
+          </button>
+        `).join("")}
+      </div>
+    ` : ""}
+    ${selectedPriceGroup ? `
+      <div class="workspace-subtitle">
+        <span>Prices</span>
+        <strong>${escapeHtml(selectedPriceGroup.label)}</strong>
+      </div>
+    ` : ""}
+    ${sections.length
+      ? sections.map((section) => renderMarketSection(section, selectedPriceGroup?.label || group.label)).join("")
+      : `<div class="empty-state"><strong>No prices available</strong>The selected price group has no active prices.</div>`}
   `;
 }
 
-function buildMarketSections(event, key) {
+function buildMarketSections(event, key, selectedPriceGroup = null) {
   return getFeedMarketsForEvent(event)
-    .filter((market) => primaryMarketGroupKey(market) === key)
+    .filter((market) => (
+      primaryMarketGroupKey(market) === key &&
+      (!selectedPriceGroup || marketMatchesPriceGroup(market, selectedPriceGroup))
+    ))
     .map((market) => ({
       market,
       marketId: market.marketId,
       status: market.status || "open",
+      source: market.source || "provider",
       title: buildMarketSectionTitle(market, event),
       sortOrder: marketSectionOrder(market),
       margins: {
@@ -586,6 +839,7 @@ function buildMarketSections(event, key) {
         marketId: market.marketId,
         selectionId: selection.id,
         label: selection.name || selection.id || "Selection",
+        marketSource: market.source || "provider",
         value: selection,
       })),
     }))
@@ -603,18 +857,20 @@ function compareMarketSections(a, b) {
   const marketB = b.market || {};
   const type = marketA.type;
   if (type && type === marketB.type) {
-    if (type === "team_total_goals") {
+    if (type === "team_total_goals" || type === "team_total_corners" || type === "team_to_win_to_nil") {
       const teamDelta = teamSortRank(marketA.specifier?.team) - teamSortRank(marketB.specifier?.team);
       if (teamDelta !== 0) {
         return teamDelta;
       }
-      const pointsDelta = numericSortValue(marketA.specifier?.points) - numericSortValue(marketB.specifier?.points);
-      if (pointsDelta !== 0) {
-        return pointsDelta;
+      if (type !== "team_to_win_to_nil") {
+        const pointsDelta = numericSortValue(marketA.specifier?.points) - numericSortValue(marketB.specifier?.points);
+        if (pointsDelta !== 0) {
+          return pointsDelta;
+        }
       }
     }
 
-    if (type === "total_goals" || type === "asian_handicap") {
+    if (type === "total_goals" || type === "asian_handicap" || type === "total_corners") {
       const pointsDelta = numericSortValue(marketA.specifier?.points) - numericSortValue(marketB.specifier?.points);
       if (pointsDelta !== 0) {
         return pointsDelta;
@@ -645,12 +901,16 @@ function teamSortRank(team) {
 
 function renderMarketSection(section, fallbackLabel) {
   const isSuspended = section.status === "suspended";
+  const isDerived = isModelDerivedSource(section.source);
   return `
-    <section class="market-line-section${isSuspended ? " is-suspended" : ""}">
+    <section class="market-line-section${isSuspended ? " is-suspended" : ""}${isDerived ? " is-derived" : ""}">
       <div class="market-line-header">
         <div>
           <div class="market-line-title">${escapeHtml(section.title || fallbackLabel)}</div>
-          <div class="market-line-meta">${section.rows.length} selections</div>
+          <div class="market-line-meta">
+            ${section.rows.length} selections
+            ${isDerived ? `<span class="market-line-source">Lambda Derived</span>` : ""}
+          </div>
         </div>
         <div class="market-line-actions">
           <span class="market-status-pill${isSuspended ? " is-suspended" : " is-open"}">${escapeHtml(isSuspended ? "Suspended" : "Open")}</span>
@@ -685,9 +945,14 @@ function renderMarketSection(section, fallbackLabel) {
 function buildMarketSectionTitle(market, event) {
   event = event || {};
   const periodPrefix = market.specifier?.period === "1h" ? "1H " : "";
-  if (market.type === "team_total_goals") {
+  if (market.type === "team_total_goals" || market.type === "team_total_corners") {
     const teamName = market.specifier?.team === "home" ? getParticipant(event, "home").name : getParticipant(event, "away").name;
     return `${periodPrefix}${teamName} ${market.specifier?.label || market.specifier?.points || ""}`.trim();
+  }
+
+  if (market.type === "team_to_win_to_nil") {
+    const teamName = market.specifier?.team === "home" ? getParticipant(event, "home").name : getParticipant(event, "away").name;
+    return `${periodPrefix}${teamName} To Win To Nil`.trim();
   }
 
   if (market.type === "team_goals_exact") {
@@ -741,10 +1006,12 @@ function renderProviderPriceCell(row, columnKey, index) {
   const feedOdds = Number(value?.fairOdds);
   const rawOdds = getRawComparisonOdds(value);
   const tone = index % 2 === 0 ? " alt" : "";
+  const isDerived = isModelDerivedSource(row?.marketSource) || isModelDerivedSource(value?.origin);
+  const derivedClass = isDerived ? " is-derived" : "";
 
   if (columnKey === "active") {
     if (marketSuspended) {
-      return `<div class="matrix-price is-active is-suspended${tone}"><strong>SUSP</strong><small>market</small></div>`;
+      return `<div class="matrix-price is-active is-suspended${tone}${derivedClass}"><strong>SUSP</strong><small>market</small></div>`;
     }
 
     const snapshotKey = `${row.marketId}:${row.selectionId}:active`;
@@ -764,8 +1031,8 @@ function renderProviderPriceCell(row, columnKey, index) {
 
     return renderMatrixPrice({
       price: activeOdds,
-      label: value?.manualOverride?.odds != null ? "Manual" : "Active",
-      className: `matrix-price is-active${tone}${changed}`,
+      label: value?.manualOverride?.odds != null ? "Manual" : (isDerived ? "Model" : "Active"),
+      className: `matrix-price is-active${tone}${changed}${derivedClass}`,
       marketId: row.marketId,
       selectionId: row.selectionId,
       manualCurrent: value?.manualOverride?.odds,
@@ -776,8 +1043,8 @@ function renderProviderPriceCell(row, columnKey, index) {
   if (columnKey === "feed") {
     return renderMatrixPrice({
       price: feedOdds,
-      label: "No margin",
-      className: `matrix-price is-feed${tone}`,
+      label: isDerived ? "Model Fair" : "No margin",
+      className: `matrix-price is-feed${tone}${derivedClass}`,
     });
   }
 
@@ -785,6 +1052,7 @@ function renderProviderPriceCell(row, columnKey, index) {
     price: rawOdds,
     label: value?.compare?.p4578?.period === "1h" ? "P4578 1H" : "P4578",
     className: `matrix-price is-raw${tone}`,
+    missingDisplay: "/",
   });
 }
 
@@ -793,14 +1061,12 @@ function getRawComparisonOdds(selection) {
   if (Number.isFinite(compareOdds) && compareOdds > 1) {
     return compareOdds;
   }
-
-  const sourceOdds = Number(selection?.sourceOdds);
-  return Number.isFinite(sourceOdds) && sourceOdds > 1 ? sourceOdds : null;
+  return null;
 }
 
-function renderMatrixPrice({ price, label, className, marketId = "", selectionId = "", manualCurrent = null, clickable = false }) {
+function renderMatrixPrice({ price, label, className, marketId = "", selectionId = "", manualCurrent = null, clickable = false, missingDisplay = "—" }) {
   if (!Number.isFinite(price)) {
-    return `<div class="${className} is-missing"><strong>—</strong></div>`;
+    return `<div class="${className} is-missing"><strong>${escapeHtml(missingDisplay)}</strong></div>`;
   }
 
   const isEditing = clickable && state.editingCell?.marketId === marketId && state.editingCell?.selectionId === selectionId;
@@ -834,7 +1100,11 @@ function renderMatrixPrice({ price, label, className, marketId = "", selectionId
   `;
 }
 
-function renderInsightsPanel(event, group, league) {
+function isModelDerivedSource(source) {
+  return source === "lambda-derived" || source === "ratio-derived";
+}
+
+function renderInsightsPanel(event, group, selectedPriceGroup, league) {
   const markets = getFeedMarketsForEvent(event);
   const method = markets.find((market) => market.type === "match_winner")?.pricingContext?.devigMethod || "n/a";
   const analytics = event.analytics || {};
@@ -845,6 +1115,7 @@ function renderInsightsPanel(event, group, league) {
       <div class="insight-row"><span>League</span><strong>${escapeHtml(league.name)}</strong></div>
       <div class="insight-row"><span>Source</span><strong>${escapeHtml(event.provider || "source")}</strong></div>
       <div class="insight-row"><span>Selected</span><strong>${escapeHtml(group?.label || "none")}</strong></div>
+      <div class="insight-row"><span>Prices</span><strong>${escapeHtml(selectedPriceGroup?.label || "all")}</strong></div>
       <div class="insight-row"><span>Feed event</span><strong>${escapeHtml(event?.sourceEventId || "missing")}</strong></div>
       <div class="insight-row"><span>Feed markets</span><strong>${markets.length}</strong></div>
     </div>
@@ -1164,8 +1435,11 @@ function marketGroupLabel(type) {
     match_winner: "1X2",
     asian_handicap: "Asian Handicap",
     total_goals: "Totals",
+    total_corners: "Corners Totals",
     both_teams_to_score: "Both Teams To Score",
     team_total_goals: "Team Totals",
+    team_total_corners: "Team Corners",
+    team_to_win_to_nil: "Team To Win To Nil",
     team_goals_exact: "Team Goals",
     double_chance: "Double Chance",
     draw_no_bet: "Draw No Bet",
@@ -1185,7 +1459,19 @@ function primaryMarketGroupKey(market) {
     return "second_half";
   }
 
-  if (["total_goals", "team_total_goals", "team_goals_exact", "both_teams_to_score", "correct_score", "exact_total_goals"].includes(market?.type)) {
+  if (market?.type === "team_total_goals") {
+    return "goals";
+  }
+
+  if (["total_corners", "team_total_corners"].includes(market?.type)) {
+    return "corners";
+  }
+
+  if (market?.type === "team_to_win_to_nil") {
+    return "specials";
+  }
+
+  if (["exact_total_goals", "team_goals_exact"].includes(market?.type)) {
     return "goals";
   }
 
@@ -1197,13 +1483,16 @@ function marketSectionOrder(market) {
     match_winner: 1,
     asian_handicap: 2,
     total_goals: 3,
+    total_corners: 4,
     double_chance: 4,
     draw_no_bet: 5,
     both_teams_to_score: 6,
     team_total_goals: 7,
+    team_total_corners: 8,
+    team_to_win_to_nil: 9,
     team_goals_exact: 8,
-    exact_total_goals: 9,
-    correct_score: 10,
+    exact_total_goals: 10,
+    correct_score: 11,
   };
 
   return order[market?.type] || 99;

@@ -1028,6 +1028,71 @@
       text-transform: uppercase;
       letter-spacing: 0.12em;
     }
+    .price-group-nav {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .price-group-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 42px;
+      padding: 0 12px;
+      border: 1px solid rgba(24, 36, 51, 0.12);
+      border-radius: 10px;
+      background: #fff;
+      color: #5f6d7c;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .price-group-btn strong {
+      min-width: 24px;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: #e7edf3;
+      color: var(--muted);
+      font-size: 10px;
+      text-align: center;
+    }
+    .price-group-btn.is-active {
+      border-color: rgba(105, 226, 173, 0.55);
+      background: linear-gradient(180deg, #73e5b6 0%, #5fdaa8 100%);
+      color: #fff;
+      box-shadow: inset 0 -1px 0 rgba(0,0,0,0.08);
+    }
+    .price-group-btn.is-active strong {
+      background: rgba(255,255,255,0.24);
+      color: #fff;
+    }
+    .price-group-btn.is-empty {
+      opacity: 0.58;
+    }
+    .workspace-subtitle {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 12px;
+      padding: 0 2px;
+    }
+    .workspace-subtitle span {
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: var(--muted);
+    }
+    .workspace-subtitle strong {
+      font-size: 14px;
+      font-weight: 800;
+      color: #33495f;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
 
     .detail-table {
       width: 100%;
@@ -1109,9 +1174,13 @@
     .matrix-price.is-active { background: #cfe1f5; cursor: pointer; }
     .matrix-price.is-feed { background: #f1f5fb; }
     .matrix-price.is-raw { background: #f7efe4; }
+    .matrix-price.is-derived.is-active { background: #d9f3e4; border-color: rgba(54, 134, 90, 0.24); }
+    .matrix-price.is-derived.is-feed { background: #edf8f1; border-color: rgba(54, 134, 90, 0.16); }
     .matrix-price.alt.is-active { background: #d9e8f8; }
     .matrix-price.alt.is-feed { background: #f3f7fc; }
     .matrix-price.alt.is-raw { background: #fbf4ea; }
+    .matrix-price.alt.is-derived.is-active { background: #e3f7ea; }
+    .matrix-price.alt.is-derived.is-feed { background: #f3fbf6; }
     .matrix-price.is-suspended,
     .matrix-price.alt.is-suspended {
       background: #f1d9d2;
@@ -1174,6 +1243,19 @@
       font-weight: 700;
       color: var(--muted);
     }
+    .market-line-source {
+      display: inline-flex;
+      align-items: center;
+      margin-left: 8px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: rgba(95, 218, 168, 0.22);
+      color: #2b7751;
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
     .market-line-actions {
       display: flex;
       align-items: center;
@@ -1218,6 +1300,19 @@
     }
     .market-line-section.is-suspended .market-line-header {
       background: #f8ece8;
+    }
+    .market-line-section.is-derived .market-line-header {
+      background: #edf8f1;
+    }
+
+    @media (max-width: 1100px) {
+      .market-workspace {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+          "nav"
+          "table"
+          "notes";
+      }
     }
 
     .price-stack {
