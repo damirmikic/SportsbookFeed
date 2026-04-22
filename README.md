@@ -6,10 +6,23 @@ Generate the data file:
 node .\fetch-odds.js --p4578-sport-id 29 --p4578-league-code brazil-serie-a --out .\odds.json
 ```
 
-Start a local static server in this folder:
+Start the local server in this folder:
 
 ```powershell
-npx serve .
+node .\server.js
+```
+
+Use another port if needed:
+
+```powershell
+node .\server.js --port 8080
+```
+
+Or via environment variable:
+
+```powershell
+$env:PORT=8080
+node .\server.js
 ```
 
 Regenerate `odds.json` automatically every 60 seconds:
@@ -18,7 +31,7 @@ Regenerate `odds.json` automatically every 60 seconds:
 node .\auto-refresh-odds.js --interval 60 --p4578-sport-id 29 --p4578-fetch-events --p4578-max-leagues 12 --out .\odds.json
 ```
 
-Open the local URL shown by `serve`, then load `index.html`.
+Open the local URL shown by the server.
 
 Notes:
 

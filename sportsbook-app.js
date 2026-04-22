@@ -4,6 +4,8 @@ const state = {
   filterMode: "all",
   leagues: [],
   providerFeed: { events: [], markets: [] },
+  marketsByEventId: new Map(),
+  eventMetaById: new Map(),
   selectedLeagueKey: null,
   selectedMatchKey: null,
   selectedMarketKey: null,
@@ -13,6 +15,7 @@ const state = {
   traderName: localStorage.getItem("sportsbook-trader-name") || "local-trader",
   firstHalfRatio: readFirstHalfRatio(),
   oddsSnapshot: new Map(),
+  searchRenderTimer: null,
 };
 
 const leagueGroupsEl = document.getElementById("leagueGroups");
@@ -34,7 +37,13 @@ const refreshBtnEl = document.getElementById("refreshBtn");
 
 searchInputEl.addEventListener("input", (event) => {
   state.search = event.target.value.trim().toLowerCase();
-  render();
+  if (state.searchRenderTimer) {
+    clearTimeout(state.searchRenderTimer);
+  }
+  state.searchRenderTimer = setTimeout(() => {
+    state.searchRenderTimer = null;
+    render();
+  }, 120);
 });
 
 traderNameInputEl.value = state.traderName;
@@ -72,6 +81,69 @@ for (const button of traderFilterGroupEl.querySelectorAll("[data-filter-mode]"))
     render();
   });
 }
+
+leagueGroupsEl.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-league-key]");
+  if (!button) {
+    return;
+  }
+
+  state.selectedLeagueKey = button.dataset.leagueKey;
+  state.selectedMatchKey = null;
+  state.selectedMarketKey = null;
+  render();
+});
+
+mainContentEl.addEventListener("click", async (event) => {
+  const eventStateButton = event.target.closest("[data-event-state-id][data-event-state-value]");
+  if (eventStateButton) {
+    await handleEventStateButtonClick(eventStateButton);
+    return;
+  }
+
+  const marketStateButton = event.target.closest("[data-market-state-id][data-market-state-value]");
+  if (marketStateButton) {
+    await handleMarketStateButtonClick(marketStateButton);
+    return;
+  }
+
+  const manualPriceButton = event.target.closest("[data-manual-market-id][data-manual-selection-id]");
+  if (manualPriceButton) {
+    state.editingCell = {
+      marketId: manualPriceButton.dataset.manualMarketId,
+      selectionId: manualPriceButton.dataset.manualSelectionId,
+    };
+    state.inlineEditValue = manualPriceButton.dataset.manualCurrent || manualPriceButton.querySelector("strong")?.textContent || "";
+    render();
+    return;
+  }
+
+  const priceGroupButton = event.target.closest("[data-price-group-key][data-parent-market-group]");
+  if (priceGroupButton) {
+    const parentGroup = priceGroupButton.dataset.parentMarketGroup;
+    const priceGroup = priceGroupButton.dataset.priceGroupKey;
+    if (!parentGroup || !priceGroup) {
+      return;
+    }
+    state.selectedPriceGroupKeys[parentGroup] = priceGroup;
+    render();
+    return;
+  }
+
+  const marketButton = event.target.closest("[data-market-key]");
+  if (marketButton) {
+    state.selectedMarketKey = marketButton.dataset.marketKey;
+    render();
+    return;
+  }
+
+  const matchCard = event.target.closest("[data-match-key]");
+  if (matchCard) {
+    state.selectedMatchKey = matchCard.dataset.matchKey;
+    state.selectedMarketKey = null;
+    render();
+  }
+});
 
 refreshBtnEl.addEventListener("click", () => {
   refreshBtnEl.classList.add("spinning");
@@ -146,7 +218,7 @@ function ingestData(data) {
   firstHalfRatioInputEl.value = state.firstHalfRatio.toFixed(2);
   syncFirstHalfRatioLabel();
   state.providerFeed = normalizeProviderFeed(data.providerFeed);
-  state.leagues = buildLeagueCollection();
+  recomputeDerivedFeedState();
 
   if (!state.leagues.some((league) => league.key === state.selectedLeagueKey)) {
     state.selectedLeagueKey = state.leagues[0]?.key || null;
@@ -171,9 +243,71 @@ function normalizeProviderFeed(feed) {
   };
 }
 
+function recomputeDerivedFeedState() {
+  state.marketsByEventId = buildMarketsByEventId(state.providerFeed.markets);
+  state.eventMetaById = buildEventMetaById(state.providerFeed.events, state.marketsByEventId);
+  state.leagues = buildLeagueCollection();
+}
+
+function buildMarketsByEventId(markets) {
+  const grouped = new Map();
+
+  for (const market of markets || []) {
+    const eventId = market?.eventId;
+    if (!eventId) {
+      continue;
+    }
+
+    let bucket = grouped.get(eventId);
+    if (!bucket) {
+      bucket = [];
+      grouped.set(eventId, bucket);
+    }
+    bucket.push(market);
+  }
+
+  return grouped;
+}
+
+function buildEventMetaById(events, marketsByEventId) {
+  const metaById = new Map();
+
+  for (const event of events || []) {
+    const eventId = event?.eventId;
+    if (!eventId) {
+      continue;
+    }
+
+    const markets = marketsByEventId.get(eventId) || [];
+    const meta = {
+      hasSuspendedMarket: false,
+      hasManualMarket: false,
+      eventSuspended: event.tradingStatus === "suspended",
+    };
+
+    for (const market of markets) {
+      if (market.status === "suspended") {
+        meta.hasSuspendedMarket = true;
+      }
+
+      if (!meta.hasManualMarket && (market.selections || []).some((selection) => selection.manualOverride?.odds != null)) {
+        meta.hasManualMarket = true;
+      }
+
+      if (meta.hasSuspendedMarket && meta.hasManualMarket) {
+        break;
+      }
+    }
+
+    metaById.set(eventId, meta);
+  }
+
+  return metaById;
+}
+
 function showFileOpenError() {
   generatedStatusEl.textContent = "Error: opened as file";
-  leagueGroupsEl.innerHTML = `<div class="empty-state"><strong>Wrong URL</strong>Run <code>node server.js</code> then open <code>http://localhost:3000</code></div>`;
+  leagueGroupsEl.innerHTML = `<div class="empty-state"><strong>Wrong URL</strong>Run <code>node server.js --port 3000</code> or your preferred port, then open <code>http://localhost:&lt;port&gt;</code></div>`;
   mainContentEl.innerHTML = `<div class="empty-state"><strong>No data</strong>You opened this file directly from disk. Start the server first.</div>`;
 }
 
@@ -220,11 +354,14 @@ function buildLeagueCollection() {
 
 function render() {
   const filteredLeagues = state.leagues
-    .map((league) => ({
-      ...league,
-      matches: league.matches.filter((match) => matchPassesCurrentFilters(match)),
-      count: league.matches.filter((match) => matchPassesCurrentFilters(match)).length,
-    }))
+    .map((league) => {
+      const matches = league.matches.filter((match) => matchPassesCurrentFilters(match));
+      return {
+        ...league,
+        matches,
+        count: matches.length,
+      };
+    })
     .filter((league) => {
       if (!league.matches.length) {
         return false;
@@ -273,19 +410,20 @@ function matchPassesCurrentFilters(event) {
     return false;
   }
 
-  const markets = getFeedMarketsForEvent(event);
-  const hasSuspendedMarket = markets.some((market) => market.status === "suspended");
-  const hasManualMarket = markets.some((market) => (market.selections || []).some((selection) => selection.manualOverride?.odds != null));
-  const eventSuspended = event.tradingStatus === "suspended";
+  const meta = state.eventMetaById.get(event.eventId) || {
+    hasSuspendedMarket: false,
+    hasManualMarket: false,
+    eventSuspended: event.tradingStatus === "suspended",
+  };
 
   if (state.filterMode === "suspended") {
-    return eventSuspended || hasSuspendedMarket;
+    return meta.eventSuspended || meta.hasSuspendedMarket;
   }
   if (state.filterMode === "manual") {
-    return hasManualMarket;
+    return meta.hasManualMarket;
   }
   if (state.filterMode === "overrides") {
-    return eventSuspended || hasSuspendedMarket || hasManualMarket;
+    return meta.eventSuspended || meta.hasSuspendedMarket || meta.hasManualMarket;
   }
   return true;
 }
@@ -328,14 +466,6 @@ function renderLeagueGroups(leagues) {
     </section>
   `).join("");
 
-  for (const button of leagueGroupsEl.querySelectorAll("[data-league-key]")) {
-    button.addEventListener("click", () => {
-      state.selectedLeagueKey = button.dataset.leagueKey;
-      state.selectedMatchKey = null;
-      state.selectedMarketKey = null;
-      render();
-    });
-  }
 }
 
 function renderHero(league) {
@@ -395,33 +525,6 @@ function renderMatches(league) {
       </div>
     </div>
   `;
-
-  for (const card of mainContentEl.querySelectorAll("[data-match-key]")) {
-    card.addEventListener("click", () => {
-      state.selectedMatchKey = card.dataset.matchKey;
-      state.selectedMarketKey = null;
-      render();
-    });
-  }
-
-  for (const button of mainContentEl.querySelectorAll("[data-market-key]")) {
-    button.addEventListener("click", () => {
-      state.selectedMarketKey = button.dataset.marketKey;
-      render();
-    });
-  }
-
-  for (const button of mainContentEl.querySelectorAll("[data-price-group-key][data-parent-market-group]")) {
-    button.addEventListener("click", () => {
-      const parentGroup = button.dataset.parentMarketGroup;
-      const priceGroup = button.dataset.priceGroupKey;
-      if (!parentGroup || !priceGroup) {
-        return;
-      }
-      state.selectedPriceGroupKeys[parentGroup] = priceGroup;
-      render();
-    });
-  }
 
   bindManualPriceEditors();
 }
@@ -663,7 +766,7 @@ function getFeedMarketsForEvent(event) {
   if (!event) {
     return [];
   }
-  return state.providerFeed.markets.filter((market) => market.eventId === event.eventId);
+  return state.marketsByEventId.get(event.eventId) || [];
 }
 
 function findFeedMarket(event, type, predicate = null) {
@@ -1146,71 +1249,6 @@ function renderInsightsPanel(event, group, selectedPriceGroup, league) {
 }
 
 function bindManualPriceEditors() {
-  for (const button of mainContentEl.querySelectorAll("[data-event-state-id][data-event-state-value]")) {
-    button.addEventListener("click", async () => {
-      const eventId = button.dataset.eventStateId;
-      const status = button.dataset.eventStateValue;
-      if (!eventId || !status) {
-        return;
-      }
-
-      const previousFeed = cloneProviderFeed();
-      applyOptimisticEventState(eventId, status);
-      generatedStatusEl.textContent = status === "suspended" ? "Live - suspending match..." : "Live - opening match...";
-
-      try {
-        await submitEventStateUpdate({
-          eventId,
-          status,
-          trader: state.traderName,
-          reason: status === "suspended" ? "manual suspend match" : "manual reopen match",
-        });
-        generatedStatusEl.textContent = status === "suspended" ? "Live - match suspended" : "Live - match reopened";
-      } catch (error) {
-        restoreProviderFeed(previousFeed);
-        generatedStatusEl.textContent = `Match state error: ${error.message}`;
-      }
-    });
-  }
-
-  for (const button of mainContentEl.querySelectorAll("[data-market-state-id][data-market-state-value]")) {
-    button.addEventListener("click", async () => {
-      const marketId = button.dataset.marketStateId;
-      const status = button.dataset.marketStateValue;
-      if (!marketId || !status) {
-        return;
-      }
-
-      const previousFeed = cloneProviderFeed();
-      applyOptimisticMarketState(marketId, status);
-      generatedStatusEl.textContent = status === "suspended" ? "Live - suspending market..." : "Live - opening market...";
-
-      try {
-        await submitMarketStateUpdate({
-          marketId,
-          status,
-          trader: state.traderName,
-          reason: status === "suspended" ? "manual suspend" : "manual reopen",
-        });
-        generatedStatusEl.textContent = status === "suspended" ? "Live - market suspended" : "Live - market reopened";
-      } catch (error) {
-        restoreProviderFeed(previousFeed);
-        generatedStatusEl.textContent = `Market state error: ${error.message}`;
-      }
-    });
-  }
-
-  for (const button of mainContentEl.querySelectorAll("[data-manual-market-id][data-manual-selection-id]")) {
-    button.addEventListener("click", () => {
-      state.editingCell = {
-        marketId: button.dataset.manualMarketId,
-        selectionId: button.dataset.manualSelectionId,
-      };
-      state.inlineEditValue = button.dataset.manualCurrent || button.querySelector("strong")?.textContent || "";
-      render();
-    });
-  }
-
   for (const input of mainContentEl.querySelectorAll("[data-inline-edit-input]")) {
     input.focus();
     input.select();
@@ -1228,6 +1266,56 @@ function bindManualPriceEditors() {
         render();
       }
     });
+  }
+}
+
+async function handleEventStateButtonClick(button) {
+  const eventId = button.dataset.eventStateId;
+  const status = button.dataset.eventStateValue;
+  if (!eventId || !status) {
+    return;
+  }
+
+  const previousFeed = cloneProviderFeed();
+  applyOptimisticEventState(eventId, status);
+  generatedStatusEl.textContent = status === "suspended" ? "Live - suspending match..." : "Live - opening match...";
+
+  try {
+    await submitEventStateUpdate({
+      eventId,
+      status,
+      trader: state.traderName,
+      reason: status === "suspended" ? "manual suspend match" : "manual reopen match",
+    });
+    generatedStatusEl.textContent = status === "suspended" ? "Live - match suspended" : "Live - match reopened";
+  } catch (error) {
+    restoreProviderFeed(previousFeed);
+    generatedStatusEl.textContent = `Match state error: ${error.message}`;
+  }
+}
+
+async function handleMarketStateButtonClick(button) {
+  const marketId = button.dataset.marketStateId;
+  const status = button.dataset.marketStateValue;
+  if (!marketId || !status) {
+    return;
+  }
+
+  const previousFeed = cloneProviderFeed();
+  applyOptimisticMarketState(marketId, status);
+  generatedStatusEl.textContent = status === "suspended" ? "Live - suspending market..." : "Live - opening market...";
+
+  try {
+    await submitMarketStateUpdate({
+      marketId,
+      status,
+      trader: state.traderName,
+      reason: status === "suspended" ? "manual suspend" : "manual reopen",
+    });
+    generatedStatusEl.textContent = status === "suspended" ? "Live - market suspended" : "Live - market reopened";
+  } catch (error) {
+    restoreProviderFeed(previousFeed);
+    generatedStatusEl.textContent = `Market state error: ${error.message}`;
   }
 }
 
@@ -1319,7 +1407,7 @@ function cloneProviderFeed() {
 
 function restoreProviderFeed(feed) {
   state.providerFeed = feed && typeof feed === "object" ? feed : { events: [], markets: [] };
-  state.leagues = buildLeagueCollection();
+  recomputeDerivedFeedState();
   render();
 }
 
@@ -1355,7 +1443,7 @@ function applyOptimisticEventState(eventId, status) {
     };
   });
 
-  state.leagues = buildLeagueCollection();
+  recomputeDerivedFeedState();
   render();
 }
 
@@ -1383,7 +1471,7 @@ function applyOptimisticMarketState(marketId, status) {
     };
   });
 
-  state.leagues = buildLeagueCollection();
+  recomputeDerivedFeedState();
   render();
 }
 
@@ -1445,6 +1533,27 @@ function marketGroupLabel(type) {
     draw_no_bet: "Draw No Bet",
     correct_score: "Correct Score",
     exact_total_goals: "Exact Total Goals",
+    odd_even_goals: "Odd/Even",
+    team_odd_even_goals: "Team Odd/Even",
+    first_team_to_score: "1st Goal",
+    which_team_to_score: "Which Team To Score",
+    clean_sheet: "Clean Sheet",
+    goal_range: "Goal Range",
+    team_to_score_in_both_halves: "Score In Both Halves",
+    both_halves_total_goals: "Both Halves Total",
+    highest_scoring_half: "Highest Scoring Half",
+    team_highest_scoring_half: "Team Highest Scoring Half",
+    team_to_win_both_halves: "Win Both Halves",
+    team_to_win_either_half: "Win Either Half",
+    halftime_fulltime: "Halftime/Fulltime",
+    match_result_and_total: "1X2 & Total",
+    match_result_and_btts: "1X2 & BTTS",
+    total_and_btts: "Total & BTTS",
+    double_chance_and_btts: "Double Chance & BTTS",
+    double_chance_and_total: "Double Chance & Total",
+    double_chance_match_and_btts_half: "Double Chance & Half BTTS",
+    halftime_fulltime_and_total: "HT/FT & Total",
+    halftime_fulltime_and_first_half_total: "HT/FT & 1H Total",
   };
 
   return labels[type] || type;
@@ -1452,12 +1561,6 @@ function marketGroupLabel(type) {
 
 function primaryMarketGroupKey(market) {
   const period = market?.specifier?.period || "ft";
-  if (period === "1h") {
-    return "first_half";
-  }
-  if (period === "2h") {
-    return "second_half";
-  }
 
   if (market?.type === "team_total_goals") {
     return "goals";
@@ -1467,12 +1570,55 @@ function primaryMarketGroupKey(market) {
     return "corners";
   }
 
-  if (market?.type === "team_to_win_to_nil") {
+  if ([
+    "team_to_win_to_nil",
+    "team_to_win_both_halves",
+    "team_to_win_either_half",
+    "total_and_btts",
+  ].includes(market?.type)) {
     return "specials";
   }
 
-  if (["exact_total_goals", "team_goals_exact"].includes(market?.type)) {
+  if (["match_result_and_total", "match_result_and_btts"].includes(market?.type)) {
+    return period === "ft" ? "specials" : "others";
+  }
+
+  if ([
+    "exact_total_goals",
+    "team_goals_exact",
+    "odd_even_goals",
+    "team_odd_even_goals",
+    "first_team_to_score",
+    "which_team_to_score",
+    "clean_sheet",
+    "goal_range",
+    "team_to_score_in_both_halves",
+    "both_halves_total_goals",
+    "highest_scoring_half",
+    "team_highest_scoring_half",
+  ].includes(market?.type)) {
     return "goals";
+  }
+
+  if ([
+    "double_chance_and_btts",
+    "double_chance_and_total",
+    "double_chance_match_and_btts_half",
+    "halftime_fulltime_and_total",
+    "halftime_fulltime_and_first_half_total",
+  ].includes(market?.type)) {
+    return "others";
+  }
+
+  if (market?.type === "halftime_fulltime") {
+    return "main_markets";
+  }
+
+  if (period === "1h") {
+    return "first_half";
+  }
+  if (period === "2h") {
+    return "second_half";
   }
 
   return "main_markets";

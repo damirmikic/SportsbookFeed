@@ -55,7 +55,7 @@ const DEFAULT_P4578_MAX_LEAGUES = 200;
 
 // ── Parse our own flags, pass the rest straight to fetch-odds.js ──
 const rawArgs = process.argv.slice(2);
-let PORT        = 3000;
+let PORT        = Number(process.env.PORT) || 3000;
 let INTERVAL_MS = 30_000;
 const fetchArgs = [];
 
