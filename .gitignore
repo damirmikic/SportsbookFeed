@@ -1,0 +1,10 @@
+node_modules/
+.DS_Store
+odds.json
+market-state.json
+manual-odds.json
+.env
+.env.local
+*.log
+dist/
+build/
