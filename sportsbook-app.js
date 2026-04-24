@@ -933,10 +933,12 @@ function buildMarketSections(event, key, selectedPriceGroup = null) {
       source: market.source || "provider",
       title: buildMarketSectionTitle(market, event),
       sortOrder: marketSectionOrder(market),
+      hasLambdaCompare: (market.selections || []).some((s) => s.compare?.lambda != null),
       margins: {
         active: formatMarginLabel(computeMarketMargin(market, "active")),
         feed: formatMarginLabel(computeMarketMargin(market, "feed")),
         raw: formatMarginLabel(computeMarketMargin(market, "raw")),
+        lambda: formatMarginLabel(computeMarketMargin(market, "lambda")),
       },
       rows: (market.selections || []).map((selection) => ({
         marketId: market.marketId,
@@ -1028,6 +1030,7 @@ function renderMarketSection(section, fallbackLabel) {
             <th><div class="column-head"><strong>Active</strong><small>${escapeHtml(section.margins.active)}</small></div></th>
             <th><div class="column-head"><strong>Feed</strong><small>${escapeHtml(section.margins.feed)}</small></div></th>
             <th><div class="column-head"><strong>p4578</strong><small>${escapeHtml(section.margins.raw)}</small></div></th>
+            ${section.hasLambdaCompare ? `<th><div class="column-head"><strong>Lambda Calc</strong><small>${escapeHtml(section.margins.lambda)}</small></div></th>` : ""}
           </tr>
         </thead>
         <tbody>
@@ -1037,6 +1040,7 @@ function renderMarketSection(section, fallbackLabel) {
               <td>${renderProviderPriceCell(row, "active", index)}</td>
               <td>${renderProviderPriceCell(row, "feed", index)}</td>
               <td>${renderProviderPriceCell(row, "raw", index)}</td>
+              ${section.hasLambdaCompare ? `<td>${renderProviderPriceCell(row, "lambda", index)}</td>` : ""}
             </tr>
           `).join("")}
         </tbody>
@@ -1086,6 +1090,7 @@ function computeMarketMargin(market, columnKey) {
     .map((selection) => {
       if (columnKey === "active") return Number(selection?.odds);
       if (columnKey === "feed") return Number(selection?.fairOdds);
+      if (columnKey === "lambda") return Number(selection?.compare?.lambda?.odds);
       return getRawComparisonOdds(selection);
     })
     .filter((price) => Number.isFinite(price) && price > 1);
@@ -1148,6 +1153,16 @@ function renderProviderPriceCell(row, columnKey, index) {
       price: feedOdds,
       label: isDerived ? "Model Fair" : "No margin",
       className: `matrix-price is-feed${tone}${derivedClass}`,
+    });
+  }
+
+  if (columnKey === "lambda") {
+    const lambdaOdds = Number(value?.compare?.lambda?.odds);
+    return renderMatrixPrice({
+      price: Number.isFinite(lambdaOdds) && lambdaOdds > 1 ? lambdaOdds : null,
+      label: "Lambda Calc",
+      className: `matrix-price is-lambda${tone}`,
+      missingDisplay: "—",
     });
   }
 

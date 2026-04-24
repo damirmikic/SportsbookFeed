@@ -1174,6 +1174,8 @@
     .matrix-price.is-active { background: #cfe1f5; cursor: pointer; }
     .matrix-price.is-feed { background: #f1f5fb; }
     .matrix-price.is-raw { background: #f7efe4; }
+    .matrix-price.is-lambda { background: #eef4e8; }
+    .matrix-price.alt.is-lambda { background: #e6f0df; }
     .matrix-price.is-derived.is-active { background: #d9f3e4; border-color: rgba(54, 134, 90, 0.24); }
     .matrix-price.is-derived.is-feed { background: #edf8f1; border-color: rgba(54, 134, 90, 0.16); }
     .matrix-price.alt.is-active { background: #d9e8f8; }
