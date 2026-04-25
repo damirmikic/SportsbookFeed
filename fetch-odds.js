@@ -1076,6 +1076,21 @@ function extractP4578SupplementalMarkets(ev, homeName, awayName) {
       if (selections.length) {
         markets.push(createSupplementalMarketRecord("exact_total_goals", period, null, selections, special));
       }
+      continue;
+    }
+
+    if (name === "first team to score" || name === "first team to score 1st half") {
+      const homeContestant = contestants.find((item) => normalizeContestantName(item?.n) === normalizeContestantName(homeName));
+      const awayContestant = contestants.find((item) => normalizeContestantName(item?.n) === normalizeContestantName(awayName));
+      const neitherContestant = contestants.find((item) => normalizeContestantName(item?.n) === "neither");
+      const selections = [
+        mapSpecialSelection(homeContestant, "home", homeName),
+        mapSpecialSelection(awayContestant, "away", awayName),
+        mapSpecialSelection(neitherContestant, "no_goal", "No Goal"),
+      ].filter(Boolean);
+      if (selections.length === 3) {
+        markets.push(createSupplementalMarketRecord("first_team_to_score", period, null, selections, special));
+      }
     }
   }
 
