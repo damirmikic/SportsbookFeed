@@ -1108,6 +1108,24 @@ function extractP4578SupplementalMarkets(ev, homeName, awayName) {
       if (selections.length === 6) {
         markets.push(createSupplementalMarketRecord("match_result_and_btts", period, null, selections, special));
       }
+      continue;
+    }
+
+    if (name === "both teams to score/total goals" || name === "both teams to score/total goals 1st half") {
+      const firstOverContestant = contestants.find((item) => normalizeContestantName(item?.n).includes("over"));
+      const pointsMatch = firstOverContestant ? normalizeContestantName(firstOverContestant.n).match(/over\s+([\d.]+)/) : null;
+      const points = pointsMatch ? parseFloat(pointsMatch[1]) : 2.5;
+      const find = (btts, side) =>
+        contestants.find((item) => normalizeContestantName(item?.n) === `${btts} & ${side} ${points}`);
+      const selections = [
+        mapSpecialSelection(find("yes", "over"), "over_yes", `Yes & Over ${points}`),
+        mapSpecialSelection(find("yes", "under"), "under_yes", `Yes & Under ${points}`),
+        mapSpecialSelection(find("no", "over"), "over_no", `No & Over ${points}`),
+        mapSpecialSelection(find("no", "under"), "under_no", `No & Under ${points}`),
+      ].filter(Boolean);
+      if (selections.length === 4) {
+        markets.push(createSupplementalMarketRecord("total_and_btts", period, { points, label: String(points) }, selections, special));
+      }
     }
   }
 
