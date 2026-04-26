@@ -35,6 +35,7 @@
       grid-template-rows: var(--topbar-h) 1fr;
       height: 100vh;
       overflow: hidden;
+      background: #1a2736;
     }
 
     /* ── TOPBAR ─────────────────────────────────────────────────── */
@@ -190,13 +191,15 @@
     .layout {
       display: grid;
       grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+      gap: 10px;
+      padding: 10px;
       overflow: hidden;
     }
 
     /* ── SIDEBAR ─────────────────────────────────────────────────── */
     .sidebar {
       background: linear-gradient(180deg, #243646 0%, #2d4358 52%, #36506a 100%);
-      border-right: 1px solid var(--border-hi);
+      border-radius: 16px;
       display: grid;
       grid-template-rows: auto auto 1fr;
       overflow: hidden;
@@ -303,6 +306,7 @@
       grid-template-rows: auto 1fr;
       overflow: hidden;
       background: var(--bg);
+      border-radius: 16px;
     }
 
     /* ── LEAGUE HERO (compact) ──────────────────────────────────── */
@@ -630,7 +634,7 @@
     }
     @media (max-width: 680px) {
       .layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-      .sidebar { border-right: none; border-bottom: 1px solid var(--border-hi); max-height: 280px; }
+      .sidebar { max-height: 280px; }
       .league-groups { max-height: 180px; }
     }
     @media (max-width: 500px) {
@@ -712,19 +716,20 @@
     }
 
     .content {
-      padding: 12px 14px 18px;
-      background: linear-gradient(180deg, rgba(255,255,255,0.45), rgba(255,255,255,0.12));
+      padding: 12px;
+      background: #cfc1ac;
     }
 
     .trading-shell { display: grid; gap: 12px; }
     .event-board,
+    .event-rail,
     .event-card,
     .market-group-nav,
     .market-table-wrap,
     .market-notes {
       border: 1px solid var(--border);
-      border-radius: 12px;
-      background: rgba(255,250,242,0.92);
+      border-radius: 16px;
+      background: rgba(255,250,242,0.96);
       box-shadow: 0 8px 20px rgba(51, 73, 95, 0.06);
     }
 
@@ -796,7 +801,7 @@
       align-items: center;
       gap: 10px;
       padding: 14px 16px;
-      border-radius: 10px;
+      border-radius: 14px;
       background: #fff;
       border: 1px solid var(--border);
     }
@@ -848,7 +853,7 @@
 
     .board-odds-block {
       padding: 12px;
-      border-radius: 10px;
+      border-radius: 14px;
       background: #fff;
       border: 1px solid var(--border);
     }
@@ -898,7 +903,7 @@
       display: flex;
       gap: 8px;
       overflow-x: auto;
-      padding-bottom: 2px;
+      padding: 12px;
     }
     .event-card {
       min-width: 220px;
@@ -1099,7 +1104,7 @@
       border-collapse: separate;
       border-spacing: 0;
       overflow: hidden;
-      border-radius: 12px;
+      border-radius: 14px;
       border: 1px solid var(--border);
       background: #fff;
     }
@@ -1337,7 +1342,7 @@
       justify-content: center;
       gap: 2px;
       border: 1px solid rgba(24, 36, 51, 0.08);
-      border-radius: 10px;
+      border-radius: 12px;
       color: var(--text);
       background: #d8e7f7;
     }
@@ -1372,7 +1377,7 @@
     .insight-card {
       padding: 12px;
       border: 1px solid var(--border);
-      border-radius: 10px;
+      border-radius: 14px;
       background: rgba(255,255,255,0.86);
     }
     .insight-row {

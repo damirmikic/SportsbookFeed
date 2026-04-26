@@ -50,7 +50,6 @@ const DIR = __dirname;
 const FEED_SETTINGS_PATH = getFeedSettingsPath();
 const MANUAL_ODDS_PATH = getManualOddsPath();
 const MARKET_STATE_PATH = getMarketStatePath();
-const SNAPSHOT_PATH = path.join(DIR, "odds.json");
 const DEFAULT_P4578_MAX_LEAGUES = 200;
 
 // ── Parse our own flags, pass the rest straight to fetch-odds.js ──
@@ -92,10 +91,20 @@ if (!hasFetchArg("--p4578-max-leagues") && !hasScopedP4578Request) {
 // ── SSE clients ────────────────────────────────────────────────────
 const sseClients = new Set();
 
+// ── In-memory cache (last successful fetch) ────────────────────────
+let cache      = null;
+let cacheJson  = null;   // pre-serialized; avoids JSON.stringify on every SSE send
+let refreshing = false;
+
+function setCache(data) {
+  cache     = data;
+  cacheJson = `data: ${JSON.stringify(data)}\n\n`;
+}
+
 function broadcast(data) {
-  const msg = `data: ${JSON.stringify(data)}\n\n`;
+  setCache(data);
   for (const res of sseClients) {
-    try { res.write(msg); } catch { sseClients.delete(res); }
+    try { res.write(cacheJson); } catch { sseClients.delete(res); }
   }
 }
 
@@ -106,28 +115,6 @@ setInterval(() => {
   }
 }, 20_000);
 
-// ── In-memory cache (last successful fetch) ────────────────────────
-let cache      = null;
-let refreshing = false;
-
-function loadWarmCache() {
-  try {
-    const raw = fs.readFileSync(SNAPSHOT_PATH, "utf8");
-    cache = hydrateSnapshot(JSON.parse(raw));
-    console.log(`[${ts()}] Loaded warm cache from odds.json.`);
-  } catch {
-    cache = null;
-  }
-}
-
-function saveWarmCache(snapshot) {
-  try {
-    fs.writeFileSync(SNAPSHOT_PATH, JSON.stringify(snapshot, null, 2), "utf8");
-  } catch (error) {
-    console.error(`[${ts()}] Failed to persist warm cache: ${error.message}`);
-  }
-}
-
 function refreshOdds() {
   if (refreshing) return;
   refreshing = true;
@@ -136,7 +123,6 @@ function refreshOdds() {
   fetchOddsSnapshot()
     .then((parsed) => {
       cache = parsed;
-      saveWarmCache(parsed);
       logFetchSummary(parsed);
       console.log(`[${ts()}] Broadcasting to ${sseClients.size} client(s).`);
       broadcast(cache);
@@ -177,19 +163,21 @@ const server = http.createServer((req, res) => {
     req.on("close", () => sseClients.delete(res));
 
     // Send current data immediately if we already have it
-    if (cache) res.write(`data: ${JSON.stringify(cache)}\n\n`);
+    if (cacheJson) res.write(cacheJson);
     return;
   }
 
   // ── Snapshot: immediate JSON of current cache for fast initial render ──
   if (pathname === "/snapshot" && req.method === "GET") {
-    if (!cache) {
+    if (!cacheJson) {
       res.writeHead(204);
       res.end();
       return;
     }
+    // cacheJson is "data: {...}\n\n" — extract the JSON payload
+    const jsonPayload = cacheJson.slice(6, -2); // strip "data: " prefix and "\n\n" suffix
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify(cache));
+    res.end(jsonPayload);
     return;
   }
 
@@ -265,7 +253,6 @@ const server = http.createServer((req, res) => {
         rebuildSnapshotFromCurrentSources({ manualOdds: saved })
           .then((parsed) => {
             cache = parsed;
-            saveWarmCache(parsed);
             logFetchSummary(parsed);
             broadcast(cache);
             res.writeHead(202, { "Content-Type": "application/json; charset=utf-8" });
@@ -311,7 +298,6 @@ const server = http.createServer((req, res) => {
         rebuildSnapshotFromCurrentSources({ marketState: saved })
           .then((parsed) => {
             cache = parsed;
-            saveWarmCache(parsed);
             logFetchSummary(parsed);
             broadcast(cache);
             res.writeHead(202, { "Content-Type": "application/json; charset=utf-8" });
@@ -357,7 +343,6 @@ const server = http.createServer((req, res) => {
         rebuildSnapshotFromCurrentSources({ marketState: saved })
           .then((parsed) => {
             cache = parsed;
-            saveWarmCache(parsed);
             logFetchSummary(parsed);
             broadcast(cache);
             res.writeHead(202, { "Content-Type": "application/json; charset=utf-8" });
@@ -390,7 +375,6 @@ const server = http.createServer((req, res) => {
         rebuildSnapshotFromCurrentSources({ feedSettings: saved })
           .then((parsed) => {
             cache = parsed;
-            saveWarmCache(parsed);
             logFetchSummary(parsed);
             broadcast(cache);
             res.writeHead(202, { "Content-Type": "application/json; charset=utf-8" });
@@ -427,15 +411,19 @@ const server = http.createServer((req, res) => {
     res.writeHead(403); res.end("Forbidden"); return;
   }
 
-  try {
-    const content = fs.readFileSync(filePath);
-    const ext     = path.extname(filePath).toLowerCase();
-    res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream" });
-    res.end(content);
-  } catch {
-    res.writeHead(404, { "Content-Type": "text/plain" });
-    res.end("Not found");
-  }
+  const ext = path.extname(filePath).toLowerCase();
+  fs.stat(filePath, (statErr, stat) => {
+    if (statErr || !stat.isFile()) {
+      res.writeHead(404, { "Content-Type": "text/plain" });
+      res.end("Not found");
+      return;
+    }
+    res.writeHead(200, {
+      "Content-Type":   MIME[ext] || "application/octet-stream",
+      "Content-Length": stat.size,
+    });
+    fs.createReadStream(filePath).pipe(res);
+  });
 });
 
 server.listen(PORT, () => {
@@ -447,7 +435,6 @@ server.listen(PORT, () => {
 });
 
 // ── Start ──────────────────────────────────────────────────────────
-loadWarmCache();
 refreshOdds();
 setInterval(refreshOdds, INTERVAL_MS);
 
@@ -498,21 +485,18 @@ function fetchOddsSnapshot() {
 }
 
 function rebuildSnapshotFromCurrentSources(overrides = {}) {
-  try {
-    const base = cache?.sources
-      ? cache
-      : hydrateSnapshot(JSON.parse(fs.readFileSync(SNAPSHOT_PATH, "utf8")));
-    const next = {
-      generatedAt: new Date().toISOString(),
-      sources: base?.sources || {},
-      manualOdds: overrides.manualOdds || base?.manualOdds || loadManualOddsStore(MANUAL_ODDS_PATH),
-      marketState: overrides.marketState || base?.marketState || loadMarketStateStore(MARKET_STATE_PATH),
-      feedSettings: overrides.feedSettings || base?.feedSettings || loadFeedSettings(FEED_SETTINGS_PATH),
-    };
-    return Promise.resolve(hydrateSnapshot(next));
-  } catch (error) {
+  if (!cache?.sources) {
     return fetchOddsSnapshot();
   }
+
+  const next = {
+    generatedAt: new Date().toISOString(),
+    sources: cache.sources,
+    manualOdds: overrides.manualOdds || cache.manualOdds || loadManualOddsStore(MANUAL_ODDS_PATH),
+    marketState: overrides.marketState || cache.marketState || loadMarketStateStore(MARKET_STATE_PATH),
+    feedSettings: overrides.feedSettings || cache.feedSettings || loadFeedSettings(FEED_SETTINGS_PATH),
+  };
+  return Promise.resolve(hydrateSnapshot(next));
 }
 
 function hydrateSnapshot(snapshot) {
