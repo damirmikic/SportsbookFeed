@@ -12,7 +12,8 @@ const DEFAULT_P4578_HAR = "C:/Users/kvoter2/Downloads/www.p4578.com.har";
 const DEFAULT_P4578_BASE_URL = "https://www.pinnacle888.com";
 const DEFAULT_P4578_MAX_LEAGUES = 200;
 const DEFAULT_P4578_CHUNK_SIZE = 50;
-const DEFAULT_P4578_EVENT_ENRICHMENT_CHUNK_SIZE = 6;
+const DEFAULT_P4578_LEAGUE_BATCH_SIZE = 25;
+const DEFAULT_P4578_EVENT_ENRICHMENT_CHUNK_SIZE = 20;
 const REQUEST_TIMEOUT_MS = 10_000;
 const TIPSPORT_MUTED = true;
 
@@ -604,76 +605,89 @@ async function fetchP4578Data(harPath, args, options = {}) {
       ? args.p4578ChunkSize
       : DEFAULT_P4578_CHUNK_SIZE;
 
-    for (let index = 0; index < leagueTargets.length; index += 1) {
-      const league = leagueTargets[index];
-      const leagueOddsUrl = buildP4578LeagueOddsUrl({
-        baseUrl: bootstrap.baseUrl,
-        sportId,
-        leagueCode: league.leagueCode,
-      });
-      try {
-        const leagueOddsResponse = await fetchWithRetry(leagueOddsUrl, {
-          headers: discoveryHeaders,
-        });
-        if (!leagueOddsResponse.ok) {
-          throw new Error(`${leagueOddsResponse.status} ${leagueOddsResponse.statusText}`);
-        }
+    const leagueBatchSize = DEFAULT_P4578_LEAGUE_BATCH_SIZE;
+    let firstLeagueLogged = false;
 
-        const leagueOdds = await leagueOddsResponse.json();
-        if (fetchedLeagueResults.length === 0) {
-          // Log top-level keys of the first league response for debugging
-          const keys = leagueOdds && typeof leagueOdds === "object" ? Object.keys(leagueOdds) : ["(not an object)"];
-          console.error(`[p4578] first league response top-level keys: ${keys.join(", ")}`);
-        }
-        const leagueContext = {
-          source: "p4578",
-          sportId,
-          leagueCode: league.leagueCode,
-          leagueName: league.name || league.englishName || league.leagueCode,
-        };
-        const rawLeagueEvents = findEventsArray(leagueOdds);
-        const leagueEnrichment = await enrichP4578EventsWithEventOdds(rawLeagueEvents, leagueContext, {
-          baseUrl: bootstrap.baseUrl,
-          headers: discoveryHeaders,
-          har: bootstrap.har || null,
-        });
-        const leagueMatches = leagueEnrichment.matches;
+    for (let batchStart = 0; batchStart < leagueTargets.length; batchStart += leagueBatchSize) {
+      const batch = leagueTargets.slice(batchStart, batchStart + leagueBatchSize);
 
-        fetchedLeagueResults.push({
-          leagueCode: league.leagueCode,
-          leagueName: league.name || league.englishName || league.leagueCode,
-          requestUrl: leagueOddsUrl,
-          eventRequestUrls: leagueEnrichment.requestUrls,
-          eventFetchFailures: leagueEnrichment.failures,
-          matchCount: leagueMatches.length,
-          matches: leagueMatches,
-          raw: leagueOdds,
-        });
-      } catch (error) {
-        failedLeagueResults.push({
-          leagueCode: league.leagueCode,
-          leagueName: league.name || league.englishName || league.leagueCode,
-          error: error.message || String(error),
-        });
+      const batchResults = await Promise.all(
+        batch.map(async (league) => {
+          const leagueOddsUrl = buildP4578LeagueOddsUrl({
+            baseUrl: bootstrap.baseUrl,
+            sportId,
+            leagueCode: league.leagueCode,
+          });
+          try {
+            const leagueOddsResponse = await fetchWithRetry(leagueOddsUrl, {
+              headers: discoveryHeaders,
+            });
+            if (!leagueOddsResponse.ok) {
+              throw new Error(`${leagueOddsResponse.status} ${leagueOddsResponse.statusText}`);
+            }
+
+            const leagueOdds = await leagueOddsResponse.json();
+            const leagueContext = {
+              source: "p4578",
+              sportId,
+              leagueCode: league.leagueCode,
+              leagueName: league.name || league.englishName || league.leagueCode,
+            };
+            const rawLeagueEvents = findEventsArray(leagueOdds);
+            const leagueEnrichment = await enrichP4578EventsWithEventOdds(rawLeagueEvents, leagueContext, {
+              baseUrl: bootstrap.baseUrl,
+              headers: discoveryHeaders,
+              har: bootstrap.har || null,
+            });
+            const leagueMatches = leagueEnrichment.matches;
+
+            return {
+              ok: true,
+              leagueCode: league.leagueCode,
+              leagueName: league.name || league.englishName || league.leagueCode,
+              requestUrl: leagueOddsUrl,
+              eventRequestUrls: leagueEnrichment.requestUrls,
+              eventFetchFailures: leagueEnrichment.failures,
+              matchCount: leagueMatches.length,
+              matches: leagueMatches,
+              raw: leagueOdds,
+            };
+          } catch (error) {
+            return {
+              ok: false,
+              leagueCode: league.leagueCode,
+              leagueName: league.name || league.englishName || league.leagueCode,
+              error: error.message || String(error),
+            };
+          }
+        })
+      );
+
+      for (const item of batchResults) {
+        if (item.ok) {
+          if (!firstLeagueLogged) {
+            const keys = item.raw && typeof item.raw === "object" ? Object.keys(item.raw) : ["(not an object)"];
+            console.error(`[p4578] first league response top-level keys: ${keys.join(", ")}`);
+            firstLeagueLogged = true;
+          }
+          fetchedLeagueResults.push(item);
+        } else {
+          failedLeagueResults.push(item);
+        }
       }
 
+      const isLast = batchStart + leagueBatchSize >= leagueTargets.length;
       updateP4578LeagueAggregation(result, fetchedLeagueResults, failedLeagueResults, selectedLeagueCode, {
-        complete: false,
+        complete: isLast,
         totalLeagueTargetCount: leagueTargets.length,
         chunkSize,
       });
-      if ((index + 1) % chunkSize === 0 || index === leagueTargets.length - 1) {
-        options.onProgress?.(cloneJsonCompatible(result));
+      options.onProgress?.(cloneJsonCompatible(result));
+
+      if (!isLast) {
+        await sleep(100);
       }
-
-      await sleep(350);
     }
-
-    updateP4578LeagueAggregation(result, fetchedLeagueResults, failedLeagueResults, selectedLeagueCode, {
-      complete: true,
-      totalLeagueTargetCount: leagueTargets.length,
-      chunkSize,
-    });
   }
 
   if (Number.isFinite(args.p4578EventId)) {
@@ -1075,6 +1089,16 @@ function extractP4578SupplementalMarkets(ev, homeName, awayName) {
         .filter(Boolean);
       if (selections.length) {
         markets.push(createSupplementalMarketRecord("exact_total_goals", period, null, selections, special));
+      }
+      continue;
+    }
+
+    if (name === "correct score" || name === "correct score 1st half") {
+      const selections = contestants
+        .map((item) => mapCorrectScoreSelection(item))
+        .filter(Boolean);
+      if (selections.length) {
+        markets.push(createSupplementalMarketRecord("correct_score", period, null, selections, special));
       }
     }
   }
@@ -1495,6 +1519,32 @@ function mapExactGoalsSelection(contestant) {
 
   const normalizedId = label.replace(/\s+/g, "").replace(/\+/g, "plus");
   return mapSpecialSelection(contestant, normalizedId, label);
+}
+
+function mapCorrectScoreSelection(contestant) {
+  const odds = Number(contestant?.p);
+  if (!Number.isFinite(odds) || odds <= 1) {
+    return null;
+  }
+
+  const label = String(contestant?.n || "").trim();
+  const commaIndex = label.lastIndexOf(",");
+  if (commaIndex < 0) {
+    return null;
+  }
+
+  const homeScoreMatch = label.slice(0, commaIndex).match(/(\d+)\s*$/);
+  const awayScoreMatch = label.slice(commaIndex + 1).match(/^\s*\S.*?(\d+)\s*$/);
+  if (!homeScoreMatch || !awayScoreMatch) {
+    return null;
+  }
+
+  return {
+    id: `${homeScoreMatch[1]}:${awayScoreMatch[1]}`,
+    name: label,
+    odds,
+    sourceSelectionId: contestant?.i ?? contestant?.l ?? null,
+  };
 }
 
 function normalizeMarketName(value) {
