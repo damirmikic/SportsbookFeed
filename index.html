@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sportsbook Trading Terminal</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📈</text></svg>">
+  <link rel="stylesheet" href="index.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="app">
+    <header class="header">
+      <div class="header-content">
+        <h1>Sportsbook Feed</h1>
+        <p>Trading Terminal</p>
+      </div>
+      <div class="status-indicator">
+        <span class="pulse"></span> Live
+      </div>
+    </header>
+    <main class="bento-layout">
+      <!-- Master: Leagues Navigation -->
+      <aside class="panel leagues-panel">
+        <div class="panel-header-alt">
+          <h2>Leagues</h2>
+          <div class="search-box">
+            <input type="text" id="league-search" placeholder="Search leagues..." autocomplete="off">
+          </div>
+        </div>
+        <div id="favorites-container" class="favorites-section">
+          <!-- Favorite leagues will appear here -->
+        </div>
+        <div id="leagues-container" class="scrollable">
+          <div class="loading-state">
+            <div class="spinner"></div>
+            <p>Loading leagues...</p>
+          </div>
+        </div>
+      </aside>
+      
+      <!-- Detail: Market Board -->
+      <section class="panel market-panel">
+        <h2>Market Board <span id="current-league"></span></h2>
+        <div id="odds-container" class="scrollable">
+          <div class="empty-state">Select a league to view odds</div>
+        </div>
+      </section>
+    </main>
+    
+    <!-- Side Drawer -->
+    <div id="drawer-overlay" class="drawer-overlay"></div>
+    <aside id="side-drawer" class="side-drawer">
+      <div class="drawer-header">
+        <div class="drawer-title">
+          <h2 id="drawer-match-name">Match Details</h2>
+          <p id="drawer-match-time">Kick-off Time</p>
+        </div>
+        <button id="close-drawer" class="close-btn">&times;</button>
+      </div>
+      <div id="drawer-content" class="scrollable">
+        <!-- Markets will be rendered here -->
+      </div>
+    </aside>
+  </div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
