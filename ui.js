@@ -1,4 +1,4 @@
-import { state, toggleFavorite, snapshotOdds, getOverride, setOverride, clearOverride } from './state.js';
+import { state, toggleFavorite, snapshotOdds, getOverride, setOverride, clearOverride, clearAllOverridesForEvent, getTradingMode, setTradingMode } from './state.js';
 import { fetchOdds } from './api.js';
 import { calculateTeamLambdas, calculateShinNoVig } from './math.js';
 import { buildAllMarkets } from './markets.js';
@@ -18,6 +18,52 @@ function marginBadgeHTML(margin) {
   const pct = (margin * 100).toFixed(1);
   const cls = margin < 1.03 ? 'margin-green' : margin < 1.07 ? 'margin-yellow' : 'margin-red';
   return `<span class="margin-badge ${cls}">${pct}%</span>`;
+}
+
+// Build a matchPeriod copy with overridden prices substituted in
+function getEffectiveMatchPeriod(matchPeriod, eventId, homeTeam, awayTeam) {
+  const get = (mktId, label, original) => {
+    const ov = getOverride(`${eventId}|${mktId}|${label}`);
+    return ov ? parseFloat(ov) : (parseFloat(original) || original);
+  };
+  const r = JSON.parse(JSON.stringify(matchPeriod));
+  const ml = r.moneyLine || r.moneyline;
+  if (ml) {
+    const h = get('ml', homeTeam, ml.homePrice || ml.home);
+    const d = get('ml', 'Draw',   ml.drawPrice || ml.draw);
+    const a = get('ml', awayTeam, ml.awayPrice || ml.away);
+    if (r.moneyLine) r.moneyLine = { ...r.moneyLine, homePrice: h, home: h, drawPrice: d, draw: d, awayPrice: a, away: a };
+    if (r.moneyline) r.moneyline = { ...r.moneyline, homePrice: h, home: h, drawPrice: d, draw: d, awayPrice: a, away: a };
+  }
+  if (r.overUnder && Array.isArray(r.overUnder)) {
+    r.overUnder = r.overUnder.map(ou => ({
+      ...ou,
+      overOdds:  get('ou', `Over ${ou.points}`,  ou.overOdds),
+      underOdds: get('ou', `Under ${ou.points}`, ou.underOdds),
+    }));
+  }
+  return r;
+}
+
+// Update the trading-mode toggle button in the drawer header
+function updateModeButton(eventId) {
+  const btn = document.getElementById('trading-mode-btn');
+  if (!btn) return;
+  const isManual = getTradingMode(eventId) === 'manual';
+  btn.textContent = isManual ? '⚡ MANUAL' : '● AUTO';
+  btn.className   = `mode-btn ${isManual ? 'manual' : 'auto'}`;
+  btn.title       = isManual
+    ? 'Switch back to AUTO (clears all manual overrides)'
+    : 'Edit any price to enter MANUAL mode';
+  btn.onclick = () => {
+    if (isManual) {
+      clearAllOverridesForEvent(eventId);
+      setTradingMode(eventId, 'auto');
+      updateModeButton(eventId);
+      const ev = state.activeEvents.find(e => e.id.toString() === String(eventId));
+      if (ev) renderDrawerMarkets(ev);
+    }
+  };
 }
 
 export function renderLeagues(leaguesToRender) {
@@ -200,6 +246,7 @@ export function openDrawer(eventId) {
   const event = state.activeEvents.find(e => e.id.toString() === eventId.toString());
   if (!event) return;
   state.drawerEventId = eventId; // needed by override key generation
+  updateModeButton(eventId);
 
   let homeTeam = event.home || 'Home';
   let awayTeam = event.away || 'Away';
@@ -251,7 +298,12 @@ export function renderDrawerMarkets(event) {
     if (a) awayTeam = a.name || a.englishName;
   }
 
-  const lambdaData = calculateTeamLambdas(matchPeriod);
+  // In MANUAL mode, re-solve lambdas from overridden prices so derived markets reflect the override
+  const isManual = getTradingMode(event.id) === 'manual';
+  const effectivePeriod = isManual
+    ? getEffectiveMatchPeriod(matchPeriod, event.id, homeTeam, awayTeam)
+    : matchPeriod;
+  const lambdaData = calculateTeamLambdas(effectivePeriod);
 
   // --- Dixon-Coles section ---
   if (lambdaData) {
@@ -367,6 +419,9 @@ function makeEditable(chip, priceSpan, key, currentVal, rows = [], marketId = ''
     if (val > 1) {
       setOverride(key, val);
       if (rows.length > 1 && marketId) repriceOthers(key, val, rows, marketId);
+      // Auto-switch to MANUAL mode and update button
+      setTradingMode(state.drawerEventId, 'manual');
+      updateModeButton(state.drawerEventId);
       const ev = state.activeEvents.find(e => e.id.toString() === state.drawerEventId?.toString());
       if (ev) renderDrawerMarkets(ev);
     } else {

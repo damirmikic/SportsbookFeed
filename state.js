@@ -52,3 +52,22 @@ export function clearOverride(key) {
   delete _overrides[key];
   localStorage.setItem('priceOverrides', JSON.stringify(_overrides));
 }
+
+export function clearAllOverridesForEvent(eventId) {
+  const prefix = `${eventId}|`;
+  Object.keys(_overrides).forEach(k => { if (k.startsWith(prefix)) delete _overrides[k]; });
+  localStorage.setItem('priceOverrides', JSON.stringify(_overrides));
+}
+
+// ── Trading mode (auto / manual) per event ─────────────────
+const _tradingModes = JSON.parse(localStorage.getItem('tradingModes') || '{}');
+
+export function getTradingMode(eventId) {
+  return _tradingModes[String(eventId)] || 'auto';
+}
+
+export function setTradingMode(eventId, mode) {
+  if (mode === 'auto') delete _tradingModes[String(eventId)];
+  else _tradingModes[String(eventId)] = mode;
+  localStorage.setItem('tradingModes', JSON.stringify(_tradingModes));
+}
