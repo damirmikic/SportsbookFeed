@@ -3,6 +3,23 @@ import { fetchOdds } from './api.js';
 import { calculateTeamLambdas, calculateShinNoVig } from './math.js';
 import { buildAllMarkets } from './markets.js';
 
+// Sum of inverse prices → book percentage (e.g. 1.05 = 105%)
+function calcMargin(rows) {
+  let sum = 0, count = 0;
+  rows.forEach(r => {
+    const v = parseFloat(r.value);
+    if (!isNaN(v) && v > 1) { sum += 1 / v; count++; }
+  });
+  return count >= 2 ? sum : null;
+}
+
+function marginBadgeHTML(margin) {
+  if (margin === null) return '';
+  const pct = (margin * 100).toFixed(1);
+  const cls = margin < 1.03 ? 'margin-green' : margin < 1.07 ? 'margin-yellow' : 'margin-red';
+  return `<span class="margin-badge ${cls}">${pct}%</span>`;
+}
+
 export function renderLeagues(leaguesToRender) {
   const leaguesContainer   = document.getElementById('leagues-container');
   const favoritesContainer = document.getElementById('favorites-container');
@@ -245,11 +262,12 @@ export function renderDrawerMarkets(event) {
     const ml   = matchPeriod.moneyLine || matchPeriod.moneyline;
     const odds = [ml.homePrice || ml.home, ml.drawPrice || ml.draw, ml.awayPrice || ml.away];
     const fair = calculateShinNoVig(odds);
-    drawerContent.appendChild(createMarketGroup('Money Line – Match', [
+    const mlRows = [
       { label: homeTeam, value: odds[0] || '-', fair: fair[0] },
       { label: 'Draw',   value: odds[1] || '-', fair: fair[1] },
       { label: awayTeam, value: odds[2] || '-', fair: fair[2] },
-    ], 'three-cols', true));
+    ];
+    drawerContent.appendChild(createMarketGroup('Money Line – Match', mlRows, 'three-cols', true, calcMargin(mlRows)));
   }
 
   if (matchPeriod.handicap && Array.isArray(matchPeriod.handicap)) {
@@ -260,7 +278,9 @@ export function renderDrawerMarkets(event) {
       rows.push({ label: fmt(h.homeSpread), value: h.homeOdds, fair: fair[0] });
       rows.push({ label: fmt(h.awaySpread), value: h.awayOdds, fair: fair[1] });
     });
-    drawerContent.appendChild(createMarketGroup('Handicap – Match', rows));
+    // Show margin for the first handicap line only
+    const firstPair = rows.slice(0, 2);
+    drawerContent.appendChild(createMarketGroup('Handicap – Match', rows, '', false, calcMargin(firstPair)));
   }
 
   if (matchPeriod.overUnder && Array.isArray(matchPeriod.overUnder)) {
@@ -272,7 +292,9 @@ export function renderDrawerMarkets(event) {
         rows.push({ label: `Over ${ou.points}`,  value: ou.overOdds,  fair: fair[0] });
         rows.push({ label: `Under ${ou.points}`, value: ou.underOdds, fair: fair[1] });
       });
-    drawerContent.appendChild(createMarketGroup('Total – Match', rows));
+    // Margin from the first O/U line (2.5)
+    const firstPair = rows.slice(0, 2);
+    drawerContent.appendChild(createMarketGroup('Total – Match', rows, '', false, calcMargin(firstPair)));
   }
 
   // --- Derived markets from model ---
@@ -297,13 +319,14 @@ export function renderDrawerMarkets(event) {
   }
 }
 
-export function createMarketGroup(title, rows, extraClass = '', hasShowAll = false) {
+export function createMarketGroup(title, rows, extraClass = '', hasShowAll = false, margin = null) {
   const group = document.createElement('div');
   group.className = 'market-group';
   group.innerHTML = `
     <div class="market-header">
       <h3>${title}</h3>
       <div class="market-header-actions">
+        ${marginBadgeHTML(margin)}
         ${hasShowAll ? '<button class="show-all-btn">Show All</button>' : ''}
         <span style="font-size:0.8rem">▼</span>
       </div>
