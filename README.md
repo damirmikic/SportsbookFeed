@@ -1,67 +1,64 @@
 # Sportsbook Feed
 
-A local odds feed server that ingests Pinnacle (p4578) and Tipsport odds, computes a Dixon-Coles probability model, and exposes a Betradar-style event/market feed over SSE for a browser UI.
+A browser-based sportsbook trading terminal. Fetches live football league and odds data directly from the Pinnacle feed, computes a Dixon-Coles probability model, and renders a clean market board UI — no backend or server required.
 
 ---
 
 ## Quick start
 
-**Start the dev server (recommended):**
-```
-node server.js --source p4578 --p4578-fetch-events --p4578-max-leagues 12
-```
-Open `http://localhost:3000`. Odds refresh every 30 s and are pushed to the UI via Server-Sent Events.
+Open `index.html` in a browser, or serve locally to avoid CORS issues:
 
-**Generate `odds.json` once (static file mode):**
-```
-node fetch-odds.js --p4578-sport-id 29 --p4578-league-code brazil-serie-a --out odds.json
-```
-
-**Serve the static UI without `server.js`:**
-```
+```bash
 npx serve .
 ```
-Then open the URL shown and load `sportsbook.html`.
+
+Then open `http://localhost:3000`.
+
+> **Note:** Direct Pinnacle API calls may be blocked by CORS depending on your network/browser. Use a browser extension or proxy if needed.
 
 ---
 
 ## Architecture
 
+Pure browser app — no Node.js server, no build step.
+
 ```
-fetch-odds.js  →  raw matches  →  lib/provider-feed.js  →  providerFeed  →  SSE / odds.json
+index.html
+  └── app.js        ← bootstrap & event wiring
+        ├── api.js  ← fetch leagues & odds from Pinnacle
+        ├── state.js← in-memory app state (selected league, favourites)
+        ├── ui.js   ← DOM rendering (leagues list, market board, drawer)
+        └── math.js ← Dixon-Coles λ, Shin no-vig, probability grid
 ```
+
+### File roles
 
 | File | Role |
 |---|---|
-| `fetch-odds.js` | Ingestion. Fetches p4578/Pinnacle live and optionally replays Tipsport from a HAR file. Normalizes both into a common match shape. |
-| `lib/lambda.js` | Math engine. Poisson / Shin / Dixon-Coles logic. |
-| `lib/provider-feed.js` | Feed builder. Enriches matches with lambdas, builds Betradar-style `{ templates, events, markets, timelines, incidents }`. |
-| `server.js` | HTTP + SSE server. Spawns `fetch-odds.js`, hydrates with `buildProviderFeed`, broadcasts to SSE clients. |
-| `lib/manual-odds.js` | JSON persistence for trader manual price overrides (`manual-odds.json`). |
-| `lib/market-state.js` | JSON persistence for market/event suspension state (`market-state.json`). |
-| `lib/feed-settings.js` | JSON persistence for feed-wide settings (`feed-settings.json`). |
-| `sportsbook.html` / `sportsbook-app.js` / `sportsbook.css` | Browser UI. |
-
-### Data sources
-
-- **p4578 / Pinnacle** — live HTTP. Returns 1x2 + over/under lines → lambdas computed → derived markets generated (BTTS, DNB, double chance, team totals, correct score).
-- **Tipsport** — HAR replay only, no live fetch. Returns 1x2 without totals → no derived markets.
+| `index.html` | Entry point and HTML shell |
+| `index.css` | Styles — dark trading terminal theme, bento layout |
+| `app.js` | Bootstraps the app, binds UI events, kicks off data fetch |
+| `api.js` | `fetchLeagues()` and `fetchOdds(leagueCode)` — thin wrappers over Pinnacle endpoints |
+| `state.js` | Shared mutable state: `allLeagues`, `selectedLeague`, `favourites` |
+| `ui.js` | Renders leagues panel, market board, and side drawer with match details |
+| `math.js` | Dixon-Coles attack/defence solve, Poisson score grid, Shin no-vig conversion |
 
 ---
 
-## Server API
+## Data source
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/` | Serves `sportsbook.html` |
-| GET | `/events` | SSE stream — pushes full `providerFeed` on each refresh |
-| POST | `/refresh` | Trigger an immediate odds fetch |
-| GET/POST | `/manual-odds` | Read or write trader manual price overrides |
-| GET/POST | `/market-state` | Read or suspend/open individual markets |
-| GET/POST | `/event-state` | Read or suspend/open whole events |
-| GET/POST | `/feed-settings` | Read or update feed-wide settings (e.g. first-half ratio) |
-| GET | `/debug` | Summary of current cache structure |
+**Pinnacle (pinnacle888.com)** — live football data:
+- `/leagues` — list of active football leagues
+- `/odds/league` — 1x2, Over/Under lines per league
 
-POST bodies are JSON. Market/event status values: `"open"` or `"suspended"`.
+Derived markets computed client-side from raw odds: BTTS, DNB, double chance, correct score probabilities.
 
-The `reprice_market` mode on `/manual-odds` recalculates all other selections to maintain a balanced book when one price is edited.
+---
+
+## Features
+
+- 📋 **League browser** — searchable list of active leagues with favourites pinning
+- 📊 **Market board** — live 1x2 and O/U odds per match
+- 🧮 **Dixon-Coles model** — probability-implied xG lambdas and no-vig fair prices
+- 🗂 **Match drawer** — click any match to expand full market detail
+- ⭐ **Favourites** — pin leagues to the top, persisted in `localStorage`
