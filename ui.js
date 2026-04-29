@@ -209,28 +209,46 @@ export function renderOdds(data) {
       if (ou25) { oddsOver = ou25.overOdds || ou25.over || '-'; oddsUnder = ou25.underOdds || ou25.under || '-'; }
     }
 
-    // Price-move detection
+    // Apply manual price overrides on the board
+    const isManual = getTradingMode(event.id) === 'manual';
+    let m1 = false, mX = false, m2 = false, mOver = false, mUnder = false;
+    if (isManual) {
+      const o1    = getOverride(`${event.id}|ml|${homeTeam}`);
+      const oX    = getOverride(`${event.id}|ml|Draw`);
+      const o2    = getOverride(`${event.id}|ml|${awayTeam}`);
+      const oOver = getOverride(`${event.id}|ou|Over 2.5`);
+      const oUnd  = getOverride(`${event.id}|ou|Under 2.5`);
+      if (o1)    { odds1     = o1;    m1     = true; }
+      if (oX)    { oddsX     = oX;    mX     = true; }
+      if (o2)    { odds2     = o2;    m2     = true; }
+      if (oOver) { oddsOver  = oOver; mOver  = true; }
+      if (oUnd)  { oddsUnder = oUnd;  mUnder = true; }
+    }
+
+    // Price-move detection (suppress for manually-set cells)
     const prev = state.previousOdds[event.id] || {};
-    const trend = (val, prevVal) => {
-      if (!prevVal || val === '-') return '';
+    const trend = (val, prevVal, isManualCell) => {
+      if (isManualCell || !prevVal || val === '-') return '';
       const diff = parseFloat(val) - prevVal;
       if (Math.abs(diff) < 0.001) return '';
       return diff > 0 ? ' price-up' : ' price-down';
     };
-    const t1 = trend(odds1, prev.home);
-    const tX = trend(oddsX, prev.draw);
-    const t2 = trend(odds2, prev.away);
+    const t1 = trend(odds1, prev.home, m1);
+    const tX = trend(oddsX, prev.draw, mX);
+    const t2 = trend(odds2, prev.away, m2);
 
-    html += `<tr data-event-id="${event.id}">
+    const manualBadge = isManual ? '<span class="manual-row-badge">⚡M</span>' : '';
+
+    html += `<tr data-event-id="${event.id}" class="${isManual ? 'manual-row' : ''}">
       <td>
-        <div class="match-time">${time}</div>
+        <div class="match-time">${time}${manualBadge}</div>
         <div class="match-teams">${homeTeam} vs ${awayTeam}</div>
       </td>
-      <td><button class="odds-btn${t1}">${odds1}${t1 === ' price-up' ? ' ▲' : t1 === ' price-down' ? ' ▼' : ''}</button></td>
-      <td><button class="odds-btn${tX}">${oddsX}${tX === ' price-up' ? ' ▲' : tX === ' price-down' ? ' ▼' : ''}</button></td>
-      <td><button class="odds-btn${t2}">${odds2}${t2 === ' price-up' ? ' ▲' : t2 === ' price-down' ? ' ▼' : ''}</button></td>
-      <td><button class="odds-btn" style="border-color:var(--accent-color)">${oddsOver}</button></td>
-      <td><button class="odds-btn" style="border-color:var(--accent-color)">${oddsUnder}</button></td>
+      <td><button class="odds-btn${m1 ? ' manual-price' : t1}">${odds1}${!m1 && t1 === ' price-up' ? ' ▲' : !m1 && t1 === ' price-down' ? ' ▼' : ''}</button></td>
+      <td><button class="odds-btn${mX ? ' manual-price' : tX}">${oddsX}${!mX && tX === ' price-up' ? ' ▲' : !mX && tX === ' price-down' ? ' ▼' : ''}</button></td>
+      <td><button class="odds-btn${m2 ? ' manual-price' : t2}">${odds2}${!m2 && t2 === ' price-up' ? ' ▲' : !m2 && t2 === ' price-down' ? ' ▼' : ''}</button></td>
+      <td><button class="odds-btn${mOver ? ' manual-price' : ''}" style="border-color:${mOver ? '#fbbf24' : 'var(--accent-color)'}">${oddsOver}</button></td>
+      <td><button class="odds-btn${mUnder ? ' manual-price' : ''}" style="border-color:${mUnder ? '#fbbf24' : 'var(--accent-color)'}">${oddsUnder}</button></td>
     </tr>`;
   });
 
