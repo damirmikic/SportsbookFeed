@@ -872,3 +872,37 @@ body {
   margin-left: 0.35rem;
   vertical-align: middle;
 }
+
+/* ── Margin editor input ───────────────────────────────── */
+.margin-target-input {
+  width: 58px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 4px;
+  color: #64748b;
+  font-size: 0.68rem;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  padding: 0.15rem 0.3rem;
+  text-align: center;
+  outline: none;
+  transition: all 0.15s;
+}
+.margin-target-input::placeholder {
+  color: #334155;
+  font-size: 0.65rem;
+}
+.margin-target-input:hover {
+  border-color: rgba(255,255,255,0.2);
+  color: #94a3b8;
+}
+.margin-target-input:focus {
+  border-color: #818cf8;
+  background: rgba(129,140,248,0.08);
+  color: #e2e8f0;
+  box-shadow: 0 0 0 2px rgba(129,140,248,0.15);
+}
+/* Remove number input spinners */
+.margin-target-input::-webkit-inner-spin-button,
+.margin-target-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+.margin-target-input[type=number] { -moz-appearance: textfield; }

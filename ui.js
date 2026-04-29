@@ -421,6 +421,37 @@ export function renderDrawerMarkets(event) {
   }
 }
 
+// Apply a target book % margin to all selections in a market.
+// Uses current effective prices (overrides if set), normalises fair probs,
+// then scales to the target margin and saves each new price as an override.
+function applyTargetMargin(eventId, marketId, rows, targetMarginPct) {
+  const M = targetMarginPct / 100;
+
+  const effectivePrice = (row) => {
+    const k = `${eventId}|${marketId}|${row.label}`;
+    return parseFloat(getOverride(k) || row.value);
+  };
+
+  const applyToGroup = (group) => {
+    const valid = group.filter(r => { const p = effectivePrice(r); return !isNaN(p) && p > 1; });
+    if (valid.length < 2) return;
+    const impProbs  = valid.map(r => 1 / effectivePrice(r));
+    const total     = impProbs.reduce((a, b) => a + b, 0);
+    const fairProbs = impProbs.map(q => q / total);  // normalise → sum = 1
+    valid.forEach((row, i) => {
+      const newPrice = 1 / (fairProbs[i] * M);
+      if (newPrice > 1) setOverride(`${eventId}|${marketId}|${row.label}`, newPrice);
+    });
+  };
+
+  // For paired markets (OU, HDP: row pairs of 2), apply per-pair
+  if (rows.length > 3) {
+    for (let i = 0; i < rows.length; i += 2) applyToGroup(rows.slice(i, i + 2));
+  } else {
+    applyToGroup(rows); // 1X2: apply to all 3 together
+  }
+}
+
 // Proportionally redistribute implied probability to all other selections
 // to keep total margin constant after one price is manually set.
 function repriceOthers(changedKey, newPrice, rows, marketId) {
@@ -529,6 +560,47 @@ export function createMarketGroup(title, rows, extraClass = '', hasShowAll = fal
   }
 
   const grid = group.querySelector('.market-grid');
+
+  // ── Margin editor input ──────────────────────────────────
+  // Show only on API markets (marketId set) and not when event is fully suspended
+  if (marketId && !evtSuspended) {
+    const actionsDiv  = group.querySelector('.market-header-actions');
+    const marginInput = document.createElement('input');
+    marginInput.type        = 'number';
+    marginInput.className   = 'margin-target-input';
+    marginInput.min         = '100';
+    marginInput.max         = '120';
+    marginInput.step        = '0.1';
+    const curM = calcMargin(rows);
+    marginInput.placeholder = curM ? `${(curM * 100).toFixed(1)}%` : '105.0%';
+    marginInput.title       = 'Type target margin % and press Enter';
+
+    const confirmMargin = () => {
+      const val = parseFloat(marginInput.value);
+      if (!isNaN(val) && val >= 100 && val <= 120) {
+        applyTargetMargin(state.drawerEventId, marketId, rows, val);
+        setTradingMode(state.drawerEventId, 'manual');
+        updateModeButton(state.drawerEventId);
+        const ev = state.activeEvents.find(e => e.id.toString() === state.drawerEventId?.toString());
+        if (ev) renderDrawerMarkets(ev);
+      } else {
+        marginInput.value = '';
+      }
+    };
+
+    marginInput.addEventListener('click',   e => e.stopPropagation());
+    marginInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter')  { e.preventDefault(); confirmMargin(); }
+      if (e.key === 'Escape') { marginInput.value = ''; marginInput.blur(); }
+    });
+    marginInput.addEventListener('blur', () => { if (marginInput.value) confirmMargin(); });
+
+    // Insert before the suspend toggle
+    const suspBtn = actionsDiv.querySelector('.suspend-market-btn');
+    if (suspBtn) actionsDiv.insertBefore(marginInput, suspBtn);
+    else         actionsDiv.appendChild(marginInput);
+  }
+
   rows.forEach(row => {
     const item = document.createElement('div');
     item.className = 'market-row';
