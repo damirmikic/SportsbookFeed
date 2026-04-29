@@ -598,3 +598,63 @@ body {
     right: -100%;
   }
 }
+
+/* ── Price move indicators ─────────────────────────────── */
+@keyframes flashUp {
+  0%   { background: rgba(34,197,94,0.35); }
+  100% { background: transparent; }
+}
+@keyframes flashDown {
+  0%   { background: rgba(239,68,68,0.35); }
+  100% { background: transparent; }
+}
+
+.odds-btn.price-up {
+  color: #4ade80;
+  border-color: #4ade80;
+  animation: flashUp 1.8s ease-out forwards;
+}
+
+.odds-btn.price-down {
+  color: #f87171;
+  border-color: #f87171;
+  animation: flashDown 1.8s ease-out forwards;
+}
+
+/* ── Refresh timestamp badge ───────────────────────────── */
+#last-refresh {
+  font-size: 0.7rem;
+  color: #64748b;
+  margin-left: auto;
+  padding-right: 0.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Market divider (derived markets header) ───────────── */
+.market-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1.25rem 0 0.5rem;
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.market-divider::before,
+.market-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(255,255,255,0.08);
+}
+
+/* ── Probability badge inside market rows ──────────────── */
+.prob-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  color: #64748b;
+  margin-left: 0.35rem;
+  font-variant-numeric: tabular-nums;
+}
