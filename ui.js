@@ -265,6 +265,7 @@ export function renderOdds(data) {
     const tX = trend(oddsX, prev.draw, mX);
     const t2 = trend(odds2, prev.away, m2);
 
+    const manualBadge = isManual ? '<span class="manual-row-badge">⚡M</span>' : '';
     const suspBadge   = anySusp && !evtSuspended ? '<span class="susp-badge">🔒</span>' : '';
     const rowClass = [isManual ? 'manual-row' : '', evtSuspended ? 'event-suspended' : ''].filter(Boolean).join(' ');
 
