@@ -3,7 +3,8 @@ export const state = {
   allLeagues: [],
   favorites: JSON.parse(localStorage.getItem('favoriteLeagues') || '[]'),
   currentLeagueCode: null,
-  previousOdds: {},  // eventId -> { home, draw, away }
+  previousOdds: {},
+  drawerEventId: null,
 };
 
 export function toggleFavorite(code) {
@@ -33,4 +34,21 @@ export function snapshotOdds() {
     };
   });
   return snap;
+}
+
+// ── Manual price overrides ─────────────────────────────────
+const _overrides = JSON.parse(localStorage.getItem('priceOverrides') || '{}');
+
+export function getOverride(key) {
+  return _overrides[key] || null;
+}
+
+export function setOverride(key, val) {
+  _overrides[key] = parseFloat(val).toFixed(3);
+  localStorage.setItem('priceOverrides', JSON.stringify(_overrides));
+}
+
+export function clearOverride(key) {
+  delete _overrides[key];
+  localStorage.setItem('priceOverrides', JSON.stringify(_overrides));
 }

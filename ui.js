@@ -1,4 +1,4 @@
-import { state, toggleFavorite, snapshotOdds } from './state.js';
+import { state, toggleFavorite, snapshotOdds, getOverride, setOverride, clearOverride } from './state.js';
 import { fetchOdds } from './api.js';
 import { calculateTeamLambdas, calculateShinNoVig } from './math.js';
 import { buildAllMarkets } from './markets.js';
@@ -199,6 +199,7 @@ export function renderOdds(data) {
 export function openDrawer(eventId) {
   const event = state.activeEvents.find(e => e.id.toString() === eventId.toString());
   if (!event) return;
+  state.drawerEventId = eventId; // needed by override key generation
 
   let homeTeam = event.home || 'Home';
   let awayTeam = event.away || 'Away';
@@ -267,7 +268,7 @@ export function renderDrawerMarkets(event) {
       { label: 'Draw',   value: odds[1] || '-', fair: fair[1] },
       { label: awayTeam, value: odds[2] || '-', fair: fair[2] },
     ];
-    drawerContent.appendChild(createMarketGroup('Money Line – Match', mlRows, 'three-cols', true, calcMargin(mlRows)));
+    drawerContent.appendChild(createMarketGroup('Money Line – Match', mlRows, 'three-cols', true, calcMargin(mlRows), 'ml'));
   }
 
   if (matchPeriod.handicap && Array.isArray(matchPeriod.handicap)) {
@@ -280,7 +281,7 @@ export function renderDrawerMarkets(event) {
     });
     // Show margin for the first handicap line only
     const firstPair = rows.slice(0, 2);
-    drawerContent.appendChild(createMarketGroup('Handicap – Match', rows, '', false, calcMargin(firstPair)));
+    drawerContent.appendChild(createMarketGroup('Handicap – Match', rows, '', false, calcMargin(firstPair), 'hdp'));
   }
 
   if (matchPeriod.overUnder && Array.isArray(matchPeriod.overUnder)) {
@@ -294,7 +295,7 @@ export function renderDrawerMarkets(event) {
       });
     // Margin from the first O/U line (2.5)
     const firstPair = rows.slice(0, 2);
-    drawerContent.appendChild(createMarketGroup('Total – Match', rows, '', false, calcMargin(firstPair)));
+    drawerContent.appendChild(createMarketGroup('Total – Match', rows, '', false, calcMargin(firstPair), 'ou'));
   }
 
   // --- Derived markets from model ---
@@ -310,16 +311,44 @@ export function renderDrawerMarkets(event) {
         const rows = market.selections.map(s => ({
           label: s.label,
           value: s.price,
-          fair: null,  // derived markets ARE the fair price
+          fair: null,
           prob: s.prob,
         }));
-        drawerContent.appendChild(createMarketGroup(market.name, rows, market.cols));
+        drawerContent.appendChild(createMarketGroup(market.name, rows, market.cols, false, null, market.id));
       });
     }
   }
 }
 
-export function createMarketGroup(title, rows, extraClass = '', hasShowAll = false, margin = null) {
+function makeEditable(chip, priceSpan, key, currentVal) {
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.step = '0.01';
+  input.min = '1.01';
+  input.value = currentVal;
+  input.className = 'price-edit-input';
+  priceSpan.replaceWith(input);
+  input.focus();
+  input.select();
+
+  const confirm = () => {
+    const val = parseFloat(input.value);
+    if (val > 1) {
+      setOverride(key, val);
+      const ev = state.activeEvents.find(e => e.id.toString() === state.drawerEventId?.toString());
+      if (ev) renderDrawerMarkets(ev);
+    } else {
+      input.replaceWith(priceSpan);
+    }
+  };
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); confirm(); }
+    if (e.key === 'Escape') input.replaceWith(priceSpan);
+  });
+  input.addEventListener('blur', confirm);
+}
+
+export function createMarketGroup(title, rows, extraClass = '', hasShowAll = false, margin = null, marketId = '') {
   const group = document.createElement('div');
   group.className = 'market-group';
   group.innerHTML = `
@@ -338,23 +367,73 @@ export function createMarketGroup(title, rows, extraClass = '', hasShowAll = fal
   rows.forEach(row => {
     const item = document.createElement('div');
     item.className = 'market-row';
+
+    const overrideKey = marketId ? `${state.drawerEventId}|${marketId}|${row.label}` : null;
+    const overrideVal  = overrideKey ? getOverride(overrideKey) : null;
+    const isOverridden = !!overrideVal;
+    const displayPrice = overrideVal || row.value;
+
     const probBadge = row.prob != null
-      ? `<span class="prob-badge">${(row.prob * 100).toFixed(1)}%</span>`
-      : '';
-    item.innerHTML = `
-      <span class="market-label">${row.label}${probBadge}</span>
-      <div class="odds-comparison">
-        <div class="price-chip bookie">
-          <span class="chip-label">${row.fair ? 'API' : 'Fair'}</span>
-          <span class="market-value">${row.value}</span>
-        </div>
-        ${row.fair && row.fair !== '-' ? `
-          <div class="price-chip fair">
-            <span class="chip-label">Fair</span>
-            <span class="fair-value">${row.fair}</span>
-          </div>` : ''}
-      </div>
-    `;
+      ? `<span class="prob-badge">${(row.prob * 100).toFixed(1)}%</span>` : '';
+
+    const labelEl = document.createElement('span');
+    labelEl.className = 'market-label';
+    labelEl.innerHTML = `${row.label}${probBadge}`;
+
+    const oddsComp   = document.createElement('div');
+    oddsComp.className = 'odds-comparison';
+
+    // Main price chip (API or Override)
+    const bookieChip = document.createElement('div');
+    bookieChip.className = `price-chip bookie${isOverridden ? ' overridden' : ''}${overrideKey ? ' editable' : ''}`;
+    bookieChip.title = overrideKey ? (isOverridden ? 'Click price to edit override' : 'Click to override price') : '';
+
+    const chipLabel = document.createElement('span');
+    chipLabel.className = 'chip-label';
+    chipLabel.textContent = isOverridden ? 'M' : (row.fair ? 'API' : 'Fair');
+
+    const priceSpan = document.createElement('span');
+    priceSpan.className = 'market-value';
+    priceSpan.textContent = displayPrice;
+
+    bookieChip.appendChild(chipLabel);
+    bookieChip.appendChild(priceSpan);
+
+    if (overrideKey) {
+      if (isOverridden) {
+        // Clear button
+        const clearBtn = document.createElement('span');
+        clearBtn.className = 'clear-override-btn';
+        clearBtn.textContent = '×';
+        clearBtn.title = 'Clear override';
+        clearBtn.addEventListener('click', e => {
+          e.stopPropagation();
+          clearOverride(overrideKey);
+          const ev = state.activeEvents.find(e => e.id.toString() === state.drawerEventId?.toString());
+          if (ev) renderDrawerMarkets(ev);
+        });
+        bookieChip.appendChild(clearBtn);
+        // Click price to re-edit
+        priceSpan.style.cursor = 'pointer';
+        priceSpan.addEventListener('click', () => makeEditable(bookieChip, priceSpan, overrideKey, displayPrice));
+      } else {
+        // Click anywhere on chip to open editor
+        bookieChip.style.cursor = 'pointer';
+        bookieChip.addEventListener('click', () => makeEditable(bookieChip, priceSpan, overrideKey, displayPrice));
+      }
+    }
+
+    oddsComp.appendChild(bookieChip);
+
+    if (row.fair && row.fair !== '-') {
+      const fairChip = document.createElement('div');
+      fairChip.className = 'price-chip fair';
+      fairChip.innerHTML = `<span class="chip-label">Fair</span><span class="fair-value">${row.fair}</span>`;
+      oddsComp.appendChild(fairChip);
+    }
+
+    item.appendChild(labelEl);
+    item.appendChild(oddsComp);
     grid.appendChild(item);
   });
 
