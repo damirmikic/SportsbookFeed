@@ -1,4 +1,4 @@
-import { state, toggleFavorite, snapshotOdds, getOverride, setOverride, clearOverride, clearAllOverridesForEvent, getTradingMode, setTradingMode } from './state.js';
+import { state, toggleFavorite, snapshotOdds, getOverride, setOverride, clearOverride, clearAllOverridesForEvent, getTradingMode, setTradingMode, isSuspended, setSuspension, hasAnySuspension } from './state.js';
 import { fetchOdds } from './api.js';
 import { calculateTeamLambdas, calculateShinNoVig } from './math.js';
 import { buildAllMarkets } from './markets.js';
@@ -43,6 +43,28 @@ function getEffectiveMatchPeriod(matchPeriod, eventId, homeTeam, awayTeam) {
     }));
   }
   return r;
+}
+
+// Update the suspend-event button in the drawer header
+function updateSuspendButton(eventId) {
+  const btn = document.getElementById('suspend-event-btn');
+  if (!btn) return;
+  const suspended = isSuspended(eventId, 'event');
+  btn.textContent = suspended ? '🔒' : '🔓';
+  btn.className   = `suspend-btn ${suspended ? 'suspended' : 'open'}`;
+  btn.title       = suspended ? 'Event SUSPENDED — click to open' : 'Click to suspend entire event';
+  btn.onclick = () => {
+    const nowSuspended = isSuspended(eventId, 'event');
+    setSuspension(eventId, 'event', nowSuspended ? 'open' : 'suspended');
+    updateSuspendButton(eventId);
+    // Update the board row immediately
+    const row = document.querySelector(`tr[data-event-id="${eventId}"]`);
+    if (row) row.className = row.className
+      .replace(/\bevent-suspended\b/g, '').trim()
+      + (!nowSuspended ? ' event-suspended' : '');
+    const ev = state.activeEvents.find(e => e.id.toString() === String(eventId));
+    if (ev) renderDrawerMarkets(ev);
+  };
 }
 
 // Update the trading-mode toggle button in the drawer header
@@ -209,6 +231,12 @@ export function renderOdds(data) {
       if (ou25) { oddsOver = ou25.overOdds || ou25.over || '-'; oddsUnder = ou25.underOdds || ou25.under || '-'; }
     }
 
+    // Board-level suspension indicators
+    const evtSuspended = isSuspended(event.id, 'event');
+    const mlSuspended  = isSuspended(event.id, 'ml');
+    const ouSuspended  = isSuspended(event.id, 'ou');
+    const anySusp = evtSuspended || mlSuspended || ouSuspended || hasAnySuspension(event.id);
+
     // Apply manual price overrides on the board
     const isManual = getTradingMode(event.id) === 'manual';
     let m1 = false, mX = false, m2 = false, mOver = false, mUnder = false;
@@ -237,18 +265,19 @@ export function renderOdds(data) {
     const tX = trend(oddsX, prev.draw, mX);
     const t2 = trend(odds2, prev.away, m2);
 
-    const manualBadge = isManual ? '<span class="manual-row-badge">⚡M</span>' : '';
+    const suspBadge   = anySusp && !evtSuspended ? '<span class="susp-badge">🔒</span>' : '';
+    const rowClass = [isManual ? 'manual-row' : '', evtSuspended ? 'event-suspended' : ''].filter(Boolean).join(' ');
 
-    html += `<tr data-event-id="${event.id}" class="${isManual ? 'manual-row' : ''}">
+    html += `<tr data-event-id="${event.id}" class="${rowClass}">
       <td>
-        <div class="match-time">${time}${manualBadge}</div>
+        <div class="match-time">${time}${manualBadge}${suspBadge}</div>
         <div class="match-teams">${homeTeam} vs ${awayTeam}</div>
       </td>
-      <td><button class="odds-btn${m1 ? ' manual-price' : t1}">${odds1}${!m1 && t1 === ' price-up' ? ' ▲' : !m1 && t1 === ' price-down' ? ' ▼' : ''}</button></td>
-      <td><button class="odds-btn${mX ? ' manual-price' : tX}">${oddsX}${!mX && tX === ' price-up' ? ' ▲' : !mX && tX === ' price-down' ? ' ▼' : ''}</button></td>
-      <td><button class="odds-btn${m2 ? ' manual-price' : t2}">${odds2}${!m2 && t2 === ' price-up' ? ' ▲' : !m2 && t2 === ' price-down' ? ' ▼' : ''}</button></td>
-      <td><button class="odds-btn${mOver ? ' manual-price' : ''}" style="border-color:${mOver ? '#fbbf24' : 'var(--accent-color)'}">${oddsOver}</button></td>
-      <td><button class="odds-btn${mUnder ? ' manual-price' : ''}" style="border-color:${mUnder ? '#fbbf24' : 'var(--accent-color)'}">${oddsUnder}</button></td>
+      <td class="${mlSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${m1 ? ' manual-price' : t1}">${evtSuspended || mlSuspended ? '🔒' : odds1}${!m1 && t1 === ' price-up' ? ' ▲' : !m1 && t1 === ' price-down' ? ' ▼' : ''}</button></td>
+      <td class="${mlSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${mX ? ' manual-price' : tX}">${evtSuspended || mlSuspended ? '🔒' : oddsX}${!mX && tX === ' price-up' ? ' ▲' : !mX && tX === ' price-down' ? ' ▼' : ''}</button></td>
+      <td class="${mlSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${m2 ? ' manual-price' : t2}">${evtSuspended || mlSuspended ? '🔒' : odds2}${!m2 && t2 === ' price-up' ? ' ▲' : !m2 && t2 === ' price-down' ? ' ▼' : ''}</button></td>
+      <td class="${ouSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${mOver ? ' manual-price' : ''}" style="border-color:${mOver ? '#fbbf24' : 'var(--accent-color)'}">${evtSuspended || ouSuspended ? '🔒' : oddsOver}</button></td>
+      <td class="${ouSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${mUnder ? ' manual-price' : ''}" style="border-color:${mUnder ? '#fbbf24' : 'var(--accent-color)'}">${evtSuspended || ouSuspended ? '🔒' : oddsUnder}</button></td>
     </tr>`;
   });
 
@@ -263,8 +292,9 @@ export function renderOdds(data) {
 export function openDrawer(eventId) {
   const event = state.activeEvents.find(e => e.id.toString() === eventId.toString());
   if (!event) return;
-  state.drawerEventId = eventId; // needed by override key generation
+  state.drawerEventId = eventId;
   updateModeButton(eventId);
+  updateSuspendButton(eventId);
 
   let homeTeam = event.home || 'Home';
   let awayTeam = event.away || 'Away';
@@ -455,18 +485,47 @@ function makeEditable(chip, priceSpan, key, currentVal, rows = [], marketId = ''
 
 export function createMarketGroup(title, rows, extraClass = '', hasShowAll = false, margin = null, marketId = '') {
   const group = document.createElement('div');
-  group.className = 'market-group';
+  const mktSuspended = marketId ? isSuspended(state.drawerEventId, marketId) : false;
+  const evtSuspended = state.drawerEventId ? isSuspended(state.drawerEventId, 'event') : false;
+  const suspended    = mktSuspended || evtSuspended;
+  group.className = `market-group${suspended ? ' market-suspended' : ''}`;
   group.innerHTML = `
     <div class="market-header">
       <h3>${title}</h3>
       <div class="market-header-actions">
         ${marginBadgeHTML(margin)}
         ${hasShowAll ? '<button class="show-all-btn">Show All</button>' : ''}
+        ${marketId ? `<button class="suspend-market-btn ${suspended ? 'suspended' : 'open'}" title="${suspended ? 'Market suspended — click to open' : 'Suspend this market'}">${suspended ? '🔒' : '🔓'}</button>` : ''}
         <span style="font-size:0.8rem">▼</span>
       </div>
     </div>
     <div class="market-grid ${extraClass}"></div>
   `;
+
+  // Attach suspend toggle listener
+  const suspendBtn = group.querySelector('.suspend-market-btn');
+  if (suspendBtn && marketId) {
+    suspendBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      const nowSusp = isSuspended(state.drawerEventId, marketId);
+      setSuspension(state.drawerEventId, marketId, nowSusp ? 'open' : 'suspended');
+      // Update board cell immediately
+      const row = document.querySelector(`tr[data-event-id="${state.drawerEventId}"]`);
+      if (row) {
+        const isMLmarket = ['ml'].includes(marketId);
+        const isOUmarket = ['ou'].includes(marketId);
+        row.querySelectorAll('td').forEach((td, i) => {
+          if ((isMLmarket && i >= 1 && i <= 3) || (isOUmarket && i >= 4)) {
+            td.classList.toggle('susp-cell', !nowSusp);
+            const btn = td.querySelector('button');
+            if (btn) btn.textContent = nowSusp ? (btn.dataset.orig || btn.textContent) : '🔒';
+          }
+        });
+      }
+      const ev = state.activeEvents.find(e => e.id.toString() === state.drawerEventId?.toString());
+      if (ev) renderDrawerMarkets(ev);
+    });
+  }
 
   const grid = group.querySelector('.market-grid');
   rows.forEach(row => {

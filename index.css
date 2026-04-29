@@ -796,3 +796,79 @@ body {
   vertical-align: middle;
   letter-spacing: 0.03em;
 }
+
+/* ── Market suspension ─────────────────────────────────── */
+
+/* Per-market suspend button */
+.suspend-market-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0 0.2rem;
+  opacity: 0.5;
+  transition: opacity 0.2s;
+  line-height: 1;
+}
+.suspend-market-btn:hover { opacity: 1; }
+.suspend-market-btn.suspended { opacity: 1; }
+
+/* Event-level suspend button (drawer header) */
+.suspend-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0.2rem 0.4rem;
+  transition: all 0.2s;
+  line-height: 1;
+}
+.suspend-btn.open   { opacity: 0.45; border-color: transparent; }
+.suspend-btn.open:hover { opacity: 1; border-color: rgba(239,68,68,0.4); }
+.suspend-btn.suspended {
+  opacity: 1;
+  background: rgba(239,68,68,0.12);
+  border-color: rgba(239,68,68,0.4);
+  animation: pulseSusp 1.5s ease-in-out infinite;
+}
+@keyframes pulseSusp {
+  0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
+  50%      { box-shadow: 0 0 0 4px rgba(239,68,68,0.15); }
+}
+
+/* Suspended market group in drawer */
+.market-group.market-suspended .market-grid {
+  position: relative;
+  pointer-events: none;
+  opacity: 0.35;
+  filter: grayscale(0.5);
+}
+.market-group.market-suspended .market-header h3 {
+  color: #ef4444;
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+/* Suspended cells on the market board */
+.susp-cell .odds-btn {
+  color: #ef4444 !important;
+  border-color: rgba(239,68,68,0.4) !important;
+  background: rgba(239,68,68,0.06) !important;
+  opacity: 0.8;
+}
+
+/* Suspended event row — full overlay */
+.event-suspended {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.event-suspended td { text-decoration: line-through; }
+
+/* Suspension badge on board (partial suspension) */
+.susp-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  margin-left: 0.35rem;
+  vertical-align: middle;
+}

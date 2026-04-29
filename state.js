@@ -39,9 +39,7 @@ export function snapshotOdds() {
 // ── Manual price overrides ─────────────────────────────────
 const _overrides = JSON.parse(localStorage.getItem('priceOverrides') || '{}');
 
-export function getOverride(key) {
-  return _overrides[key] || null;
-}
+export function getOverride(key) { return _overrides[key] || null; }
 
 export function setOverride(key, val) {
   _overrides[key] = parseFloat(val).toFixed(3);
@@ -70,4 +68,31 @@ export function setTradingMode(eventId, mode) {
   if (mode === 'auto') delete _tradingModes[String(eventId)];
   else _tradingModes[String(eventId)] = mode;
   localStorage.setItem('tradingModes', JSON.stringify(_tradingModes));
+}
+
+// ── Market / event suspension ──────────────────────────────
+// Keys: `${eventId}|event` for whole event, `${eventId}|${marketId}` for a single market
+const _suspensions = JSON.parse(localStorage.getItem('suspensions') || '{}');
+
+export function isSuspended(eventId, marketId = 'event') {
+  if (_suspensions[`${eventId}|event`] === 'suspended') return true; // event-level overrides all
+  if (marketId === 'event') return false;
+  return _suspensions[`${eventId}|${marketId}`] === 'suspended';
+}
+
+export function setSuspension(eventId, marketId, status) {
+  const key = `${eventId}|${marketId}`;
+  if (status === 'open') delete _suspensions[key];
+  else _suspensions[key] = status;
+  localStorage.setItem('suspensions', JSON.stringify(_suspensions));
+}
+
+export function clearSuspensionsForEvent(eventId) {
+  const prefix = `${eventId}|`;
+  Object.keys(_suspensions).forEach(k => { if (k.startsWith(prefix)) delete _suspensions[k]; });
+  localStorage.setItem('suspensions', JSON.stringify(_suspensions));
+}
+
+export function hasAnySuspension(eventId) {
+  return Object.keys(_suspensions).some(k => k.startsWith(`${eventId}|`));
 }
