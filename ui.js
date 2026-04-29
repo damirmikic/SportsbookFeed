@@ -320,7 +320,38 @@ export function renderDrawerMarkets(event) {
   }
 }
 
-function makeEditable(chip, priceSpan, key, currentVal) {
+// Proportionally redistribute implied probability to all other selections
+// to keep total margin constant after one price is manually set.
+function repriceOthers(changedKey, newPrice, rows, marketId) {
+  const changedLabel = changedKey.split('|')[2];
+
+  // Effective price for each row (override if set, else original API)
+  const effectivePrice = (row) => {
+    const k = `${state.drawerEventId}|${marketId}|${row.label}`;
+    return parseFloat(getOverride(k) || row.value);
+  };
+
+  const valid = rows.filter(r => { const p = effectivePrice(r); return !isNaN(p) && p > 1; });
+  if (valid.length < 2) return;
+
+  const M        = valid.reduce((s, r) => s + 1 / effectivePrice(r), 0); // current total margin
+  const q_new    = 1 / newPrice;                                          // new implied prob for changed selection
+  const budget   = M - q_new;                                             // remaining for others
+  const others   = valid.filter(r => r.label !== changedLabel);
+  const otherSum = others.reduce((s, r) => s + 1 / effectivePrice(r), 0);
+
+  if (budget <= 0 || otherSum <= 0) return;
+
+  const scale = budget / otherSum;
+  others.forEach(r => {
+    const qNew = (1 / effectivePrice(r)) * scale;
+    if (qNew > 0 && 1 / qNew > 1) {
+      setOverride(`${state.drawerEventId}|${marketId}|${r.label}`, 1 / qNew);
+    }
+  });
+}
+
+function makeEditable(chip, priceSpan, key, currentVal, rows = [], marketId = '') {
   const input = document.createElement('input');
   input.type = 'number';
   input.step = '0.01';
@@ -335,6 +366,7 @@ function makeEditable(chip, priceSpan, key, currentVal) {
     const val = parseFloat(input.value);
     if (val > 1) {
       setOverride(key, val);
+      if (rows.length > 1 && marketId) repriceOthers(key, val, rows, marketId);
       const ev = state.activeEvents.find(e => e.id.toString() === state.drawerEventId?.toString());
       if (ev) renderDrawerMarkets(ev);
     } else {
@@ -415,11 +447,11 @@ export function createMarketGroup(title, rows, extraClass = '', hasShowAll = fal
         bookieChip.appendChild(clearBtn);
         // Click price to re-edit
         priceSpan.style.cursor = 'pointer';
-        priceSpan.addEventListener('click', () => makeEditable(bookieChip, priceSpan, overrideKey, displayPrice));
+        priceSpan.addEventListener('click', () => makeEditable(bookieChip, priceSpan, overrideKey, displayPrice, rows, marketId));
       } else {
         // Click anywhere on chip to open editor
         bookieChip.style.cursor = 'pointer';
-        bookieChip.addEventListener('click', () => makeEditable(bookieChip, priceSpan, overrideKey, displayPrice));
+        bookieChip.addEventListener('click', () => makeEditable(bookieChip, priceSpan, overrideKey, displayPrice, rows, marketId));
       }
     }
 
