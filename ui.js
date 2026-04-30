@@ -592,7 +592,8 @@ function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData, detail
         if (['Both Teams To Score?', 'Draw No Bet', 'Double Chance', 'Correct Score'].includes(mkt.name)) return;
 
         const allPrices = mkt.contestants.map(c => parseFloat(c.p)).filter(p => !isNaN(p) && p > 1);
-        const shinAll = allPrices.length >= 2 ? calculateShinNoVig(allPrices) : allPrices.map(() => null);
+        const targetSum = mkt.name.toLowerCase().includes('double chance') ? 2.0 : 1.0;
+        const shinAll = allPrices.length >= 2 ? calculateShinNoVig(allPrices, targetSum) : allPrices.map(() => null);
         const rows = mkt.contestants.map((c, i) => ({
           label: c.n,
           value: c.p,
@@ -677,9 +678,13 @@ function getModelPriceForSpecial(marketName, selectionLabel, lambdaData, homeTea
   const n = marketName.toLowerCase();
   const label = selectionLabel.toLowerCase();
 
+  // Determine period grid
+  let grid = lambdaData.ft.grid;
+  if (n.includes('1st half')) grid = lambdaData.h1.grid;
+  else if (n.includes('2nd half')) grid = lambdaData.h2.grid;
+
   // Case 1: Joint BTTS & Total Goals
   if ((n.includes('both teams to score') || n.includes('btts')) && n.includes('total goals')) {
-    const grid = lambdaData.ft.grid;
     const isYes = label.includes('yes');
     const isOver = label.includes('over');
     const lineMatch = label.match(/(over|under)\s+([0-9.]+)/);
@@ -695,7 +700,35 @@ function getModelPriceForSpecial(marketName, selectionLabel, lambdaData, homeTea
     return prob > 0 ? (1 / prob).toFixed(3) : null;
   }
 
-  // Case 2: HT/FT (Half-Time/Full-Time)
+  // Case 2: Team to Score? (e.g., "Talleres de Cordoba to Score? 1st Half")
+  if (n.includes('to score?') && !n.includes('both teams') && !n.includes('btts')) {
+    const isHomeMarket = n.includes('home') || (homeTeam && n.includes(homeTeam.toLowerCase()));
+    const isAwayMarket = n.includes('away') || (awayTeam && n.includes(awayTeam.toLowerCase()));
+    const isYes = label.includes('yes');
+
+    let prob = 0;
+    grid.forEach(({ home, away, prob: p }) => {
+      let hasScored = false;
+      if (isHomeMarket && !isAwayMarket) hasScored = (home > 0);
+      else if (isAwayMarket && !isHomeMarket) hasScored = (away > 0);
+      
+      if (hasScored === isYes) prob += p;
+    });
+    return prob > 0 ? (1 / prob).toFixed(3) : null;
+  }
+
+  // Case 3: Both Teams to Score? (e.g., "Both Teams to Score? 1st Half")
+  if (n.includes('both teams to score?') || n.includes('btts?')) {
+    const isYes = label.includes('yes');
+    let prob = 0;
+    grid.forEach(({ home, away, prob: p }) => {
+      const btts = (home > 0 && away > 0);
+      if (btts === isYes) prob += p;
+    });
+    return prob > 0 ? (1 / prob).toFixed(3) : null;
+  }
+
+  // Case 4: HT/FT (Half-Time/Full-Time)
   if (n.includes('half-time/full-time') || n.includes('ht/ft')) {
     if (!lambdaData.h1 || !lambdaData.h2) return null;
     const h1Grid = lambdaData.h1.grid;
@@ -734,9 +767,193 @@ function getModelPriceForSpecial(marketName, selectionLabel, lambdaData, homeTea
     return prob > 0 ? (1 / prob).toFixed(3) : null;
   }
 
-  // Case 3: Simple Odd/Even & Total Goals
-  if ((n.includes('odd/even') || n.includes('odd & even')) && n.includes('total goals')) {
-    const grid = lambdaData.ft.grid;
+  // Case 3: Exact Goals (e.g., "Exact Total Goals", "Home Team Exact Goals", "Union de Santa Fe Goals")
+  if (n.includes('goals')) {
+    const goalCount = parseInt(label);
+    if (!isNaN(goalCount) && !n.includes('over/under') && !n.includes('asian') && !label.includes('-')) {
+      const isHomeMarket = n.includes('home') || (homeTeam && n.includes(homeTeam.toLowerCase()));
+      const isAwayMarket = n.includes('away') || (awayTeam && n.includes(awayTeam.toLowerCase()));
+      
+      let prob = 0;
+      const isPlus = label.includes('+');
+      
+      grid.forEach(({ home, away, prob: p }) => {
+        let val = home + away; // Default to match total
+        if (isHomeMarket && !isAwayMarket) val = home;
+        else if (isAwayMarket && !isHomeMarket) val = away;
+        
+        if (isPlus) {
+          if (val >= goalCount) prob += p;
+        } else {
+          if (val === goalCount) prob += p;
+        }
+      });
+      return prob > 0 ? (1 / prob).toFixed(3) : null;
+    }
+  }
+
+  // Case 4: Win to Nil (e.g., "Win to Nil", "To Win to Nil? 1st Half")
+  if (n.includes('win to nil')) {
+    const isHomeMarket = n.includes('home') || (homeTeam && n.includes(homeTeam.toLowerCase()));
+    const isAwayMarket = n.includes('away') || (awayTeam && n.includes(awayTeam.toLowerCase()));
+    const isYes = label.includes('yes');
+
+    let prob = 0;
+    grid.forEach(({ home, away, prob: p }) => {
+      let condition = false;
+      if (isHomeMarket && !isAwayMarket) condition = (home > 0 && away === 0);
+      else if (isAwayMarket && !isHomeMarket) condition = (away > 0 && home === 0);
+      
+      if (condition === isYes) prob += p;
+    });
+    return prob > 0 ? (1 / prob).toFixed(3) : null;
+  }
+
+  // Case 5: Total Goals Range (e.g., "Total Goals Range", "Goals Range")
+  if (n.includes('goals range') || n.includes('total goals range')) {
+    let prob = 0;
+    
+    if (label.includes('+')) {
+      const minVal = parseInt(label);
+      grid.forEach(({ home, away, prob: p }) => {
+        if ((home + away) >= minVal) prob += p;
+      });
+    } else if (label.includes('-')) {
+      const parts = label.split('-').map(p => parseInt(p.trim()));
+      if (parts.length === 2) {
+        grid.forEach(({ home, away, prob: p }) => {
+          const total = home + away;
+          if (total >= parts[0] && total <= parts[1]) prob += p;
+        });
+      }
+    }
+    return prob > 0 ? (1 / prob).toFixed(3) : null;
+  }
+
+  // Case 6: Draw No Bet (e.g., "Draw No Bet", "Draw No Bet 1st Half")
+  if (n.includes('draw no bet') || n.includes('dnb')) {
+    let pH = 0, pA = 0;
+    grid.forEach(({ home, away, prob: p }) => {
+      if (home > away) pH += p;
+      else if (away > home) pA += p;
+    });
+
+    const getRes = (txt) => {
+      const t = txt.toLowerCase();
+      const h = homeTeam.toLowerCase();
+      const a = awayTeam.toLowerCase();
+      if (t === h || h.includes(t) || t === 'home' || t === '1') return 1;
+      if (t === a || a.includes(t) || t === 'away' || t === '2') return 2;
+      return null;
+    };
+    const target = getRes(selectionLabel);
+    return target === 1 ? (1 / (pH / (pH + pA))).toFixed(3) : (target === 2 ? (1 / (pA / (pH + pA))).toFixed(3) : null);
+  }
+
+  // Case 7: Double Chance (e.g., "Double Chance", "Double Chance 1st Half")
+  if (n.includes('double chance')) {
+    let pH = 0, pD = 0, pA = 0;
+    grid.forEach(({ home, away, prob: p }) => {
+      if (home > away) pH += p;
+      else if (home === away) pD += p;
+      else pA += p;
+    });
+
+    const labelLower = selectionLabel.toLowerCase();
+    const isHome = labelLower.includes(homeTeam.toLowerCase()) || labelLower.includes('home');
+    const isAway = labelLower.includes(awayTeam.toLowerCase()) || labelLower.includes('away');
+    const isDraw = labelLower.includes('draw') || labelLower.includes('x');
+
+    let prob = 0;
+    // 1X
+    if (isHome && isDraw && !isAway) prob = pH + pD;
+    // X2
+    else if (isAway && isDraw && !isHome) prob = pD + pA;
+    // 12
+    else if (isHome && isAway) prob = pH + pA;
+    
+    return prob > 0 ? (1 / prob).toFixed(3) : null;
+  }
+
+  // Case 8: Joint BTTS & Winner (e.g., "Both Teams to Score/Winner")
+  if ((n.includes('both teams to score') || n.includes('btts')) && (n.includes('winner') || n.includes('result'))) {
+    const isYes = label.includes('yes');
+    
+    // Determine winner result from label: "Yes & Union de Santa Fe"
+    const parts = selectionLabel.split('&').map(p => p.trim());
+    if (parts.length !== 2) return null;
+    const winnerTxt = parts[1];
+    
+    const getWinnerRes = (txt) => {
+      const t = txt.toLowerCase();
+      const h = homeTeam.toLowerCase();
+      const a = awayTeam.toLowerCase();
+      if (t === 'draw' || t === 'x') return 0;
+      if (t === h || h.includes(t) || t === 'home' || t === '1') return 1;
+      if (t === a || a.includes(t) || t === 'away' || t === '2') return 2;
+      return null;
+    };
+    const targetRes = getWinnerRes(winnerTxt);
+    if (targetRes === null) return null;
+
+    let prob = 0;
+    grid.forEach(({ home, away, prob: p }) => {
+      const bttsMatch = (home > 0 && away > 0) === isYes;
+      const res = home > away ? 1 : (home === away ? 0 : 2);
+      if (bttsMatch && res === targetRes) prob += p;
+    });
+    return prob > 0 ? (1 / prob).toFixed(3) : null;
+  }
+
+  // Case 9: Either Team to Score? (Yes = any goal, No = 0-0)
+  if (n.includes('either team to score')) {
+    const isYes = label.includes('yes');
+    let prob = 0;
+    grid.forEach(({ home, away, prob: p }) => {
+      const anyGoal = (home + away) > 0;
+      if (anyGoal === isYes) prob += p;
+    });
+    return prob > 0 ? (1 / prob).toFixed(3) : null;
+  }
+
+  // Case 10: Joint Winner & Total Goals (e.g., "Winner/Total Goals")
+  if (n.includes('winner') && n.includes('total goals')) {
+    // Parse selection: "Union de Santa Fe & Over 2.5"
+    const parts = selectionLabel.split('&').map(p => p.trim());
+    if (parts.length !== 2) return null;
+    
+    const winnerTxt = parts[0];
+    const ouTxt = parts[1].toLowerCase();
+    
+    const getWinnerRes = (txt) => {
+      const t = txt.toLowerCase();
+      const h = homeTeam.toLowerCase();
+      const a = awayTeam.toLowerCase();
+      if (t === 'draw' || t === 'x') return 0;
+      if (t === h || h.includes(t) || t === 'home' || t === '1') return 1;
+      if (t === a || a.includes(t) || t === 'away' || t === '2') return 2;
+      return null;
+    };
+    const targetRes = getWinnerRes(winnerTxt);
+    if (targetRes === null) return null;
+    
+    const isOver = ouTxt.includes('over');
+    const lineMatch = ouTxt.match(/[0-9.]+/);
+    const line = lineMatch ? parseFloat(lineMatch[0]) : 2.5;
+
+    let prob = 0;
+    grid.forEach(({ home, away, prob: p }) => {
+      const res = home > away ? 1 : (home === away ? 0 : 2);
+      const total = home + away;
+      const winnerMatch = (res === targetRes);
+      const ouMatch = isOver ? (total > line) : (total < line);
+      if (winnerMatch && ouMatch) prob += p;
+    });
+    return prob > 0 ? (1 / prob).toFixed(3) : null;
+  }
+
+  // Case 11: Joint Odd/Even & Total Goals (e.g., "Odd/Even & Total Goals")
+  if ((n.includes('odd/even') || n.includes('odd & even')) && n.includes('total goals') && (label.includes('over') || label.includes('under'))) {
     const isOdd = label.includes('odd');
     const isOver = label.includes('over');
     const lineMatch = label.match(/(over|under)\s+([0-9.]+)/);
@@ -752,15 +969,17 @@ function getModelPriceForSpecial(marketName, selectionLabel, lambdaData, homeTea
     return prob > 0 ? (1 / prob).toFixed(3) : null;
   }
   
-  // Case 4: Simple Odd/Even (Match, Home, or Away)
+  // Case 12: Simple Odd/Even (Match, Home, or Away)
   if (n.includes('odd/even') || n.includes('odd & even')) {
-    const grid = lambdaData.ft.grid;
     const isOdd = label.includes('odd');
+    const isHomeMarket = n.includes('home') || (homeTeam && n.includes(homeTeam.toLowerCase()));
+    const isAwayMarket = n.includes('away') || (awayTeam && n.includes(awayTeam.toLowerCase()));
+
     let prob = 0;
     grid.forEach(({ home, away, prob: p }) => {
       let val = home + away;
-      if (n.includes('home')) val = home;
-      else if (n.includes('away')) val = away;
+      if (isHomeMarket && !isAwayMarket) val = home;
+      else if (isAwayMarket && !isHomeMarket) val = away;
       
       if ((val % 2 !== 0) === isOdd) prob += p;
     });
@@ -809,12 +1028,14 @@ function renderMarketTable(market) {
     const ovValue = currentOverride ? parseFloat(currentOverride).toFixed(2) : '';
 
     // Colour-code model vs shin disagreement
-    const getEdgeClass = (a, b) => {
-      const na = parseFloat(a), nb = parseFloat(b);
-      if (isNaN(na) || isNaN(nb)) return '';
-      const diff = na - nb;
-      if (diff > 0.05) return 'price-higher';
-      if (diff < -0.05) return 'price-lower';
+    const getEdgeClass = (model, shin) => {
+      const nm = parseFloat(model), ns = parseFloat(shin);
+      if (isNaN(nm) || isNaN(ns)) return '';
+      const diff = nm - ns;
+      // Model odds lower = Model thinks it's MORE likely = GREEN (Value signal)
+      if (diff < -0.05) return 'price-higher'; // Using existing green class
+      // Model odds higher = Model thinks it's LESS likely = RED
+      if (diff > 0.05) return 'price-lower'; // Using existing red class
       return '';
     };
 

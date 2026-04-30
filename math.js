@@ -1,4 +1,4 @@
-export function calculateShinNoVig(oddsArray) {
+export function calculateShinNoVig(oddsArray, targetSum = 1.0) {
   const indices = [];
   const validOdds = [];
   oddsArray.forEach((o, i) => {
@@ -17,16 +17,23 @@ export function calculateShinNoVig(oddsArray) {
   
   let result = new Array(oddsArray.length).fill('-');
   
-  if (S1 <= 1) {
+  if (S1 <= targetSum) {
     validOdds.forEach((vo, idx) => result[indices[idx]] = vo.toFixed(3));
     return result;
   }
 
-  const z = Math.max(0, Math.min(1, (1 - S2) / (S1 - S2)));
+  // To support targetSum != 1, we normalize rawProbs such that sum is S1/targetSum?
+  // Actually, Shin formula derives from S1=1. 
+  // For targetSum=2, we can solve on pi' = pi / targetSum.
+  const normS1 = S1 / targetSum;
+  const normS2 = S2 / (targetSum * targetSum);
+
+  const z = Math.max(0, Math.min(1, (1 - normS2) / (normS1 - normS2)));
 
   validOdds.forEach((vo, idx) => {
-    const pi = 1 / vo;
-    const fairProb = (pi * pi * (1 - z)) + (pi * z);
+    const pi = (1 / vo) / targetSum;
+    const fairProbNorm = (pi * pi * (1 - z)) + (pi * z);
+    const fairProb = fairProbNorm * targetSum;
     result[indices[idx]] = (1 / fairProb).toFixed(3);
   });
 
