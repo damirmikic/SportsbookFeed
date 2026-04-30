@@ -89,38 +89,67 @@ export function calcAsianOdds(pWin, pLoss, pPush, pHalfWin, pHalfLoss) {
   return 1 + (num / denom);
 }
 
-export function dcAsianHandicapOdds(lh, la, rho, spread, isAway = false) {
-  let pWin = 0, pLoss = 0, pPush = 0, pHalfWin = 0, pHalfLoss = 0;
-  for (let i = 0; i <= 10; i++) {
-    for (let j = 0; j <= 10; j++) {
-      const p = scoreProb(i, j, lh, la, rho);
-      const diff = isAway ? (j - i) : (i - j);
-      // precision fix for margin
-      const margin = Math.round((diff + spread) * 4) / 4; 
-      if (margin >= 0.5) pWin += p;
-      else if (margin === 0.25) pHalfWin += p;
-      else if (margin === 0) pPush += p;
-      else if (margin === -0.25) pHalfLoss += p;
-      else pLoss += p;
+export function buildScoreGrid(lh, la, rho, maxGoals = 10) {
+  const grid = [];
+  for (let i = 0; i <= maxGoals; i++)
+    for (let j = 0; j <= maxGoals; j++)
+      grid.push({ home: i, away: j, prob: scoreProb(i, j, lh, la, rho) });
+  return grid;
+}
+
+export function calibrateHalvesFraction(lh, la, rho, p1, pX, p2) {
+  let bestT = 0.45;
+  let minErr = Infinity;
+  for (let t = 0.35; t <= 0.55; t += 0.01) {
+    const { pH, pD, pA } = dcMatchProbs(lh * t, la * t, rho);
+    const err = (pH - p1)**2 + (pD - pX)**2 + (pA - p2)**2;
+    if (err < minErr) {
+      minErr = err;
+      bestT = t;
     }
   }
+  return bestT;
+}
+
+export function dcAsianHandicapOdds(grid, spread, isAway = false) {
+  let pWin = 0, pLoss = 0, pPush = 0, pHalfWin = 0, pHalfLoss = 0;
+  grid.forEach(({ home, away, prob }) => {
+    const diff = isAway ? (away - home) : (home - away);
+    const margin = Math.round((diff + spread) * 4) / 4; 
+    if (margin >= 0.5) pWin += prob;
+    else if (margin === 0.25) pHalfWin += prob;
+    else if (margin === 0) pPush += prob;
+    else if (margin === -0.25) pHalfLoss += prob;
+    else pLoss += prob;
+  });
   return calcAsianOdds(pWin, pLoss, pPush, pHalfWin, pHalfLoss);
 }
 
-export function dcAsianTotalOdds(lh, la, rho, line, isOver) {
+export function dcAsianTotalOdds(grid, line, isOver) {
   let pWin = 0, pLoss = 0, pPush = 0, pHalfWin = 0, pHalfLoss = 0;
-  for (let i = 0; i <= 10; i++) {
-    for (let j = 0; j <= 10; j++) {
-      const p = scoreProb(i, j, lh, la, rho);
-      const total = i + j;
-      const margin = Math.round((isOver ? (total - line) : (line - total)) * 4) / 4;
-      if (margin >= 0.5) pWin += p;
-      else if (margin === 0.25) pHalfWin += p;
-      else if (margin === 0) pPush += p;
-      else if (margin === -0.25) pHalfLoss += p;
-      else pLoss += p;
-    }
-  }
+  grid.forEach(({ home, away, prob }) => {
+    const total = home + away;
+    const margin = Math.round((isOver ? (total - line) : (line - total)) * 4) / 4;
+    if (margin >= 0.5) pWin += prob;
+    else if (margin === 0.25) pHalfWin += prob;
+    else if (margin === 0) pPush += prob;
+    else if (margin === -0.25) pHalfLoss += prob;
+    else pLoss += prob;
+  });
+  return calcAsianOdds(pWin, pLoss, pPush, pHalfWin, pHalfLoss);
+}
+
+export function dcAsianTeamTotalOdds(grid, line, isOver, isAway = false) {
+  let pWin = 0, pLoss = 0, pPush = 0, pHalfWin = 0, pHalfLoss = 0;
+  grid.forEach(({ home, away, prob }) => {
+    const goals = isAway ? away : home;
+    const margin = Math.round((isOver ? (goals - line) : (line - goals)) * 4) / 4;
+    if (margin >= 0.5) pWin += prob;
+    else if (margin === 0.25) pHalfWin += prob;
+    else if (margin === 0) pPush += prob;
+    else if (margin === -0.25) pHalfLoss += prob;
+    else pLoss += prob;
+  });
   return calcAsianOdds(pWin, pLoss, pPush, pHalfWin, pHalfLoss);
 }
 
@@ -165,7 +194,9 @@ export function solveLambdas(pH, pD, pA, pOver, totalLine) {
   return { lh: bestLh, la: bestLa, rho: bestRho, scores: scores.slice(0, 6) };
 }
 
-export function calculateTeamLambdas(matchPeriod) {
+export function calculateTeamLambdas(matchPeriod, h1Period) {
+  if (!matchPeriod) return null;
+
   const ml = matchPeriod.moneyLine || matchPeriod.moneyline;
   if (!ml) return null;
   const hO = parseFloat(ml.homePrice || ml.home);
@@ -193,5 +224,30 @@ export function calculateTeamLambdas(matchPeriod) {
     }
   }
 
-  return solveLambdas(pH, pD, pA, pOver, totalLine);
+  const solved = solveLambdas(pH, pD, pA, pOver, totalLine);
+
+  let t = 0.45;
+  if (h1Period && (h1Period.moneyLine || h1Period.moneyline)) {
+    const h1ml = h1Period.moneyLine || h1Period.moneyline;
+    const h1O = parseFloat(h1ml.homePrice || h1ml.home);
+    const d1O = parseFloat(h1ml.drawPrice || h1ml.draw);
+    const a1O = parseFloat(h1ml.awayPrice || h1ml.away);
+    if (!isNaN(h1O) && !isNaN(d1O) && !isNaN(a1O)) {
+      const fair1 = calculateShinNoVig([h1O, d1O, a1O]);
+      const f1 = parseFloat(fair1[0]), fX = parseFloat(fair1[1]), f2 = parseFloat(fair1[2]);
+      if (!isNaN(f1) && !isNaN(fX) && !isNaN(f2)) {
+         let p1 = 1/f1, px = 1/fX, p2 = 1/f2;
+         const s1 = p1 + px + p2;
+         p1 /= s1; px /= s1; p2 /= s1;
+         t = calibrateHalvesFraction(solved.lh, solved.la, solved.rho, p1, px, p2);
+      }
+    }
+  }
+
+  return {
+    ft: { lh: solved.lh, la: solved.la, rho: solved.rho, grid: buildScoreGrid(solved.lh, solved.la, solved.rho) },
+    h1: { lh: solved.lh * t, la: solved.la * t, rho: solved.rho, grid: buildScoreGrid(solved.lh * t, solved.la * t, solved.rho) },
+    h2: { lh: solved.lh * (1-t), la: solved.la * (1-t), rho: solved.rho, grid: buildScoreGrid(solved.lh * (1-t), solved.la * (1-t), solved.rho) },
+    splitFraction: t
+  };
 }

@@ -1,13 +1,3 @@
-import { scoreProb } from './math.js';
-
-function buildScoreGrid(lh, la, rho) {
-  const grid = [];
-  for (let i = 0; i <= 6; i++)
-    for (let j = 0; j <= 6; j++)
-      grid.push({ home: i, away: j, prob: scoreProb(i, j, lh, la, rho) });
-  return grid;
-}
-
 function gridMatchProbs(grid) {
   let pH = 0, pD = 0, pA = 0;
   grid.forEach(({ home, away, prob }) => {
@@ -18,9 +8,7 @@ function gridMatchProbs(grid) {
   return { pH, pD, pA };
 }
 
-export function buildBTTS(lambdaData) {
-  const { lh, la, rho } = lambdaData;
-  const grid = buildScoreGrid(lh, la, rho);
+export function buildBTTS(grid) {
   const pYes = grid.filter(s => s.home > 0 && s.away > 0).reduce((a, s) => a + s.prob, 0);
   const pNo = Math.max(1e-6, 1 - pYes);
   return {
@@ -32,9 +20,8 @@ export function buildBTTS(lambdaData) {
   };
 }
 
-export function buildDoubleChance(lambdaData) {
-  const { lh, la, rho } = lambdaData;
-  const { pH, pD, pA } = gridMatchProbs(buildScoreGrid(lh, la, rho));
+export function buildDoubleChance(grid) {
+  const { pH, pD, pA } = gridMatchProbs(grid);
   const p1X = pH + pD, p12 = pH + pA, pX2 = pD + pA;
   return {
     id: 'dc', name: 'Double Chance', cols: 'three-cols',
@@ -46,9 +33,8 @@ export function buildDoubleChance(lambdaData) {
   };
 }
 
-export function buildDrawNoBet(lambdaData) {
-  const { lh, la, rho } = lambdaData;
-  const { pH, pA } = gridMatchProbs(buildScoreGrid(lh, la, rho));
+export function buildDrawNoBet(grid) {
+  const { pH, pA } = gridMatchProbs(grid);
   const norm = pH + pA;
   return {
     id: 'dnb', name: 'Draw No Bet', cols: 'two-cols',
@@ -59,9 +45,7 @@ export function buildDrawNoBet(lambdaData) {
   };
 }
 
-export function buildCorrectScore(lambdaData, topN = 12) {
-  const { lh, la, rho } = lambdaData;
-  const grid = buildScoreGrid(lh, la, rho);
+export function buildCorrectScore(grid, topN = 12) {
   const total = grid.reduce((a, s) => a + s.prob, 0);
   const sorted = grid
     .map(s => ({ ...s, prob: s.prob / total }))
@@ -78,12 +62,12 @@ export function buildCorrectScore(lambdaData, topN = 12) {
   };
 }
 
-export function buildAllMarkets(lambdaData) {
-  if (!lambdaData) return [];
+export function buildAllMarkets(grid) {
+  if (!grid) return [];
   return [
-    buildBTTS(lambdaData),
-    buildDoubleChance(lambdaData),
-    buildDrawNoBet(lambdaData),
-    buildCorrectScore(lambdaData),
+    buildBTTS(grid),
+    buildDoubleChance(grid),
+    buildDrawNoBet(grid),
+    buildCorrectScore(grid),
   ];
 }

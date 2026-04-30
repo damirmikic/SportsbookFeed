@@ -1,6 +1,6 @@
-import { state, toggleFavorite, snapshotOdds, getOverride, setOverride, clearOverride, clearAllOverridesForEvent, getTradingMode, setTradingMode, isSuspended, setSuspension, hasAnySuspension } from './state.js';
+import { state, toggleFavorite, toggleGroup, snapshotOdds, getOverride, setOverride, clearOverride, clearAllOverridesForEvent, getTradingMode, setTradingMode, isSuspended, setSuspension, hasAnySuspension } from './state.js';
 import { fetchOdds, fetchEventOdds } from './api.js';
-import { calculateTeamLambdas, calculateShinNoVig, scoreProb, dcAsianHandicapOdds, dcAsianTotalOdds } from './math.js';
+import { calculateTeamLambdas, calculateShinNoVig, scoreProb, dcAsianHandicapOdds, dcAsianTotalOdds, dcAsianTeamTotalOdds } from './math.js';
 import { buildAllMarkets } from './markets.js';
 
 // Sum of inverse prices → book percentage (e.g. 1.05 = 105%)
@@ -50,9 +50,9 @@ function updateSuspendButton(eventId) {
   const btn = document.getElementById('suspend-event-btn');
   if (!btn) return;
   const suspended = isSuspended(eventId, 'event');
-  btn.textContent = suspended ? 'SUSP' : 'OPEN';
+  btn.innerHTML = suspended ? '<span>🔒</span> SUSPENDED' : '<span>🔓</span> PUBLISHED';
   btn.className   = `suspend-btn ${suspended ? 'suspended' : 'open'}`;
-  btn.title       = suspended ? 'Event SUSPENDED — click to open' : 'Click to suspend entire event';
+  btn.title       = suspended ? 'Event SUSPENDED — click to publish' : 'Click to suspend entire event';
   btn.onclick = () => {
     const nowSuspended = isSuspended(eventId, 'event');
     setSuspension(eventId, 'event', nowSuspended ? 'open' : 'suspended');
@@ -106,14 +106,64 @@ export function renderLeagues(leaguesToRender) {
     return;
   }
 
-  filtered.forEach(league => {
-    const name  = league.name || league.leagueName || 'Unknown League';
-    const code  = league.code || league.leagueCode || league.id;
-    const isFav = state.favorites.includes(code);
+  // 1. Render Favorites (at the top, always expanded if they exist)
+  const favoriteLeagues = filtered.filter(l => state.favorites.includes(l.code || l.leagueCode || l.id));
+  if (favoriteLeagues.length > 0) {
+    favoriteLeagues.forEach(league => {
+      const name = league.name || league.leagueName || 'Unknown League';
+      const code = league.code || league.leagueCode || league.id;
+      favoritesContainer.appendChild(createLeagueElement(name, code, true));
+    });
+  }
 
-    if (isFav) favoritesContainer.appendChild(createLeagueElement(name, code, isFav));
-    leaguesContainer.appendChild(createLeagueElement(name, code, isFav));
+  // 2. Group Remaining Leagues by Country
+  const groups = {};
+  filtered.forEach(league => {
+    const name = league.name || league.leagueName || 'Unknown League';
+    const country = name.includes(' - ') ? name.split(' - ')[0] : 'International';
+    if (!groups[country]) groups[country] = [];
+    groups[country].push(league);
   });
+
+  const sortedCountries = Object.keys(groups).sort();
+  sortedCountries.forEach(country => {
+    const groupLeagues = groups[country];
+    const isExpanded = state.expandedGroups.includes(country) || (searchTerm !== '');
+    leaguesContainer.appendChild(createLeagueGroup(country, groupLeagues, isExpanded));
+  });
+}
+
+function createLeagueGroup(country, leagues, isExpanded) {
+  const group = document.createElement('div');
+  group.className = `league-group ${isExpanded ? 'expanded' : ''}`;
+  
+  const header = document.createElement('div');
+  header.className = 'league-group-header';
+  header.innerHTML = `
+    <span class="group-toggle-icon">${isExpanded ? '▼' : '▶'}</span>
+    <span class="group-name">${country}</span>
+    <span class="group-count">${leagues.length}</span>
+  `;
+  
+  header.onclick = (e) => {
+    e.stopPropagation();
+    toggleGroup(country);
+    renderLeagues(state.allLeagues);
+  };
+  
+  const content = document.createElement('div');
+  content.className = 'league-group-content';
+  
+  leagues.forEach(league => {
+    const name = league.name || league.leagueName || 'Unknown League';
+    const code = league.code || league.leagueCode || league.id;
+    const isFav = state.favorites.includes(code);
+    content.appendChild(createLeagueElement(name, code, isFav));
+  });
+  
+  group.appendChild(header);
+  group.appendChild(content);
+  return group;
 }
 
 export function createLeagueElement(name, code, isFav) {
@@ -328,7 +378,7 @@ export function closeDrawer() {
   document.getElementById('drawer-overlay').classList.remove('active');
 }
 
-function groupMarketsByCategory(event, matchPeriod, lambdaData, detailedAll, homeTeam, awayTeam) {
+function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData, detailedAll, homeTeam, awayTeam) {
   const groups = {
     'MAIN MARKETS': [],
     'HANDICAP': [],
@@ -349,17 +399,13 @@ function groupMarketsByCategory(event, matchPeriod, lambdaData, detailedAll, hom
     const odds = [ml.homePrice || ml.home, ml.drawPrice || ml.draw, ml.awayPrice || ml.away];
     shin1X2 = calculateShinNoVig(odds);
     const shin = shin1X2;
-    // Model 1x2 from lambdaData
+    // Model 1x2 from lambdaData FT grid
     let modelRows = [null, null, null];
     if (lambdaData) {
-      const { pH, pD, pA } = (() => {
-        let h = 0, d = 0, a = 0;
-        for (let i = 0; i <= 8; i++) for (let j = 0; j <= 8; j++) {
-          const p = scoreProb(i, j, lambdaData.lh, lambdaData.la, lambdaData.rho);
-          if (i > j) h += p; else if (i === j) d += p; else a += p;
-        }
-        return { pH: h, pD: d, pA: a };
-      })();
+      let pH = 0, pD = 0, pA = 0;
+      lambdaData.ft.grid.forEach(({ home, away, prob }) => {
+        if (home > away) pH += prob; else if (home === away) pD += prob; else pA += prob;
+      });
       modelRows = [(1/pH).toFixed(3), (1/pD).toFixed(3), (1/pA).toFixed(3)];
     }
     groups['MAIN MARKETS'].push({
@@ -391,11 +437,11 @@ function groupMarketsByCategory(event, matchPeriod, lambdaData, detailedAll, hom
     const rows = [];
     selectedHdps.forEach(h => {
       const shin = calculateShinNoVig([h.homeOdds, h.awayOdds]);
-      // Model handicap using exact Asian Handicap settlement rules
+      // Model handicap using exact Asian Handicap settlement rules on FT grid
       let mHome = null, mAway = null;
       if (lambdaData) {
-        const homeOdds = dcAsianHandicapOdds(lambdaData.lh, lambdaData.la, lambdaData.rho, parseFloat(h.homeSpread), false);
-        const awayOdds = dcAsianHandicapOdds(lambdaData.lh, lambdaData.la, lambdaData.rho, parseFloat(h.awaySpread), true);
+        const homeOdds = dcAsianHandicapOdds(lambdaData.ft.grid, parseFloat(h.homeSpread), false);
+        const awayOdds = dcAsianHandicapOdds(lambdaData.ft.grid, parseFloat(h.awaySpread), true);
         if (homeOdds) mHome = homeOdds.toFixed(3);
         if (awayOdds) mAway = awayOdds.toFixed(3);
       }
@@ -410,12 +456,12 @@ function groupMarketsByCategory(event, matchPeriod, lambdaData, detailedAll, hom
     const ous = [...matchPeriod.overUnder].sort((a, b) => parseFloat(a.points) - parseFloat(b.points));
     ous.forEach(ou => {
         const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
-        // Model over prob using exact Asian Totals settlement rules
+        // Model over prob using exact Asian Totals settlement rules on FT grid
         let mOver = null, mUnder = null;
         if (lambdaData) {
           const line = parseFloat(ou.points);
-          const overOdds = dcAsianTotalOdds(lambdaData.lh, lambdaData.la, lambdaData.rho, line, true);
-          const underOdds = dcAsianTotalOdds(lambdaData.lh, lambdaData.la, lambdaData.rho, line, false);
+          const overOdds = dcAsianTotalOdds(lambdaData.ft.grid, line, true);
+          const underOdds = dcAsianTotalOdds(lambdaData.ft.grid, line, false);
           if (overOdds) mOver = overOdds.toFixed(3);
           if (underOdds) mUnder = underOdds.toFixed(3);
         }
@@ -425,9 +471,55 @@ function groupMarketsByCategory(event, matchPeriod, lambdaData, detailedAll, hom
     groups['GOALS'].push({ id: 'ou', name: 'Total (All Lines)', rows });
   }
 
+  if (matchPeriod.teamTotal) {
+    const processTeamTotal = (tt, labelPrefix, teamName, isAway) => {
+      const ousArray = tt?.overUnder || (Array.isArray(tt) ? tt : null);
+      if (!ousArray || !Array.isArray(ousArray)) return;
+      const rows = [];
+      const ous = [...ousArray].sort((a, b) => parseFloat(a.points) - parseFloat(b.points));
+      ous.forEach(ou => {
+          const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
+          let mOver = null, mUnder = null;
+          if (lambdaData) {
+            const line = parseFloat(ou.points);
+            const overOdds = dcAsianTeamTotalOdds(lambdaData.ft.grid, line, true, isAway);
+            const underOdds = dcAsianTeamTotalOdds(lambdaData.ft.grid, line, false, isAway);
+            if (overOdds) mOver = overOdds.toFixed(3);
+            if (underOdds) mUnder = underOdds.toFixed(3);
+          }
+          rows.push({ label: `Over ${ou.points}`,  value: ou.overOdds,  shinFair: shin[0], modelFair: mOver  });
+          rows.push({ label: `Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: mUnder });
+      });
+      if (rows.length > 0) {
+        groups['TEAM GOALS'].push({ id: `tt_${labelPrefix}`, name: `${teamName} Totals`, rows });
+      }
+    };
+    processTeamTotal(matchPeriod.teamTotal.home, 'home', homeTeam, false);
+    processTeamTotal(matchPeriod.teamTotal.away, 'away', awayTeam, true);
+  }
+
+  if (h1Period && h1Period.overUnder && Array.isArray(h1Period.overUnder)) {
+    const rows = [];
+    const ous = [...h1Period.overUnder].sort((a, b) => parseFloat(a.points) - parseFloat(b.points));
+    ous.forEach(ou => {
+        const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
+        let mOver = null, mUnder = null;
+        if (lambdaData && lambdaData.h1) {
+          const line = parseFloat(ou.points);
+          const overOdds = dcAsianTotalOdds(lambdaData.h1.grid, line, true);
+          const underOdds = dcAsianTotalOdds(lambdaData.h1.grid, line, false);
+          if (overOdds) mOver = overOdds.toFixed(3);
+          if (underOdds) mUnder = underOdds.toFixed(3);
+        }
+        rows.push({ label: `Over ${ou.points}`,  value: ou.overOdds,  shinFair: shin[0], modelFair: mOver  });
+        rows.push({ label: `Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: mUnder });
+    });
+    groups['HALVES'].push({ id: 'h1_ou', name: '1st Half Total', rows });
+  }
+
   // --- Derived Markets ---
   if (lambdaData) {
-    const derived = buildAllMarkets(lambdaData);
+    const derived = buildAllMarkets(lambdaData.ft.grid);
     const teamProps = detailedAll.specials?.find(s => s.code === 'team-props')?.events || [];
     const getPinnaclePrice = (marketId, label) => {
         let eventName = '';
@@ -737,12 +829,14 @@ export function renderDrawerMarkets(event) {
   const drawerContent = document.getElementById('drawer-content');
   drawerContent.innerHTML = '';
 
-  let matchPeriod;
+  let matchPeriod, h1Period;
   if (event.periods && !Array.isArray(event.periods)) {
     matchPeriod = event.periods['0'];
+    h1Period = event.periods['1'];
   } else {
     const arr = Array.isArray(event.periods) ? event.periods : Object.values(event.periods || {});
     matchPeriod = arr.find(p => p.num === 0 || p.periodNumber === 0) || arr[0];
+    h1Period = arr.find(p => p.num === 1 || p.periodNumber === 1);
   }
 
   if (!matchPeriod) {
@@ -763,7 +857,7 @@ export function renderDrawerMarkets(event) {
   const effectivePeriod = isManual
     ? getEffectiveMatchPeriod(matchPeriod, event.id, homeTeam, awayTeam)
     : matchPeriod;
-  const lambdaData = calculateTeamLambdas(effectivePeriod);
+  const lambdaData = calculateTeamLambdas(effectivePeriod, h1Period);
   
   // --- Dixon-Coles section ---
   if (lambdaData) {
@@ -771,7 +865,7 @@ export function renderDrawerMarkets(event) {
   }
 
   const detailedAll = state.detailedOdds[event.id] || {};
-  const groupedMarkets = groupMarketsByCategory(event, matchPeriod, lambdaData, detailedAll, homeTeam, awayTeam);
+  const groupedMarkets = groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData, detailedAll, homeTeam, awayTeam);
   
   const categories = Object.keys(groupedMarkets);
   if (categories.length === 0) return;
@@ -938,7 +1032,7 @@ export function createMarketGroup(title, rows, extraClass = '', hasShowAll = fal
       <div class="market-header-actions">
         ${marginBadgeHTML(margin)}
         ${hasShowAll ? '<button class="show-all-btn">Show All</button>' : ''}
-        ${marketId ? `<button class="suspend-market-btn ${suspended ? 'suspended' : 'open'}" title="${suspended ? 'Market suspended — click to open' : 'Suspend this market'}">${suspended ? 'SUSP' : 'OPEN'}</button>` : ''}
+        ${marketId ? `<button class="suspend-market-btn ${suspended ? 'suspended' : 'open'}" title="${suspended ? 'Market suspended — click to publish' : 'Suspend this market'}">${suspended ? '🔒 SUSPENDED' : '🔓 PUBLISHED'}</button>` : ''}
         <span style="font-size:0.8rem">▼</span>
       </div>
     </div>
@@ -965,6 +1059,9 @@ export function createMarketGroup(title, rows, extraClass = '', hasShowAll = fal
           }
         });
       }
+      suspendBtn.innerHTML = !nowSusp ? '🔒 SUSPENDED' : '🔓 PUBLISHED';
+      suspendBtn.className = `suspend-market-btn ${!nowSusp ? 'suspended' : 'open'}`;
+      suspendBtn.title = !nowSusp ? 'Market suspended — click to publish' : 'Suspend this market';
       const ev = state.activeEvents.find(e => e.id.toString() === state.drawerEventId?.toString());
       if (ev) renderDrawerMarkets(ev);
     });
@@ -1088,12 +1185,15 @@ export function createMarketGroup(title, rows, extraClass = '', hasShowAll = fal
   return group;
 }
 
-export function createLambdaSection(data, homeTeam, awayTeam) {
+export function createLambdaSection(lambdaData, homeTeam, awayTeam) {
   const section = document.createElement('div');
   section.className = 'lambda-section';
-  const scoresHtml = data.scores.map(s =>
+  const data = lambdaData.ft;
+  const topScores = [...data.grid].sort((a, b) => b.prob - a.prob).slice(0, 6);
+  const scoresHtml = topScores.map(s =>
     `<div class="score-chip"><div class="score">${s.home}–${s.away}</div><div class="prob">${(s.prob * 100).toFixed(1)}%</div></div>`
   ).join('');
+  const tPct = (lambdaData.splitFraction * 100).toFixed(1);
   section.innerHTML = `
     <h3 class="lambda-title">Dixon-Coles Model</h3>
     <div class="lambda-cards">
@@ -1110,7 +1210,10 @@ export function createLambdaSection(data, homeTeam, awayTeam) {
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;">
       <div class="likely-scores-label" style="margin-bottom:0">Most Likely Scores</div>
-      <div style="font-size:0.7rem;color:#64748b">ρ = ${data.rho.toFixed(3)}</div>
+      <div style="font-size:0.7rem;color:#64748b;text-align:right">
+        <div>ρ = ${data.rho.toFixed(3)}</div>
+        <div>H1 Split: ${tPct}%</div>
+      </div>
     </div>
     <div class="likely-scores">${scoresHtml}</div>
   `;

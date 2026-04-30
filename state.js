@@ -8,6 +8,7 @@ export const state = {
   detailedOdds: {},
   activeCategory: 'MAIN MARKETS',
   activeMarketId: null,
+  expandedGroups: JSON.parse(localStorage.getItem('expandedGroups') || '[]'),
 };
 
 export function toggleFavorite(code) {
@@ -15,6 +16,13 @@ export function toggleFavorite(code) {
   if (index > -1) state.favorites.splice(index, 1);
   else state.favorites.push(code);
   localStorage.setItem('favoriteLeagues', JSON.stringify(state.favorites));
+}
+
+export function toggleGroup(groupName) {
+  const index = state.expandedGroups.indexOf(groupName);
+  if (index > -1) state.expandedGroups.splice(index, 1);
+  else state.expandedGroups.push(groupName);
+  localStorage.setItem('expandedGroups', JSON.stringify(state.expandedGroups));
 }
 
 export function snapshotOdds() {
