@@ -1,6 +1,6 @@
 import { state, toggleFavorite, snapshotOdds, getOverride, setOverride, clearOverride, clearAllOverridesForEvent, getTradingMode, setTradingMode, isSuspended, setSuspension, hasAnySuspension } from './state.js';
 import { fetchOdds, fetchEventOdds } from './api.js';
-import { calculateTeamLambdas, calculateShinNoVig } from './math.js';
+import { calculateTeamLambdas, calculateShinNoVig, scoreProb, dcAsianHandicapOdds, dcAsianTotalOdds } from './math.js';
 import { buildAllMarkets } from './markets.js';
 
 // Sum of inverse prices → book percentage (e.g. 1.05 = 105%)
@@ -328,6 +328,411 @@ export function closeDrawer() {
   document.getElementById('drawer-overlay').classList.remove('active');
 }
 
+function groupMarketsByCategory(event, matchPeriod, lambdaData, detailedAll, homeTeam, awayTeam) {
+  const groups = {
+    'MAIN MARKETS': [],
+    'HANDICAP': [],
+    'GOALS': [],
+    'TEAM GOALS': [],
+    'HALVES': [],
+    'CORNERS': [],
+    'BOOKINGS': [],
+    'TEAM PROPS': [],
+    'SPECIALS': [],
+    'PLAYER MARKETS': []
+  };
+
+  // --- Main Markets ---
+  let shin1X2 = null;
+  if (matchPeriod.moneyLine || matchPeriod.moneyline) {
+    const ml = matchPeriod.moneyLine || matchPeriod.moneyline;
+    const odds = [ml.homePrice || ml.home, ml.drawPrice || ml.draw, ml.awayPrice || ml.away];
+    shin1X2 = calculateShinNoVig(odds);
+    const shin = shin1X2;
+    // Model 1x2 from lambdaData
+    let modelRows = [null, null, null];
+    if (lambdaData) {
+      const { pH, pD, pA } = (() => {
+        let h = 0, d = 0, a = 0;
+        for (let i = 0; i <= 8; i++) for (let j = 0; j <= 8; j++) {
+          const p = scoreProb(i, j, lambdaData.lh, lambdaData.la, lambdaData.rho);
+          if (i > j) h += p; else if (i === j) d += p; else a += p;
+        }
+        return { pH: h, pD: d, pA: a };
+      })();
+      modelRows = [(1/pH).toFixed(3), (1/pD).toFixed(3), (1/pA).toFixed(3)];
+    }
+    groups['MAIN MARKETS'].push({
+      id: 'ml',
+      name: '1x2',
+      rows: [
+        { label: homeTeam, value: odds[0] || '-', shinFair: shin[0], modelFair: modelRows[0] },
+        { label: 'Draw',   value: odds[1] || '-', shinFair: shin[1], modelFair: modelRows[1] },
+        { label: awayTeam, value: odds[2] || '-', shinFair: shin[2], modelFair: modelRows[2] }
+      ]
+    });
+  }
+
+  if (matchPeriod.handicap && Array.isArray(matchPeriod.handicap)) {
+    const fmt = s => { const n = parseFloat(s); return (n === 0 || isNaN(n)) ? '0' : (n > 0 ? `+${n}` : `${n}`); };
+    let hdps = [...matchPeriod.handicap].sort((a, b) => parseFloat(a.homeSpread) - parseFloat(b.homeSpread));
+    let minDiff = Infinity;
+    let balancedIdx = 0;
+    hdps.forEach((h, i) => {
+      const diff = Math.abs(parseFloat(h.homeOdds) - parseFloat(h.awayOdds));
+      if (diff < minDiff) { minDiff = diff; balancedIdx = i; }
+    });
+    
+    let startIdx = Math.max(0, balancedIdx - 2);
+    let endIdx = Math.min(hdps.length - 1, startIdx + 4);
+    if (endIdx - startIdx < 4) startIdx = Math.max(0, endIdx - 4);
+    const selectedHdps = hdps.slice(startIdx, endIdx + 1);
+
+    const rows = [];
+    selectedHdps.forEach(h => {
+      const shin = calculateShinNoVig([h.homeOdds, h.awayOdds]);
+      // Model handicap using exact Asian Handicap settlement rules
+      let mHome = null, mAway = null;
+      if (lambdaData) {
+        const homeOdds = dcAsianHandicapOdds(lambdaData.lh, lambdaData.la, lambdaData.rho, parseFloat(h.homeSpread), false);
+        const awayOdds = dcAsianHandicapOdds(lambdaData.lh, lambdaData.la, lambdaData.rho, parseFloat(h.awaySpread), true);
+        if (homeOdds) mHome = homeOdds.toFixed(3);
+        if (awayOdds) mAway = awayOdds.toFixed(3);
+      }
+      rows.push({ label: `Home ${fmt(h.homeSpread)}`, value: h.homeOdds, shinFair: shin[0], modelFair: mHome });
+      rows.push({ label: `Away ${fmt(h.awaySpread)}`, value: h.awayOdds, shinFair: shin[1], modelFair: mAway });
+    });
+    groups['HANDICAP'].push({ id: 'hdp', name: 'Handicap (Best 5)', rows });
+  }
+
+  if (matchPeriod.overUnder && Array.isArray(matchPeriod.overUnder)) {
+    const rows = [];
+    const ous = [...matchPeriod.overUnder].sort((a, b) => parseFloat(a.points) - parseFloat(b.points));
+    ous.forEach(ou => {
+        const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
+        // Model over prob using exact Asian Totals settlement rules
+        let mOver = null, mUnder = null;
+        if (lambdaData) {
+          const line = parseFloat(ou.points);
+          const overOdds = dcAsianTotalOdds(lambdaData.lh, lambdaData.la, lambdaData.rho, line, true);
+          const underOdds = dcAsianTotalOdds(lambdaData.lh, lambdaData.la, lambdaData.rho, line, false);
+          if (overOdds) mOver = overOdds.toFixed(3);
+          if (underOdds) mUnder = underOdds.toFixed(3);
+        }
+        rows.push({ label: `Over ${ou.points}`,  value: ou.overOdds,  shinFair: shin[0], modelFair: mOver  });
+        rows.push({ label: `Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: mUnder });
+    });
+    groups['GOALS'].push({ id: 'ou', name: 'Total (All Lines)', rows });
+  }
+
+  // --- Derived Markets ---
+  if (lambdaData) {
+    const derived = buildAllMarkets(lambdaData);
+    const teamProps = detailedAll.specials?.find(s => s.code === 'team-props')?.events || [];
+    const getPinnaclePrice = (marketId, label) => {
+        let eventName = '';
+        if (marketId === 'btts') eventName = 'Both Teams To Score?';
+        else if (marketId === 'dnb') eventName = 'Draw No Bet';
+        else if (marketId === 'dc') eventName = 'Double Chance';
+        else if (marketId === 'cs') eventName = 'Correct Score';
+        const mkt = teamProps.find(e => e.name === eventName);
+        if (!mkt) return null;
+        let pinLabel = label;
+        if (marketId === 'dnb') {
+          pinLabel = label === 'Home' ? homeTeam : awayTeam;
+        } else if (marketId === 'dc') {
+          if (label === '1X') pinLabel = `${homeTeam} Or Draw`;
+          else if (label === 'X2') pinLabel = `Draw Or ${awayTeam}`;
+          else if (label === '12') pinLabel = `${homeTeam} Or ${awayTeam}`;
+        } else if (marketId === 'cs') {
+           const parts = label.split('–');
+           if (parts.length === 2) pinLabel = `${homeTeam} ${parts[0]}, ${awayTeam} ${parts[1]}`;
+        }
+        const contestant = mkt.contestants?.find(c => c.n === pinLabel);
+        return contestant ? contestant.p : null;
+    };
+
+    derived.forEach(market => {
+      const rows = market.selections.map(s => {
+        const pinPrice = getPinnaclePrice(market.id, s.label);
+        // Shin-devig the pinnacle price within its market group (approximate per-selection)
+        return {
+          label: s.label,
+          value: pinPrice || null,          // raw Pinnacle price (or null if not available)
+          shinFair: pinPrice ? null : null, // will be computed per-market below
+          modelFair: s.price,               // Dixon-Coles model price
+          prob: s.prob,
+          isApiOnly: false
+        };
+      });
+      // Apply Shin devig across all Pinnacle prices in this market where available
+      const withPin = rows.filter(r => r.value);
+      if (withPin.length >= 2) {
+        if (market.id === 'dc' && shin1X2) {
+          // Double Chance is a mathematically overlapping market (sums to 2). 
+          // Shin devig fails on it, so we derive its fair odds from the devigged 1X2 market.
+          const p1 = 1 / parseFloat(shin1X2[0]);
+          const pX = 1 / parseFloat(shin1X2[1]);
+          const p2 = 1 / parseFloat(shin1X2[2]);
+          withPin.forEach(r => {
+            if (r.label === '1X') r.shinFair = (1 / (p1 + pX)).toFixed(2);
+            else if (r.label === '12') r.shinFair = (1 / (p1 + p2)).toFixed(2);
+            else if (r.label === 'X2') r.shinFair = (1 / (pX + p2)).toFixed(2);
+          });
+        } else {
+          // Standard mutually exclusive market devig
+          const shinResults = calculateShinNoVig(withPin.map(r => r.value));
+          withPin.forEach((r, i) => { r.shinFair = shinResults[i]; });
+        }
+      }
+      const cat = market.id === 'cs' || market.id === 'btts' ? 'GOALS' : 'MAIN MARKETS';
+      groups[cat].push({ id: market.id, name: market.name, rows });
+    });
+  }
+
+  // --- Additional Pinnacle Markets ---
+  if (detailedAll.specials && Array.isArray(detailedAll.specials)) {
+    detailedAll.specials.forEach(category => {
+      if (!category.events || category.events.length === 0) return;
+
+      category.events.forEach(mkt => {
+        // Skip markets already mapped to model-derived groups
+        if (['Both Teams To Score?', 'Draw No Bet', 'Double Chance', 'Correct Score'].includes(mkt.name)) return;
+
+        const allPrices = mkt.contestants.map(c => parseFloat(c.p)).filter(p => !isNaN(p) && p > 1);
+        const shinAll = allPrices.length >= 2 ? calculateShinNoVig(allPrices) : allPrices.map(() => null);
+        const rows = mkt.contestants.map((c, i) => ({
+          label: c.n,
+          value: c.p,
+          shinFair: shinAll[i] ?? null,
+          modelFair: null,
+          isApiOnly: true
+        }));
+
+        const n = mkt.name.toLowerCase();
+        let catName;
+
+        // Priority order matters — check most specific first
+
+        // 1. Halves (1st/2nd half anything)
+        if (n.includes('1st half') || n.includes('2nd half') || n.includes('first half') || n.includes('second half')) {
+          catName = 'HALVES';
+
+        // 2. Corners
+        } else if (n.includes('corner')) {
+          catName = 'CORNERS';
+
+        // 3. Bookings / Cards
+        } else if (n.includes('booking') || n.includes('yellow card') || n.includes('red card') || n.includes('card')) {
+          catName = 'BOOKINGS';
+
+        // 4. Team-specific goal markets (e.g. "Leeds United Goals", "Burnley Goals Odd/Even")
+        } else if (/^(home|away|[a-z ]+) goals/i.test(mkt.name) && !n.includes('total goals')) {
+          catName = 'TEAM GOALS';
+
+        // 5. All Handicap variants → dedicated HANDICAP tab
+        } else if (n.includes('handicap') || n.includes('asian handicap') || n.includes('3-way handicap')) {
+          catName = 'HANDICAP';
+
+        // 6. Goal volume markets (total, exact, range, odd/even)
+        } else if (
+          n.includes('total goals') || n.includes('exact goals') || n.includes('goals range') ||
+          n.includes('goals odd/even') || n.includes('odd/even') ||
+          n.includes('either team to score') || n.includes('both teams to score') ||
+          n.includes('anytime') || n.includes('over/under')
+        ) {
+          catName = 'GOALS';
+
+        // 7. Team props (first/last scorer, clean sheet, win to nil, team to score?)
+        } else if (
+          n.includes('first team to score') || n.includes('last team to score') ||
+          n.includes('clean sheet') || n.includes('win to nil') ||
+          n.includes('to win to nil') || n.includes('both halves') ||
+          (n.includes('to score') && !n.includes('player') && !n.includes('anytime'))
+        ) {
+          catName = 'TEAM PROPS';
+
+        // 8. Player scorer markets
+        } else if (category.code === 'player-props' || n.includes('anytime scorer') || n.includes('player to score')) {
+          catName = 'PLAYER MARKETS';
+
+        // 9. Combo / result markets → SPECIALS
+        } else if (
+          n.includes('half time') || n.includes('ht/ft') || n.includes('halftime/fulltime') ||
+          n.includes('half-time/full-time') || n.includes('winning margin') ||
+          n.includes('winner') || n.includes('3-way') || n.includes('draw no bet')
+        ) {
+          catName = 'SPECIALS';
+
+        } else {
+          // Fallback by API code
+          if (category.code === 'halves') catName = 'HALVES';
+          else if (category.code === 'player-props') catName = 'PLAYER MARKETS';
+          else catName = 'SPECIALS';
+        }
+
+        groups[catName].push({ id: `special_${mkt.id}`, name: mkt.name, rows });
+      });
+    });
+  }
+
+  Object.keys(groups).forEach(k => { if (groups[k].length === 0) delete groups[k]; });
+  return groups;
+}
+
+function renderMarketTable(market) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'comparison-table-wrapper';
+  
+  const table = document.createElement('table');
+  table.className = 'comparison-table';
+  
+  const thead = document.createElement('thead');
+  thead.innerHTML = `
+    <tr>
+      <th>${market.name}</th>
+      <th style="text-align: right;">Shin (Fair)</th>
+      <th style="text-align: right;">Model (Fair)</th>
+      <th style="text-align: right;">Pinnacle (API)</th>
+      <th style="text-align: right;">Bet365</th>
+      <th style="text-align: right;">Dafabet</th>
+      <th style="text-align: right; width: 100px;">Override</th>
+    </tr>
+  `;
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  market.rows.forEach(row => {
+    const tr = document.createElement('tr');
+
+    const fmtPrice = v => {
+      const n = parseFloat(v);
+      return (!isNaN(n) && n > 1) ? n.toFixed(2) : '-';
+    };
+
+    const shinVal   = fmtPrice(row.shinFair);
+    const modelVal  = fmtPrice(row.modelFair);
+    const pinVal    = fmtPrice(row.value);
+
+    const overrideKey = `${state.drawerEventId}|${market.id}|${row.label}`;
+    const currentOverride = getOverride(overrideKey);
+    const ovValue = currentOverride ? parseFloat(currentOverride).toFixed(2) : '';
+
+    // Colour-code model vs shin disagreement
+    const getEdgeClass = (a, b) => {
+      const na = parseFloat(a), nb = parseFloat(b);
+      if (isNaN(na) || isNaN(nb)) return '';
+      const diff = na - nb;
+      if (diff > 0.05) return 'price-higher';
+      if (diff < -0.05) return 'price-lower';
+      return '';
+    };
+
+    const tdLabel = document.createElement('td');
+    tdLabel.textContent = row.label;
+
+    const tdShin = document.createElement('td');
+    tdShin.className = shinVal !== '-' ? 'price-cell' : 'empty-cell';
+    tdShin.textContent = shinVal;
+
+    const tdModel = document.createElement('td');
+    tdModel.className = `${modelVal !== '-' ? 'price-cell' : 'empty-cell'} ${getEdgeClass(modelVal, shinVal)}`;
+    tdModel.textContent = modelVal;
+
+    const tdPin = document.createElement('td');
+    tdPin.className = pinVal !== '-' ? 'price-cell' : 'empty-cell';
+    tdPin.textContent = pinVal;
+
+    const tdBet365 = document.createElement('td');
+    tdBet365.className = 'empty-cell';
+    tdBet365.textContent = '-';
+
+    const tdDafabet = document.createElement('td');
+    tdDafabet.className = 'empty-cell';
+    tdDafabet.textContent = '-';
+
+    const tdOverride = document.createElement('td');
+    tdOverride.className = 'override-input-cell';
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.className = 'table-override-input';
+    input.step = '0.01';
+    input.min = '1.01';
+    input.value = ovValue;
+    input.placeholder = '-';
+    
+    const confirm = () => {
+      const val = parseFloat(input.value);
+      if (val > 1) {
+        setOverride(overrideKey, val);
+        setTradingMode(state.drawerEventId, 'manual');
+        updateModeButton(state.drawerEventId);
+        const ev = state.activeEvents.find(e => e.id.toString() === state.drawerEventId?.toString());
+        if (ev) renderDrawerMarkets(ev);
+      }
+    };
+    
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') confirm(); });
+    input.addEventListener('blur', confirm);
+    tdOverride.appendChild(input);
+
+    tr.appendChild(tdLabel);
+    tr.appendChild(tdShin);
+    tr.appendChild(tdModel);
+    tr.appendChild(tdPin);
+    tr.appendChild(tdBet365);
+    tr.appendChild(tdDafabet);
+    tr.appendChild(tdOverride);
+    
+    tbody.appendChild(tr);
+  });
+
+  table.appendChild(tbody);
+
+  const tfoot = document.createElement('tfoot');
+  const tfootTr = document.createElement('tr');
+  tfootTr.className = 'margin-row';
+  
+  const getMarginHTML = (prop) => {
+    let sum = 0, count = 0;
+    market.rows.forEach(r => {
+      let val = null;
+      if (prop === 'override') {
+        const overrideKey = `${state.drawerEventId}|${market.id}|${r.label}`;
+        val = parseFloat(getOverride(overrideKey));
+      } else {
+        val = parseFloat(r[prop]);
+      }
+      if (!isNaN(val) && val > 1) { sum += 1 / val; count++; }
+    });
+    
+    if (count === 0) return '<span class="empty-cell">-</span>';
+
+    let expectedPairs = 1;
+    if (market.id === 'hdp' || market.id === 'ou' || market.name.includes('Handicap') || market.name.includes('Total') || market.name.includes('Corners') || market.name.includes('Odd/Even') || market.name.includes('Bookings')) {
+      if (count % 2 === 0) expectedPairs = count / 2;
+    }
+    if (market.name.includes('Double Chance')) expectedPairs = 2;
+    
+    return marginBadgeHTML(sum / expectedPairs);
+  };
+
+  tfootTr.innerHTML = `
+    <td><span class="margin-label">Margin (Avg)</span></td>
+    <td style="text-align: right;">${getMarginHTML('shinFair')}</td>
+    <td style="text-align: right;">${getMarginHTML('modelFair')}</td>
+    <td style="text-align: right;">${getMarginHTML('value')}</td>
+    <td style="text-align: right;"><span class="empty-cell">-</span></td>
+    <td style="text-align: right;"><span class="empty-cell">-</span></td>
+    <td style="text-align: right; padding-right: 12px;">${getMarginHTML('override')}</td>
+  `;
+  tfoot.appendChild(tfootTr);
+  table.appendChild(tfoot);
+
+  wrapper.appendChild(table);
+  return wrapper;
+}
+
 export function renderDrawerMarkets(event) {
   const drawerContent = document.getElementById('drawer-content');
   drawerContent.innerHTML = '';
@@ -354,177 +759,77 @@ export function renderDrawerMarkets(event) {
     if (a) awayTeam = a.name || a.englishName;
   }
 
-  // In MANUAL mode, re-solve lambdas from overridden prices so derived markets reflect the override
   const isManual = getTradingMode(event.id) === 'manual';
   const effectivePeriod = isManual
     ? getEffectiveMatchPeriod(matchPeriod, event.id, homeTeam, awayTeam)
     : matchPeriod;
   const lambdaData = calculateTeamLambdas(effectivePeriod);
-
+  
   // --- Dixon-Coles section ---
   if (lambdaData) {
     drawerContent.appendChild(createLambdaSection(lambdaData, homeTeam, awayTeam));
   }
 
-  // --- Main Markets ---
-  const mainDivider = document.createElement('div');
-  mainDivider.className = 'market-divider';
-  mainDivider.innerHTML = '<span>Main Markets</span>';
-  drawerContent.appendChild(mainDivider);
-
-  if (matchPeriod.moneyLine || matchPeriod.moneyline) {
-    const ml   = matchPeriod.moneyLine || matchPeriod.moneyline;
-    const odds = [ml.homePrice || ml.home, ml.drawPrice || ml.draw, ml.awayPrice || ml.away];
-    const fair = calculateShinNoVig(odds);
-    const mlRows = [
-      { label: homeTeam, value: odds[0] || '-', fair: fair[0] },
-      { label: 'Draw',   value: odds[1] || '-', fair: fair[1] },
-      { label: awayTeam, value: odds[2] || '-', fair: fair[2] },
-    ];
-    drawerContent.appendChild(createMarketGroup('Money Line – Match', mlRows, 'three-cols', true, calcMargin(mlRows), 'ml'));
-  }
-
-  if (matchPeriod.handicap && Array.isArray(matchPeriod.handicap)) {
-    const fmt = s => (s === 0 || s === '0') ? '0' : (parseFloat(s) > 0 ? `+${s}` : `${s}`);
-    
-    let hdps = [...matchPeriod.handicap].sort((a, b) => parseFloat(a.homeSpread) - parseFloat(b.homeSpread));
-    let minDiff = Infinity;
-    let balancedIdx = 0;
-    hdps.forEach((h, i) => {
-      const diff = Math.abs(parseFloat(h.homeOdds) - parseFloat(h.awayOdds));
-      if (diff < minDiff) { minDiff = diff; balancedIdx = i; }
-    });
-    
-    let startIdx = Math.max(0, balancedIdx - 2);
-    let endIdx = Math.min(hdps.length - 1, startIdx + 4);
-    if (endIdx - startIdx < 4) startIdx = Math.max(0, endIdx - 4);
-    const selectedHdps = hdps.slice(startIdx, endIdx + 1);
-
-    const rows = [];
-    selectedHdps.forEach(h => {
-      const fair = calculateShinNoVig([h.homeOdds, h.awayOdds]);
-      rows.push({ label: fmt(h.homeSpread), value: h.homeOdds, fair: fair[0] });
-      rows.push({ label: fmt(h.awaySpread), value: h.awayOdds, fair: fair[1] });
-    });
-    
-    // Margin for the balanced line
-    const balancedPair = rows.slice((balancedIdx - startIdx) * 2, (balancedIdx - startIdx) * 2 + 2);
-    drawerContent.appendChild(createMarketGroup('Handicap – Match (Best 5)', rows, '', false, calcMargin(balancedPair), 'hdp'));
-  }
-
-  if (matchPeriod.overUnder && Array.isArray(matchPeriod.overUnder)) {
-    const rows = [];
-    const ous = [...matchPeriod.overUnder].sort((a, b) => parseFloat(a.points) - parseFloat(b.points));
-    
-    let minDiff = Infinity;
-    let balancedIdx = 0;
-    ous.forEach((ou, i) => {
-      const diff = Math.abs(parseFloat(ou.overOdds) - parseFloat(ou.underOdds));
-      if (diff < minDiff) { minDiff = diff; balancedIdx = i; }
-    });
-
-    ous.forEach(ou => {
-        const fair = calculateShinNoVig([ou.overOdds, ou.underOdds]);
-        rows.push({ label: `Over ${ou.points}`,  value: ou.overOdds,  fair: fair[0] });
-        rows.push({ label: `Under ${ou.points}`, value: ou.underOdds, fair: fair[1] });
-    });
-    
-    const balancedPair = rows.slice(balancedIdx * 2, balancedIdx * 2 + 2);
-    drawerContent.appendChild(createMarketGroup('Total – Match (All Lines)', rows, '', false, calcMargin(balancedPair), 'ou'));
-  }
-
-  // --- Derived markets from model ---
-  if (lambdaData) {
-    const derived = buildAllMarkets(lambdaData);
-    if (derived.length) {
-      const divider = document.createElement('div');
-      divider.className = 'market-divider';
-      divider.innerHTML = '<span>Model-Derived Markets</span>';
-      drawerContent.appendChild(divider);
-
-      const detailed = state.detailedOdds[event.id] || {};
-      const teamProps = detailed.specials?.find(s => s.code === 'team-props')?.events || [];
-
-      const getPinnaclePrice = (marketId, label, homeTeam, awayTeam) => {
-        let eventName = '';
-        if (marketId === 'btts') eventName = 'Both Teams To Score?';
-        else if (marketId === 'dnb') eventName = 'Draw No Bet';
-        else if (marketId === 'dc') eventName = 'Double Chance';
-        else if (marketId === 'cs') eventName = 'Correct Score';
-        
-        const mkt = teamProps.find(e => e.name === eventName);
-        if (!mkt) return null;
-        
-        let pinLabel = label;
-        if (marketId === 'dnb') {
-          pinLabel = label === 'Home' ? homeTeam : awayTeam;
-        } else if (marketId === 'dc') {
-          if (label === '1X') pinLabel = `${homeTeam} Or Draw`;
-          else if (label === 'X2') pinLabel = `Draw Or ${awayTeam}`;
-          else if (label === '12') pinLabel = `${homeTeam} Or ${awayTeam}`;
-        } else if (marketId === 'cs') {
-           const parts = label.split('–');
-           if (parts.length === 2) pinLabel = `${homeTeam} ${parts[0]}, ${awayTeam} ${parts[1]}`;
-        }
-        
-        const contestant = mkt.contestants?.find(c => c.n === pinLabel);
-        return contestant ? contestant.p : null;
-      };
-
-      derived.forEach(market => {
-        const rows = market.selections.map(s => {
-          const pinPrice = getPinnaclePrice(market.id, s.label, homeTeam, awayTeam);
-          return {
-            label: s.label,
-            value: pinPrice || s.price,
-            fair: pinPrice ? s.price : null,
-            prob: s.prob,
-          };
-        });
-        drawerContent.appendChild(createMarketGroup(market.name, rows, market.cols, false, null, market.id));
-      });
-    }
-  }
-
-  // --- Additional Pinnacle Markets ---
   const detailedAll = state.detailedOdds[event.id] || {};
-  if (detailedAll.specials && Array.isArray(detailedAll.specials)) {
-    const categories = {
-      'halves': 'Halves & Periods',
-      'match-props': 'Match Props',
-      'team-props': 'Team Props',
-      'player-props': 'Player Props'
-    };
-    
-    detailedAll.specials.forEach(category => {
-      if (!category.events || category.events.length === 0) return;
-      
-      let catName = categories[category.code] || category.code.toUpperCase();
-      let renderedAny = false;
-      
-      category.events.forEach(mkt => {
-        if (['Both Teams To Score?', 'Draw No Bet', 'Double Chance', 'Correct Score'].includes(mkt.name)) return;
-        
-        if (!renderedAny) {
-          const divider = document.createElement('div');
-          divider.className = 'market-divider';
-          divider.innerHTML = `<span>${catName}</span>`;
-          drawerContent.appendChild(divider);
-          renderedAny = true;
-        }
-        
-        const rows = mkt.contestants.map(c => ({
-          label: c.n,
-          value: c.p,
-          fair: null,
-          isApiOnly: true
-        }));
-        
-        const cols = rows.length <= 2 ? '' : (rows.length === 3 ? 'three-cols' : '');
-        drawerContent.appendChild(createMarketGroup(mkt.name, rows, cols, false, calcMargin(rows), `special_${mkt.id}`));
-      });
-    });
+  const groupedMarkets = groupMarketsByCategory(event, matchPeriod, lambdaData, detailedAll, homeTeam, awayTeam);
+  
+  const categories = Object.keys(groupedMarkets);
+  if (categories.length === 0) return;
+  
+  if (!state.activeCategory || !groupedMarkets[state.activeCategory]) {
+    state.activeCategory = categories[0];
   }
+
+  const topNav = document.createElement('div');
+  topNav.className = 'drawer-nav-top';
+  
+  categories.forEach(cat => {
+    const btn = document.createElement('button');
+    btn.className = `top-tab-btn ${state.activeCategory === cat ? 'active' : ''}`;
+    btn.textContent = cat;
+    btn.onclick = () => {
+      state.activeCategory = cat;
+      state.activeMarketId = null;
+      renderDrawerMarkets(event);
+    };
+    topNav.appendChild(btn);
+  });
+  drawerContent.appendChild(topNav);
+
+  const bodyLayout = document.createElement('div');
+  bodyLayout.className = 'drawer-body-layout';
+
+  const leftNav = document.createElement('div');
+  leftNav.className = 'drawer-nav-left';
+  const activeGroup = groupedMarkets[state.activeCategory] || [];
+  
+  if (activeGroup.length > 0 && !activeGroup.find(m => m.id === state.activeMarketId)) {
+    state.activeMarketId = activeGroup[0].id;
+  }
+
+  activeGroup.forEach(market => {
+    const btn = document.createElement('button');
+    btn.className = `left-tab-btn ${state.activeMarketId === market.id ? 'active' : ''}`;
+    btn.textContent = market.name;
+    btn.onclick = () => {
+      state.activeMarketId = market.id;
+      renderDrawerMarkets(event);
+    };
+    leftNav.appendChild(btn);
+  });
+  bodyLayout.appendChild(leftNav);
+
+  const mainContent = document.createElement('div');
+  mainContent.className = 'drawer-main-content';
+  const activeMarket = activeGroup.find(m => m.id === state.activeMarketId);
+  
+  if (activeMarket) {
+    mainContent.appendChild(renderMarketTable(activeMarket));
+  } else {
+    mainContent.innerHTML = '<div class="empty-state">Select a market</div>';
+  }
+  bodyLayout.appendChild(mainContent);
+  drawerContent.appendChild(bodyLayout);
 }
 
 // Apply a target book % margin to all selections in a market.

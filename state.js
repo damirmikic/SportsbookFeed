@@ -6,6 +6,8 @@ export const state = {
   previousOdds: {},
   drawerEventId: null,
   detailedOdds: {},
+  activeCategory: 'MAIN MARKETS',
+  activeMarketId: null,
 };
 
 export function toggleFavorite(code) {

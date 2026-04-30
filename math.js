@@ -75,6 +75,55 @@ export function dcOverProb(lh, la, rho, line) {
   return pOver;
 }
 
+export function calcAsianOdds(pWin, pLoss, pPush, pHalfWin, pHalfLoss) {
+  const pAction = pWin + pLoss + pPush + pHalfWin + pHalfLoss;
+  if (pAction === 0) return null;
+  const w = pWin / pAction;
+  const l = pLoss / pAction;
+  const hw = pHalfWin / pAction;
+  const hl = pHalfLoss / pAction;
+
+  const denom = w + 0.5 * hw;
+  if (denom <= 0) return null; 
+  const num = l + 0.5 * hl;
+  return 1 + (num / denom);
+}
+
+export function dcAsianHandicapOdds(lh, la, rho, spread, isAway = false) {
+  let pWin = 0, pLoss = 0, pPush = 0, pHalfWin = 0, pHalfLoss = 0;
+  for (let i = 0; i <= 10; i++) {
+    for (let j = 0; j <= 10; j++) {
+      const p = scoreProb(i, j, lh, la, rho);
+      const diff = isAway ? (j - i) : (i - j);
+      // precision fix for margin
+      const margin = Math.round((diff + spread) * 4) / 4; 
+      if (margin >= 0.5) pWin += p;
+      else if (margin === 0.25) pHalfWin += p;
+      else if (margin === 0) pPush += p;
+      else if (margin === -0.25) pHalfLoss += p;
+      else pLoss += p;
+    }
+  }
+  return calcAsianOdds(pWin, pLoss, pPush, pHalfWin, pHalfLoss);
+}
+
+export function dcAsianTotalOdds(lh, la, rho, line, isOver) {
+  let pWin = 0, pLoss = 0, pPush = 0, pHalfWin = 0, pHalfLoss = 0;
+  for (let i = 0; i <= 10; i++) {
+    for (let j = 0; j <= 10; j++) {
+      const p = scoreProb(i, j, lh, la, rho);
+      const total = i + j;
+      const margin = Math.round((isOver ? (total - line) : (line - total)) * 4) / 4;
+      if (margin >= 0.5) pWin += p;
+      else if (margin === 0.25) pHalfWin += p;
+      else if (margin === 0) pPush += p;
+      else if (margin === -0.25) pHalfLoss += p;
+      else pLoss += p;
+    }
+  }
+  return calcAsianOdds(pWin, pLoss, pPush, pHalfWin, pHalfLoss);
+}
+
 export function solveLambdas(pH, pD, pA, pOver, totalLine) {
   let bestLh = 1, bestLa = 1, bestRho = 0, bestErr = Infinity;
 
