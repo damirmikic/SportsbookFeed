@@ -91,9 +91,18 @@ export function calcAsianOdds(pWin, pLoss, pPush, pHalfWin, pHalfLoss) {
 
 export function buildScoreGrid(lh, la, rho, maxGoals = 10) {
   const grid = [];
-  for (let i = 0; i <= maxGoals; i++)
-    for (let j = 0; j <= maxGoals; j++)
-      grid.push({ home: i, away: j, prob: scoreProb(i, j, lh, la, rho) });
+  let sum = 0;
+  for (let i = 0; i <= maxGoals; i++) {
+    for (let j = 0; j <= maxGoals; j++) {
+      const p = scoreProb(i, j, lh, la, rho);
+      grid.push({ home: i, away: j, prob: p });
+      sum += p;
+    }
+  }
+  // Normalize to 1.0
+  if (sum > 0) {
+    grid.forEach(s => s.prob /= sum);
+  }
   return grid;
 }
 
@@ -246,8 +255,8 @@ export function calculateTeamLambdas(matchPeriod, h1Period) {
 
   return {
     ft: { lh: solved.lh, la: solved.la, rho: solved.rho, grid: buildScoreGrid(solved.lh, solved.la, solved.rho) },
-    h1: { lh: solved.lh * t, la: solved.la * t, rho: solved.rho, grid: buildScoreGrid(solved.lh * t, solved.la * t, solved.rho) },
-    h2: { lh: solved.lh * (1-t), la: solved.la * (1-t), rho: solved.rho, grid: buildScoreGrid(solved.lh * (1-t), solved.la * (1-t), solved.rho) },
+    h1: { lh: solved.lh * t, la: solved.la * t, rho: 0, grid: buildScoreGrid(solved.lh * t, solved.la * t, 0) },
+    h2: { lh: solved.lh * (1-t), la: solved.la * (1-t), rho: 0, grid: buildScoreGrid(solved.lh * (1-t), solved.la * (1-t), 0) },
     splitFraction: t
   };
 }

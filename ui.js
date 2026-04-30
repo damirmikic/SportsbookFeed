@@ -597,7 +597,7 @@ function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData, detail
           label: c.n,
           value: c.p,
           shinFair: shinAll[i] ?? null,
-          modelFair: null,
+          modelFair: getModelPriceForSpecial(mkt.name, c.n, lambdaData, homeTeam, awayTeam),
           isApiOnly: true
         }));
 
@@ -670,6 +670,104 @@ function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData, detail
 
   Object.keys(groups).forEach(k => { if (groups[k].length === 0) delete groups[k]; });
   return groups;
+}
+
+function getModelPriceForSpecial(marketName, selectionLabel, lambdaData, homeTeam, awayTeam) {
+  if (!lambdaData || !lambdaData.ft || !lambdaData.ft.grid) return null;
+  const n = marketName.toLowerCase();
+  const label = selectionLabel.toLowerCase();
+
+  // Case 1: Joint BTTS & Total Goals
+  if ((n.includes('both teams to score') || n.includes('btts')) && n.includes('total goals')) {
+    const grid = lambdaData.ft.grid;
+    const isYes = label.includes('yes');
+    const isOver = label.includes('over');
+    const lineMatch = label.match(/(over|under)\s+([0-9.]+)/);
+    const line = lineMatch ? parseFloat(lineMatch[2]) : 2.5;
+
+    let prob = 0;
+    grid.forEach(({ home, away, prob: p }) => {
+      const total = home + away;
+      const bttsMatch = (home > 0 && away > 0) === isYes;
+      const overMatch = (total > line) === isOver;
+      if (bttsMatch && overMatch) prob += p;
+    });
+    return prob > 0 ? (1 / prob).toFixed(3) : null;
+  }
+
+  // Case 2: HT/FT (Half-Time/Full-Time)
+  if (n.includes('half-time/full-time') || n.includes('ht/ft')) {
+    if (!lambdaData.h1 || !lambdaData.h2) return null;
+    const h1Grid = lambdaData.h1.grid;
+    const h2Grid = lambdaData.h2.grid;
+
+    // Parse selection: "Home - Draw", "Central Cordoba - Draw", etc.
+    const parts = selectionLabel.split('-').map(p => p.trim());
+    if (parts.length !== 2) return null;
+
+    const getRes = (txt) => {
+      const t = txt.trim().toLowerCase();
+      const h = homeTeam.trim().toLowerCase();
+      const a = awayTeam.trim().toLowerCase();
+      if (t === 'draw' || t === 'x') return 0;
+      if (t === h || h.includes(t) || t === 'home' || t === '1') return 1;
+      if (t === a || a.includes(t) || t === 'away' || t === '2') return 2;
+      return null;
+    };
+
+    const htRes = getRes(parts[0]);
+    const ftRes = getRes(parts[1]);
+    if (htRes === null || ftRes === null) return null;
+
+    let prob = 0;
+    h1Grid.forEach(s1 => {
+      const s1Res = s1.home > s1.away ? 1 : (s1.home === s1.away ? 0 : 2);
+      if (s1Res !== htRes) return;
+      
+      h2Grid.forEach(s2 => {
+        const fHome = s1.home + s2.home;
+        const fAway = s1.away + s2.away;
+        const fRes = fHome > fAway ? 1 : (fHome === fAway ? 0 : 2);
+        if (fRes === ftRes) prob += s1.prob * s2.prob;
+      });
+    });
+    return prob > 0 ? (1 / prob).toFixed(3) : null;
+  }
+
+  // Case 3: Simple Odd/Even & Total Goals
+  if ((n.includes('odd/even') || n.includes('odd & even')) && n.includes('total goals')) {
+    const grid = lambdaData.ft.grid;
+    const isOdd = label.includes('odd');
+    const isOver = label.includes('over');
+    const lineMatch = label.match(/(over|under)\s+([0-9.]+)/);
+    const line = lineMatch ? parseFloat(lineMatch[2]) : 2.5;
+    
+    let prob = 0;
+    grid.forEach(({ home, away, prob: p }) => {
+      const total = home + away;
+      const isTotalOdd = (total % 2 !== 0);
+      const isTotalOver = (total > line);
+      if (isTotalOdd === isOdd && isTotalOver === isOver) prob += p;
+    });
+    return prob > 0 ? (1 / prob).toFixed(3) : null;
+  }
+  
+  // Case 4: Simple Odd/Even (Match, Home, or Away)
+  if (n.includes('odd/even') || n.includes('odd & even')) {
+    const grid = lambdaData.ft.grid;
+    const isOdd = label.includes('odd');
+    let prob = 0;
+    grid.forEach(({ home, away, prob: p }) => {
+      let val = home + away;
+      if (n.includes('home')) val = home;
+      else if (n.includes('away')) val = away;
+      
+      if ((val % 2 !== 0) === isOdd) prob += p;
+    });
+    return prob > 0 ? (1 / prob).toFixed(3) : null;
+  }
+
+  return null;
 }
 
 function renderMarketTable(market) {
