@@ -9,6 +9,9 @@ const LEAGUES_URL       = IS_LOCAL
 const ODDS_URL_TEMPLATE = IS_LOCAL
   ? `${PINNACLE_BASE}/odds/league?sportId=29&oddsType=1&version=0&periodNum=-1&locale=en_US&leagueCode={CODE}&isHlE=true&isLive=false&eventType=0&withCredentials=true`
   : '/api/odds/{CODE}';
+const EVENT_ODDS_URL_TEMPLATE = IS_LOCAL
+  ? `${PINNACLE_BASE}/odds/event?eventId={EVENT_ID}&oddsType=1&locale=en_US&withCredentials=true`
+  : '/api/odds/event/{EVENT_ID}';
 
 export async function fetchLeagues() {
   const response = await fetch(LEAGUES_URL);
@@ -19,6 +22,13 @@ export async function fetchLeagues() {
 
 export async function fetchOdds(leagueCode) {
   const url = ODDS_URL_TEMPLATE.replace('{CODE}', leagueCode);
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+  return await response.json();
+}
+
+export async function fetchEventOdds(eventId) {
+  const url = EVENT_ODDS_URL_TEMPLATE.replace('{EVENT_ID}', eventId);
   const response = await fetch(url);
   if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
   return await response.json();

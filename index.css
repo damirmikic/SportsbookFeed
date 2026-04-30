@@ -88,7 +88,7 @@ body {
 
 .bento-layout {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 300px 1fr;
   gap: 1.5rem;
   height: calc(100vh - 140px);
 }
@@ -218,10 +218,18 @@ body {
   transition: background 0.2s;
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start; /* Changed from center to support multi-line */
   margin-bottom: 0.5rem;
   gap: 0.5rem;
 }
+
+.league-name {
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.4;
+  font-size: 0.95rem;
+}
+
 
 .league-item:hover, .league-item.active {
   background-color: var(--surface-color-hover);
@@ -904,5 +912,11 @@ body {
 }
 /* Remove number input spinners */
 .margin-target-input::-webkit-inner-spin-button,
-.margin-target-input::-webkit-outer-spin-button { -webkit-appearance: none; }
-.margin-target-input[type=number] { -moz-appearance: textfield; }
+.margin-target-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+.margin-target-input[type=number] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}

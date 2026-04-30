@@ -5,6 +5,7 @@ export const state = {
   currentLeagueCode: null,
   previousOdds: {},
   drawerEventId: null,
+  detailedOdds: {},
 };
 
 export function toggleFavorite(code) {
