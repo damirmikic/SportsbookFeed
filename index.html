@@ -15,13 +15,18 @@
         <h1>Sportsbook Feed</h1>
         <p>Trading Terminal</p>
       </div>
+      <nav class="view-nav">
+        <button class="view-nav-btn active" data-view="trading">Trading</button>
+        <button class="view-nav-btn" data-view="admin">Admin</button>
+      </nav>
       <div class="status-indicator">
         <span id="last-refresh"></span>
         <span class="pulse"></span> Live
       </div>
     </header>
-    <main class="bento-layout">
-      <!-- Master: Leagues Navigation -->
+
+    <!-- ── Trading view ── -->
+    <main id="trading-view" class="bento-layout">
       <aside class="panel leagues-panel">
         <div class="panel-header-alt">
           <h2>Leagues</h2>
@@ -29,9 +34,7 @@
             <input type="text" id="league-search" placeholder="Search leagues..." autocomplete="off">
           </div>
         </div>
-        <div id="favorites-container" class="favorites-section">
-          <!-- Favorite leagues will appear here -->
-        </div>
+        <div id="favorites-container" class="favorites-section"></div>
         <div id="leagues-container" class="scrollable">
           <div class="loading-state">
             <div class="spinner"></div>
@@ -39,8 +42,6 @@
           </div>
         </div>
       </aside>
-      
-      <!-- Detail: Market Board -->
       <section class="panel market-panel">
         <h2>Market Board <span id="current-league"></span></h2>
         <div id="odds-container" class="scrollable">
@@ -48,7 +49,24 @@
         </div>
       </section>
     </main>
-    
+
+    <!-- ── Admin view ── -->
+    <div id="admin-view" class="admin-view hidden">
+
+      <!-- Admin section sub-nav -->
+      <nav class="admin-section-nav">
+        <button class="admin-section-btn active" data-section="tournaments">Tournaments Prematch</button>
+        <button class="admin-section-btn" data-section="templates">My Templates</button>
+      </nav>
+
+      <!-- Tournaments panel -->
+      <div id="admin-panel"></div>
+
+      <!-- Templates panel -->
+      <div id="templates-panel" class="hidden"></div>
+
+    </div>
+
     <!-- Side Drawer -->
     <div id="drawer-overlay" class="drawer-overlay"></div>
     <aside id="side-drawer" class="side-drawer">
@@ -63,9 +81,7 @@
           <button id="close-drawer" class="close-btn">&times;</button>
         </div>
       </div>
-      <div id="drawer-content" class="scrollable">
-        <!-- Markets will be rendered here -->
-      </div>
+      <div id="drawer-content" class="scrollable"></div>
     </aside>
   </div>
   <script type="module" src="app.js"></script>

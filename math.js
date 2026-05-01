@@ -127,6 +127,34 @@ export function calibrateHalvesFraction(lh, la, rho, p1, pX, p2) {
   return bestT;
 }
 
+export function calibrateHalvesFractionFromOU(lh, la, h1OUArray) {
+  const valid = h1OUArray.filter(ou => !ou.unavailable && !ou.offline);
+  if (!valid.length) return 0.45;
+
+  let mainOU = valid.find(ou => !ou.isAlt);
+  if (!mainOU) {
+    mainOU = valid.reduce((b, ou) =>
+      Math.abs(parseFloat(ou.points) - 1) < Math.abs(parseFloat(b.points) - 1) ? ou : b
+    );
+  }
+
+  const line = parseFloat(mainOU.points);
+  const fairOU = calculateShinNoVig([mainOU.overOdds, mainOU.underOdds]);
+  const fairOverOdds = parseFloat(fairOU[0]);
+  if (isNaN(line) || isNaN(fairOverOdds) || fairOverOdds <= 1) return 0.45;
+
+  let bestT = 0.45;
+  let minErr = Infinity;
+  for (let t = 0.30; t <= 0.60; t += 0.005) {
+    const h1Grid = buildScoreGrid(lh * t, la * t, 0);
+    const modelOdds = dcAsianTotalOdds(h1Grid, line, true);
+    if (!modelOdds) continue;
+    const err = (modelOdds - fairOverOdds) ** 2;
+    if (err < minErr) { minErr = err; bestT = t; }
+  }
+  return bestT;
+}
+
 export function dcAsianHandicapOdds(grid, spread, isAway = false) {
   let pWin = 0, pLoss = 0, pPush = 0, pHalfWin = 0, pHalfLoss = 0;
   grid.forEach(({ home, away, prob }) => {
@@ -243,21 +271,8 @@ export function calculateTeamLambdas(matchPeriod, h1Period) {
   const solved = solveLambdas(pH, pD, pA, pOver, totalLine);
 
   let t = 0.45;
-  if (h1Period && (h1Period.moneyLine || h1Period.moneyline)) {
-    const h1ml = h1Period.moneyLine || h1Period.moneyline;
-    const h1O = parseFloat(h1ml.homePrice || h1ml.home);
-    const d1O = parseFloat(h1ml.drawPrice || h1ml.draw);
-    const a1O = parseFloat(h1ml.awayPrice || h1ml.away);
-    if (!isNaN(h1O) && !isNaN(d1O) && !isNaN(a1O)) {
-      const fair1 = calculateShinNoVig([h1O, d1O, a1O]);
-      const f1 = parseFloat(fair1[0]), fX = parseFloat(fair1[1]), f2 = parseFloat(fair1[2]);
-      if (!isNaN(f1) && !isNaN(fX) && !isNaN(f2)) {
-         let p1 = 1/f1, px = 1/fX, p2 = 1/f2;
-         const s1 = p1 + px + p2;
-         p1 /= s1; px /= s1; p2 /= s1;
-         t = calibrateHalvesFraction(solved.lh, solved.la, solved.rho, p1, px, p2);
-      }
-    }
+  if (h1Period && h1Period.overUnder && Array.isArray(h1Period.overUnder) && h1Period.overUnder.length > 0) {
+    t = calibrateHalvesFractionFromOU(solved.lh, solved.la, h1Period.overUnder);
   }
 
   return {

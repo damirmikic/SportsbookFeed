@@ -1,4 +1,4 @@
-import { state, toggleFavorite, toggleGroup, snapshotOdds, getOverride, setOverride, clearOverride, clearAllOverridesForEvent, getTradingMode, setTradingMode, isSuspended, setSuspension, hasAnySuspension } from './state.js';
+import { state, toggleFavorite, toggleGroup, snapshotOdds, getOverride, setOverride, clearOverride, clearAllOverridesForEvent, getTradingMode, setTradingMode, isSuspended, setSuspension, hasAnySuspension, getMatchTemplate, setMatchTemplate, getLeagueSetting, getTemplates } from './state.js';
 import { fetchOdds, fetchEventOdds } from './api.js';
 import { calculateTeamLambdas, calculateShinNoVig, scoreProb, dcAsianHandicapOdds, dcAsianTotalOdds, dcAsianTeamTotalOdds } from './math.js';
 import { buildAllMarkets } from './markets.js';
@@ -380,7 +380,7 @@ export function closeDrawer() {
 
 function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData, detailedAll, homeTeam, awayTeam) {
   const groups = {
-    'MAIN MARKETS': [],
+    'MATCH ODDS': [],
     'HANDICAP': [],
     'GOALS': [],
     'TEAM GOALS': [],
@@ -408,7 +408,7 @@ function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData, detail
       });
       modelRows = [(1/pH).toFixed(3), (1/pD).toFixed(3), (1/pA).toFixed(3)];
     }
-    groups['MAIN MARKETS'].push({
+    groups['MATCH ODDS'].push({
       id: 'ml',
       name: '1x2',
       rows: [
@@ -471,9 +471,16 @@ function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData, detail
     groups['GOALS'].push({ id: 'ou', name: 'Total (All Lines)', rows });
   }
 
-  if (matchPeriod.teamTotal) {
+  const detailedFTPeriod = detailedAll?.normal?.periods?.['0'];
+  const ftTeamTotals = matchPeriod.teamTotals || matchPeriod.teamTotal ||
+                       detailedFTPeriod?.teamTotals || detailedFTPeriod?.teamTotal;
+  if (ftTeamTotals) {
     const processTeamTotal = (tt, labelPrefix, teamName, isAway) => {
-      const ousArray = tt?.overUnder || (Array.isArray(tt) ? tt : null);
+      let ousArray = null;
+      if (Array.isArray(tt)) ousArray = tt;
+      else if (tt?.overUnder) ousArray = tt.overUnder;
+      else if (tt?.points !== undefined) ousArray = [tt];
+      
       if (!ousArray || !Array.isArray(ousArray)) return;
       const rows = [];
       const ous = [...ousArray].sort((a, b) => parseFloat(a.points) - parseFloat(b.points));
@@ -494,8 +501,10 @@ function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData, detail
         groups['TEAM GOALS'].push({ id: `tt_${labelPrefix}`, name: `${teamName} Totals`, rows });
       }
     };
-    processTeamTotal(matchPeriod.teamTotal.home, 'home', homeTeam, false);
-    processTeamTotal(matchPeriod.teamTotal.away, 'away', awayTeam, true);
+    const homeData = ftTeamTotals.homeLines || ftTeamTotals.home;
+    const awayData = ftTeamTotals.awayLines || ftTeamTotals.away;
+    processTeamTotal(homeData, 'home', homeTeam, false);
+    processTeamTotal(awayData, 'away', awayTeam, true);
   }
 
   if (h1Period && h1Period.overUnder && Array.isArray(h1Period.overUnder)) {
@@ -515,6 +524,42 @@ function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData, detail
         rows.push({ label: `Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: mUnder });
     });
     groups['HALVES'].push({ id: 'h1_ou', name: '1st Half Total', rows });
+  }
+
+  const detailedH1Period = detailedAll?.normal?.periods?.['1'];
+  const h1TeamTotals = (h1Period ? (h1Period.teamTotals || h1Period.teamTotal) : null) ||
+                       detailedH1Period?.teamTotals || detailedH1Period?.teamTotal;
+  if (h1TeamTotals) {
+    const processTeamTotalH1 = (tt, labelPrefix, teamName, isAway) => {
+      let ousArray = null;
+      if (Array.isArray(tt)) ousArray = tt;
+      else if (tt?.overUnder) ousArray = tt.overUnder;
+      else if (tt?.points !== undefined) ousArray = [tt];
+      
+      if (!ousArray || !Array.isArray(ousArray)) return;
+      const rows = [];
+      const ous = [...ousArray].sort((a, b) => parseFloat(a.points) - parseFloat(b.points));
+      ous.forEach(ou => {
+          const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
+          let mOver = null, mUnder = null;
+          if (lambdaData && lambdaData.h1) {
+            const line = parseFloat(ou.points);
+            const overOdds = dcAsianTeamTotalOdds(lambdaData.h1.grid, line, true, isAway);
+            const underOdds = dcAsianTeamTotalOdds(lambdaData.h1.grid, line, false, isAway);
+            if (overOdds) mOver = overOdds.toFixed(3);
+            if (underOdds) mUnder = underOdds.toFixed(3);
+          }
+          rows.push({ label: `Over ${ou.points}`,  value: ou.overOdds,  shinFair: shin[0], modelFair: mOver  });
+          rows.push({ label: `Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: mUnder });
+      });
+      if (rows.length > 0) {
+        groups['HALVES'].push({ id: `h1_tt_${labelPrefix}`, name: `1st Half ${teamName} Totals`, rows });
+      }
+    };
+    const h1HomeData = h1TeamTotals.homeLines || h1TeamTotals.home;
+    const h1AwayData = h1TeamTotals.awayLines || h1TeamTotals.away;
+    processTeamTotalH1(h1HomeData, 'home', homeTeam, false);
+    processTeamTotalH1(h1AwayData, 'away', awayTeam, true);
   }
 
   // --- Derived Markets ---
@@ -577,7 +622,7 @@ function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData, detail
           withPin.forEach((r, i) => { r.shinFair = shinResults[i]; });
         }
       }
-      const cat = market.id === 'cs' || market.id === 'btts' ? 'GOALS' : 'MAIN MARKETS';
+      const cat = market.id === 'cs' || market.id === 'btts' ? 'GOALS' : 'MATCH ODDS';
       groups[cat].push({ id: market.id, name: market.name, rows });
     });
   }
@@ -620,7 +665,7 @@ function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData, detail
           catName = 'BOOKINGS';
 
         // 4. Team-specific goal markets (e.g. "Leeds United Goals", "Burnley Goals Odd/Even")
-        } else if (/^(home|away|[a-z ]+) goals/i.test(mkt.name) && !n.includes('total goals')) {
+        } else if ((/^(home|away|[a-z ]+) goals/i.test(mkt.name) && !n.includes('total goals')) || n.includes('team total')) {
           catName = 'TEAM GOALS';
 
         // 5. All Handicap variants → dedicated HANDICAP tab
@@ -664,7 +709,11 @@ function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData, detail
           else catName = 'SPECIALS';
         }
 
-        groups[catName].push({ id: `special_${mkt.id}`, name: mkt.name, rows });
+        let marketDisplayName = mkt.name;
+        if (catName === 'TEAM GOALS' && /^.+\s+goals$/i.test(mkt.name)) {
+          marketDisplayName = mkt.name.replace(/\s+goals$/i, ' Exact Goals');
+        }
+        groups[catName].push({ id: `special_${mkt.id}`, name: marketDisplayName, rows });
       });
     });
   }
@@ -986,6 +1035,25 @@ function getModelPriceForSpecial(marketName, selectionLabel, lambdaData, homeTea
     return prob > 0 ? (1 / prob).toFixed(3) : null;
   }
 
+  // Case 13: Team Total Match / 1st Half (e.g., "Team total - Match", "Team total - 1st Half")
+  if (n.includes('team total')) {
+    const isOver = label.includes('over');
+    const isUnder = label.includes('under');
+    const lineMatch = label.match(/(over|under)\s+([0-9.]+)/);
+    
+    if (lineMatch && (isOver || isUnder)) {
+      const line = parseFloat(lineMatch[2]);
+      const isHome = label.includes('home') || (homeTeam && label.includes(homeTeam.toLowerCase())) || n.includes('home') || (homeTeam && n.includes(homeTeam.toLowerCase()));
+      const isAway = label.includes('away') || (awayTeam && label.includes(awayTeam.toLowerCase())) || n.includes('away') || (awayTeam && n.includes(awayTeam.toLowerCase()));
+      
+      if (isHome !== isAway) {
+        const isAwayMarket = isAway;
+        const odds = dcAsianTeamTotalOdds(grid, line, isOver, isAwayMarket);
+        return odds ? odds.toFixed(3) : null;
+      }
+    }
+  }
+
   return null;
 }
 
@@ -1144,9 +1212,56 @@ function renderMarketTable(market) {
   return wrapper;
 }
 
+// ── Template bar (top of drawer) ──────────────────────────
+function renderTemplateBar(event, drawerContent) {
+  const templates    = getTemplates();
+  const leagueSetting = getLeagueSetting(state.currentLeagueCode);
+  const leagueTplId  = leagueSetting?.template || null;
+  const matchTplId   = getMatchTemplate(event.id);
+  const activeTplId  = matchTplId ?? leagueTplId;
+  const isOverride   = matchTplId !== null;
+  const activeTpl    = templates.find(t => t.id === activeTplId) || null;
+
+  const bar = document.createElement('div');
+  bar.className = 'drawer-tpl-bar';
+  bar.innerHTML = `
+    <div class="dtpl-left">
+      <span class="dtpl-icon">⬡</span>
+      <div class="dtpl-info">
+        <span class="dtpl-label">Template</span>
+        <span class="dtpl-name">${activeTpl ? activeTpl.name : 'None assigned'}</span>
+      </div>
+      ${activeTpl
+        ? `<span class="dtpl-badge ${isOverride ? 'dtpl-override' : 'dtpl-league'}">${isOverride ? 'MATCH OVERRIDE' : 'LEAGUE'}</span>`
+        : `<span class="dtpl-badge dtpl-none">NO TEMPLATE</span>`}
+    </div>
+    <div class="dtpl-right">
+      <select class="dtpl-select" id="drawer-tpl-sel">
+        <option value="">— league default${leagueTplId ? '' : ' (none)'} —</option>
+        ${templates.map(t => `<option value="${t.id}" ${activeTplId === t.id && isOverride ? 'selected' : ''}>${t.name}${!t.active ? ' (inactive)' : ''}</option>`).join('')}
+      </select>
+      ${isOverride ? `<button class="dtpl-reset-btn" id="drawer-tpl-reset" title="Revert to league template">Reset</button>` : ''}
+    </div>`;
+
+  const sel = bar.querySelector('#drawer-tpl-sel');
+  sel.addEventListener('change', () => {
+    setMatchTemplate(event.id, sel.value || null);
+    renderDrawerMarkets(event);
+  });
+
+  bar.querySelector('#drawer-tpl-reset')?.addEventListener('click', () => {
+    setMatchTemplate(event.id, null);
+    renderDrawerMarkets(event);
+  });
+
+  drawerContent.appendChild(bar);
+}
+
 export function renderDrawerMarkets(event) {
   const drawerContent = document.getElementById('drawer-content');
   drawerContent.innerHTML = '';
+
+  renderTemplateBar(event, drawerContent);
 
   let matchPeriod, h1Period;
   if (event.periods && !Array.isArray(event.periods)) {
@@ -1159,7 +1274,7 @@ export function renderDrawerMarkets(event) {
   }
 
   if (!matchPeriod) {
-    drawerContent.innerHTML = '<div class="empty-state">No detailed markets available.</div>';
+    drawerContent.insertAdjacentHTML('beforeend', '<div class="empty-state">No detailed markets available.</div>');
     return;
   }
 
