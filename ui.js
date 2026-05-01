@@ -1,4 +1,5 @@
-import { state, toggleFavorite, toggleGroup, snapshotOdds, getOverride, setOverride, clearOverride, clearAllOverridesForEvent, getTradingMode, setTradingMode, isSuspended, setSuspension, hasAnySuspension, getMatchTemplate, setMatchTemplate, getLeagueSetting, getTemplates } from './state.js';
+import { state, toggleFavorite, toggleGroup, snapshotOdds, getOverride, setOverride, clearOverride, clearAllOverridesForEvent, getTradingMode, setTradingMode, isSuspended, setSuspension, hasAnySuspension, setMatchTemplate, getLeagueSetting, getTemplates } from './state.js';
+import { resolveTemplate } from './pricing.js';
 import { fetchOdds, fetchEventOdds } from './api.js';
 import { calculateTeamLambdas, calculateShinNoVig, scoreProb, dcAsianHandicapOdds, dcAsianTotalOdds, dcAsianTeamTotalOdds } from './math.js';
 import { buildAllMarkets } from './markets.js';
@@ -1214,13 +1215,10 @@ function renderMarketTable(market) {
 
 // ── Template bar (top of drawer) ──────────────────────────
 function renderTemplateBar(event, drawerContent) {
-  const templates    = getTemplates();
-  const leagueSetting = getLeagueSetting(state.currentLeagueCode);
-  const leagueTplId  = leagueSetting?.template || null;
-  const matchTplId   = getMatchTemplate(event.id);
-  const activeTplId  = matchTplId ?? leagueTplId;
-  const isOverride   = matchTplId !== null;
-  const activeTpl    = templates.find(t => t.id === activeTplId) || null;
+  const { template: activeTpl, source } = resolveTemplate(event.id, state.currentLeagueCode);
+  const isOverride  = source === 'match';
+  const leagueTplId = getLeagueSetting(state.currentLeagueCode)?.template || null;
+  const templates   = getTemplates();
 
   const bar = document.createElement('div');
   bar.className = 'drawer-tpl-bar';
@@ -1238,7 +1236,7 @@ function renderTemplateBar(event, drawerContent) {
     <div class="dtpl-right">
       <select class="dtpl-select" id="drawer-tpl-sel">
         <option value="">— league default${leagueTplId ? '' : ' (none)'} —</option>
-        ${templates.map(t => `<option value="${t.id}" ${activeTplId === t.id && isOverride ? 'selected' : ''}>${t.name}${!t.active ? ' (inactive)' : ''}</option>`).join('')}
+        ${templates.map(t => `<option value="${t.id}" ${isOverride && activeTpl?.id === t.id ? 'selected' : ''}>${t.name}${!t.active ? ' (inactive)' : ''}</option>`).join('')}
       </select>
       ${isOverride ? `<button class="dtpl-reset-btn" id="drawer-tpl-reset" title="Revert to league template">Reset</button>` : ''}
     </div>`;
