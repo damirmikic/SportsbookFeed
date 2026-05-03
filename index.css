@@ -1138,6 +1138,17 @@ body {
   color: var(--text-primary);
 }
 
+.comparison-table th.offer-header {
+  color: var(--accent-color);
+  font-weight: 700;
+}
+
+.comparison-table td.offer-cell {
+  color: var(--accent-color);
+  font-weight: 700;
+  font-size: 1rem;
+}
+
 .comparison-table td.empty-cell {
   color: var(--text-secondary);
   opacity: 0.5;
@@ -1147,12 +1158,20 @@ body {
   padding: 0;
 }
 
+.override-input-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 4px 8px;
+}
+
 .table-override-input {
-  width: 70px;
+  width: 58px;
   background: rgba(0,0,0,0.2);
   border: 1px solid var(--border-color);
   color: var(--text-primary);
-  padding: 4px 8px;
+  padding: 4px 6px;
   border-radius: 4px;
   text-align: right;
 }
@@ -1160,6 +1179,63 @@ body {
 .table-override-input:focus {
   outline: none;
   border-color: var(--accent-color);
+}
+
+.save-override-btn {
+  padding: 4px 7px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  background: var(--accent-color);
+  border: none;
+  border-radius: 4px;
+  color: #0f172a;
+  cursor: pointer;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.save-override-btn:hover {
+  background: #818cf8;
+}
+
+/* ── Value-bet alert styles ────────────────────────────── */
+.table-override-input.value-bet-override {
+  border-color: #ef4444;
+  background: rgba(239,68,68,0.12);
+  color: #fca5a5;
+}
+
+.value-bet-gap {
+  display: block;
+  font-size: 0.65rem;
+  color: #ef4444;
+  font-weight: 600;
+  margin-top: 2px;
+  text-align: right;
+  cursor: help;
+}
+
+.market-value-bet-banner {
+  background: rgba(239,68,68,0.12);
+  border: 1px solid rgba(239,68,68,0.4);
+  border-radius: 4px 4px 0 0;
+  color: #fca5a5;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  letter-spacing: 0.02em;
+}
+
+.price-chip.value-bet-chip {
+  border-color: #ef4444;
+  background: rgba(239,68,68,0.12);
+}
+.price-chip.value-bet-chip .chip-label { color: #ef4444; }
+.price-chip.value-bet-chip .market-value { color: #fca5a5; }
+
+.manual-row-badge.value-bet-badge {
+  background: #ef4444;
+  color: #fff;
 }
 
 /* Model vs Shin edge highlighting */

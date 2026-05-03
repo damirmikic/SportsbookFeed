@@ -1,5 +1,5 @@
-import { state, toggleFavorite, toggleGroup, snapshotOdds, getOverride, setOverride, clearOverride, clearAllOverridesForEvent, getTradingMode, setTradingMode, isSuspended, setSuspension, hasAnySuspension, setMatchTemplate, getLeagueSetting, getTemplates } from './state.js';
-import { resolveTemplate } from './pricing.js';
+import { state, toggleFavorite, toggleGroup, snapshotOdds, getOverride, setOverride, clearOverride, clearAllOverridesForEvent, getTradingMode, setTradingMode, isSuspended, setSuspension, hasAnySuspension, setMatchTemplate, getLeagueSetting, getTemplates, setOverrideWithMeta, getOverrideMeta, updateOverrideAlertState, clearOverrideMetaSelection, getAllOverrideMeta, hasAnyOverrideForEvent } from './state.js';
+import { resolveTemplate, getMarketConfig, resolveActiveKey, evaluateOverrides } from './pricing.js';
 import { fetchOdds, fetchEventOdds } from './api.js';
 import { calculateTeamLambdas, calculateShinNoVig, scoreProb, dcAsianHandicapOdds, dcAsianTotalOdds, dcAsianTeamTotalOdds } from './math.js';
 import { buildAllMarkets } from './markets.js';
@@ -196,6 +196,31 @@ export function createLeagueElement(name, code, isFav) {
   return el;
 }
 
+function processOverrideExpiries(expiries) {
+  if (!expiries.length) return;
+  const affectedEvents = new Set();
+  expiries.forEach(({ eventId, marketId, label }) => {
+    clearOverride(`${eventId}|${marketId}|${label}`);
+    clearOverrideMetaSelection(eventId, marketId, label);
+    if (!hasAnyOverrideForEvent(eventId)) {
+      setTradingMode(eventId, 'auto');
+      affectedEvents.add(eventId);
+    }
+  });
+  affectedEvents.forEach(eventId => {
+    const boardRow = document.querySelector(`tr[data-event-id="${eventId}"]`);
+    if (boardRow) {
+      boardRow.classList.remove('manual-row');
+      boardRow.querySelector('.manual-row-badge')?.remove();
+    }
+    if (state.drawerEventId?.toString() === eventId) {
+      updateModeButton(eventId);
+      const ev = state.activeEvents.find(e => e.id.toString() === eventId);
+      if (ev) renderDrawerMarkets(ev);
+    }
+  });
+}
+
 export async function loadOdds(leagueCode, silent = false) {
   const oddsContainer = document.getElementById('odds-container');
   if (!silent) {
@@ -206,6 +231,7 @@ export async function loadOdds(leagueCode, silent = false) {
     state.previousOdds = snapshotOdds();
     const data = await fetchOdds(leagueCode);
     renderOdds(data);
+    processOverrideExpiries(evaluateOverrides(state.activeEvents));
   } catch (error) {
     console.error('Error fetching odds', error);
     if (!silent) {
@@ -214,20 +240,24 @@ export async function loadOdds(leagueCode, silent = false) {
   }
 }
 
-export function renderOdds(data) {
+function eventMatchesSearch(event, term) {
+  const home = (event.home || event.homeTeam?.name || '').toLowerCase();
+  const away = (event.away || event.awayTeam?.name || '').toLowerCase();
+  if (home.includes(term) || away.includes(term)) return true;
+  if (event.participants) {
+    return event.participants.some(p => (p.name || p.englishName || '').toLowerCase().includes(term));
+  }
+  return false;
+}
+
+function renderEventTable(eventsToRender) {
   const oddsContainer = document.getElementById('odds-container');
 
-  let events = [];
-  if (data.leagues && Array.isArray(data.leagues)) {
-    data.leagues.forEach(l => { if (l.events) events.push(...l.events); });
-  } else {
-    events = data.events || data.matches || (Array.isArray(data) ? data : []);
-  }
-
-  state.activeEvents = events;
-
-  if (!events.length) {
-    oddsContainer.innerHTML = `<div class="empty-state">No odds available for this league.</div>`;
+  if (!eventsToRender.length) {
+    const matchTerm = (document.getElementById('league-search')?.value || '').trim();
+    oddsContainer.innerHTML = matchTerm
+      ? `<div class="empty-state">No matches found for "<strong>${matchTerm}</strong>".</div>`
+      : `<div class="empty-state">No odds available for this league.</div>`;
     return;
   }
 
@@ -238,7 +268,7 @@ export function renderOdds(data) {
       <th>Over 2.5</th><th>Under 2.5</th>
     </tr></thead><tbody>`;
 
-  events.forEach(event => {
+  eventsToRender.forEach(event => {
     let homeTeam = event.home || event.homeTeam?.name;
     let awayTeam = event.away || event.awayTeam?.name;
 
@@ -316,7 +346,13 @@ export function renderOdds(data) {
     const tX = trend(oddsX, prev.draw, mX);
     const t2 = trend(odds2, prev.away, m2);
 
-    const manualBadge = isManual ? '<span class="manual-row-badge">M</span>' : '';
+    const allMeta = getAllOverrideMeta();
+    const hasValueBet = isManual && Object.keys(allMeta).some(
+      k => k.startsWith(`${event.id}|`) && allMeta[k]?.alertState === 'VALUE_BET'
+    );
+    const manualBadge = isManual
+      ? `<span class="manual-row-badge${hasValueBet ? ' value-bet-badge' : ''}">${hasValueBet ? 'M⚠' : 'M'}</span>`
+      : '';
     const suspBadge   = anySusp && !evtSuspended ? '<span class="susp-badge">SUSP</span>' : '';
     const rowClass = [isManual ? 'manual-row' : '', evtSuspended ? 'event-suspended' : ''].filter(Boolean).join(' ');
 
@@ -339,6 +375,25 @@ export function renderOdds(data) {
   oddsContainer.querySelectorAll('tr[data-event-id]').forEach(tr => {
     tr.addEventListener('click', () => openDrawer(tr.getAttribute('data-event-id')));
   });
+}
+
+export function renderOdds(data) {
+  let events = [];
+  if (data.leagues && Array.isArray(data.leagues)) {
+    data.leagues.forEach(l => { if (l.events) events.push(...l.events); });
+  } else {
+    events = data.events || data.matches || (Array.isArray(data) ? data : []);
+  }
+  state.activeEvents = events;
+
+  const matchTerm = (document.getElementById('league-search')?.value || '').toLowerCase().trim();
+  renderEventTable(matchTerm ? events.filter(ev => eventMatchesSearch(ev, matchTerm)) : events);
+}
+
+export function filterAndRenderBoard() {
+  if (!state.activeEvents.length) return; // no league loaded — leave the board untouched
+  const matchTerm = (document.getElementById('league-search')?.value || '').toLowerCase().trim();
+  renderEventTable(matchTerm ? state.activeEvents.filter(ev => eventMatchesSearch(ev, matchTerm)) : state.activeEvents);
 }
 
 export async function openDrawer(eventId) {
@@ -1061,20 +1116,58 @@ function getModelPriceForSpecial(marketName, selectionLabel, lambdaData, homeTea
 function renderMarketTable(market) {
   const wrapper = document.createElement('div');
   wrapper.className = 'comparison-table-wrapper';
-  
+
+  const marketAlertMeta = getOverrideMeta(state.drawerEventId, market.id);
+  if (marketAlertMeta?.alertState === 'VALUE_BET') {
+    const banner = document.createElement('div');
+    banner.className = 'market-value-bet-banner';
+    banner.textContent = `⚠ Value bet exposure — override exceeds Shin fair by ${marketAlertMeta.valueBetGap.toFixed(2)}`;
+    wrapper.appendChild(banner);
+  }
+
+  // ── Offer odds: final published price (override → template margin on Shin → none) ──
+  // Drawer IDs differ from template IDs for some markets; map them before lookup.
+  const DRAWER_TO_TPL_ID = { ml: '1x2', hdp: 'asian_hcp', ou: 'ou25' };
+  const tplMarketId = DRAWER_TO_TPL_ID[market.id] ?? market.id;
+
+  const drawerEvent   = state.activeEvents.find(e => e.id.toString() === state.drawerEventId?.toString());
+  const eventStart    = drawerEvent?.starts || drawerEvent?.startTime || drawerEvent?.time;
+  const { template: offerTpl } = resolveTemplate(state.drawerEventId, state.currentLeagueCode);
+  const offerMktConf  = offerTpl ? getMarketConfig(offerTpl, tplMarketId) : null;
+  const computeOffer  = (row) => {
+    const ov = getOverride(`${state.drawerEventId}|${market.id}|${row.label}`);
+    if (ov) return parseFloat(ov);
+    // Template assigned + market enabled → reprice Shin with template margin
+    if (offerMktConf?.enabled) {
+      let marginPct = offerMktConf.margin;
+      if (eventStart) {
+        const tl = resolveActiveKey(offerMktConf, eventStart);
+        if (tl?.key != null) marginPct = tl.key;
+      }
+      if (marginPct != null) {
+        const shin = parseFloat(row.shinFair);
+        if (!isNaN(shin) && shin > 1) return shin / (1 + marginPct / 100);
+      }
+    }
+    // Default: pass through raw Pinnacle API price
+    const api = parseFloat(row.value);
+    return (!isNaN(api) && api > 1) ? api : null;
+  };
+
   const table = document.createElement('table');
   table.className = 'comparison-table';
-  
+
   const thead = document.createElement('thead');
   thead.innerHTML = `
     <tr>
       <th>${market.name}</th>
+      <th class="offer-header" style="text-align: right;">Offer</th>
       <th style="text-align: right;">Shin (Fair)</th>
       <th style="text-align: right;">Model (Fair)</th>
       <th style="text-align: right;">Pinnacle (API)</th>
       <th style="text-align: right;">Bet365</th>
       <th style="text-align: right;">Dafabet</th>
-      <th style="text-align: right; width: 100px;">Override</th>
+      <th style="text-align: right; width: 130px;">Override</th>
     </tr>
   `;
   table.appendChild(thead);
@@ -1111,6 +1204,12 @@ function renderMarketTable(market) {
     const tdLabel = document.createElement('td');
     tdLabel.textContent = row.label;
 
+    const offerOdds  = computeOffer(row);
+    const offerDisplay = offerOdds && offerOdds > 1 ? offerOdds.toFixed(2) : '-';
+    const tdOffer = document.createElement('td');
+    tdOffer.className = offerDisplay !== '-' ? 'offer-cell' : 'empty-cell';
+    tdOffer.textContent = offerDisplay;
+
     const tdShin = document.createElement('td');
     tdShin.className = shinVal !== '-' ? 'price-cell' : 'empty-cell';
     tdShin.textContent = shinVal;
@@ -1140,23 +1239,83 @@ function renderMarketTable(market) {
     input.min = '1.01';
     input.value = ovValue;
     input.placeholder = '-';
-    
+
     const confirm = () => {
       const val = parseFloat(input.value);
-      if (val > 1) {
-        setOverride(overrideKey, val);
-        setTradingMode(state.drawerEventId, 'manual');
-        updateModeButton(state.drawerEventId);
-        const ev = state.activeEvents.find(e => e.id.toString() === state.drawerEventId?.toString());
-        if (ev) renderDrawerMarkets(ev);
+      if (!(val > 1)) return;
+
+      setOverride(overrideKey, val);
+
+      // For paired markets (OU, HDP) reprice the partner only; for 1x2/dc/dnb reprice all
+      const rowIdx = market.rows.indexOf(row);
+      const pairStart = Math.floor(rowIdx / 2) * 2;
+      const repriceRows = market.rows.length > 3
+        ? market.rows.slice(pairStart, pairStart + 2)
+        : market.rows;
+      if (repriceRows.length > 1) {
+        repriceOthers(overrideKey, val, repriceRows, market.id, resolveTargetMargin(market.id, repriceRows));
       }
+
+      // Capture meta for the changed row and any repriced partners
+      repriceRows.forEach(r => {
+        const rOv = r.label === row.label
+          ? val
+          : parseFloat(getOverride(`${state.drawerEventId}|${market.id}|${r.label}`));
+        if (!(rOv > 1)) return;
+        const rShin = parseFloat(r.shinFair);
+        const rDir  = rOv < parseFloat(r.value) ? 'DOWN' : 'UP';
+        setOverrideWithMeta(state.drawerEventId, market.id, r.label, rOv, rDir, rShin);
+      });
+
+      // Update market-level alert state across all repriced rows
+      let maxGap = 0, hasVB = false;
+      repriceRows.forEach(r => {
+        const rOv = r.label === row.label
+          ? val
+          : parseFloat(getOverride(`${state.drawerEventId}|${market.id}|${r.label}`));
+        const rShin = parseFloat(r.shinFair);
+        if (rOv > 1 && rShin > 1 && rOv - rShin > 0) {
+          hasVB = true;
+          if (rOv - rShin > maxGap) maxGap = rOv - rShin;
+        }
+      });
+      updateOverrideAlertState(state.drawerEventId, market.id, hasVB ? 'VALUE_BET' : 'CLEAN', maxGap);
+
+      setTradingMode(state.drawerEventId, 'manual');
+      updateModeButton(state.drawerEventId);
+      const ev = state.activeEvents.find(e => e.id.toString() === state.drawerEventId?.toString());
+      if (ev) renderDrawerMarkets(ev);
     };
-    
-    input.addEventListener('keydown', e => { if (e.key === 'Enter') confirm(); });
-    input.addEventListener('blur', confirm);
-    tdOverride.appendChild(input);
+
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'save-override-btn';
+    saveBtn.textContent = '✓';
+    saveBtn.title = 'Save override and reprice others';
+    saveBtn.addEventListener('click', e => { e.preventDefault(); confirm(); });
+
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); confirm(); } });
+
+    const inputWrapper = document.createElement('div');
+    inputWrapper.className = 'override-input-wrapper';
+    inputWrapper.appendChild(input);
+    inputWrapper.appendChild(saveBtn);
+    tdOverride.appendChild(inputWrapper);
+
+    if (currentOverride) {
+      const shinFairOdds = parseFloat(row.shinFair);
+      if (!isNaN(shinFairOdds) && shinFairOdds > 1 && parseFloat(currentOverride) > shinFairOdds) {
+        input.classList.add('value-bet-override');
+        const gap = (parseFloat(currentOverride) - shinFairOdds).toFixed(2);
+        const gapSpan = document.createElement('span');
+        gapSpan.className = 'value-bet-gap';
+        gapSpan.textContent = `⚠ +${gap}`;
+        gapSpan.title = `Override exceeds Shin fair by ${gap}`;
+        tdOverride.appendChild(gapSpan);
+      }
+    }
 
     tr.appendChild(tdLabel);
+    tr.appendChild(tdOffer);
     tr.appendChild(tdShin);
     tr.appendChild(tdModel);
     tr.appendChild(tdPin);
@@ -1180,6 +1339,8 @@ function renderMarketTable(market) {
       if (prop === 'override') {
         const overrideKey = `${state.drawerEventId}|${market.id}|${r.label}`;
         val = parseFloat(getOverride(overrideKey));
+      } else if (prop === 'offer') {
+        val = computeOffer(r);
       } else {
         val = parseFloat(r[prop]);
       }
@@ -1199,6 +1360,7 @@ function renderMarketTable(market) {
 
   tfootTr.innerHTML = `
     <td><span class="margin-label">Margin (Avg)</span></td>
+    <td style="text-align: right;">${getMarginHTML('offer')}</td>
     <td style="text-align: right;">${getMarginHTML('shinFair')}</td>
     <td style="text-align: right;">${getMarginHTML('modelFair')}</td>
     <td style="text-align: right;">${getMarginHTML('value')}</td>
@@ -1389,12 +1551,11 @@ function applyTargetMargin(eventId, marketId, rows, targetMarginPct) {
   }
 }
 
-// Proportionally redistribute implied probability to all other selections
-// to keep total margin constant after one price is manually set.
-function repriceOthers(changedKey, newPrice, rows, marketId) {
+// Proportionally redistribute implied probability to all other selections.
+// targetMargin: explicit book% (e.g. 1.055) to enforce; null → preserve current effective margin.
+function repriceOthers(changedKey, newPrice, rows, marketId, targetMargin = null) {
   const changedLabel = changedKey.split('|')[2];
 
-  // Effective price for each row (override if set, else original API)
   const effectivePrice = (row) => {
     const k = `${state.drawerEventId}|${marketId}|${row.label}`;
     return parseFloat(getOverride(k) || row.value);
@@ -1403,9 +1564,9 @@ function repriceOthers(changedKey, newPrice, rows, marketId) {
   const valid = rows.filter(r => { const p = effectivePrice(r); return !isNaN(p) && p > 1; });
   if (valid.length < 2) return;
 
-  const M        = valid.reduce((s, r) => s + 1 / effectivePrice(r), 0); // current total margin
-  const q_new    = 1 / newPrice;                                          // new implied prob for changed selection
-  const budget   = M - q_new;                                             // remaining for others
+  const M        = targetMargin ?? valid.reduce((s, r) => s + 1 / effectivePrice(r), 0);
+  const q_new    = 1 / newPrice;
+  const budget   = M - q_new;
   const others   = valid.filter(r => r.label !== changedLabel);
   const otherSum = others.reduce((s, r) => s + 1 / effectivePrice(r), 0);
 
@@ -1420,7 +1581,18 @@ function repriceOthers(changedKey, newPrice, rows, marketId) {
   });
 }
 
-function makeEditable(chip, priceSpan, key, currentVal, rows = [], marketId = '') {
+function resolveTargetMargin(marketId, repriceRows) {
+  const { template } = resolveTemplate(state.drawerEventId, state.currentLeagueCode);
+  const marketConf = template ? getMarketConfig(template, marketId) : null;
+  if (marketConf?.margin != null) return 1 + marketConf.margin / 100;
+  // No template — use raw API margin of the repriced row group
+  return repriceRows.reduce((s, r) => {
+    const p = parseFloat(r.value);
+    return (!isNaN(p) && p > 1) ? s + 1 / p : s;
+  }, 0);
+}
+
+function makeEditable(chip, priceSpan, key, currentVal, rows = [], marketId = '', shinFair = null, apiVal = null) {
   const input = document.createElement('input');
   input.type = 'number';
   input.step = '0.01';
@@ -1435,8 +1607,19 @@ function makeEditable(chip, priceSpan, key, currentVal, rows = [], marketId = ''
     const val = parseFloat(input.value);
     if (val > 1) {
       setOverride(key, val);
-      if (rows.length > 1 && marketId) repriceOthers(key, val, rows, marketId);
-      // Auto-switch to MANUAL mode and update button
+      if (rows.length > 1 && marketId) {
+        repriceOthers(key, val, rows, marketId, resolveTargetMargin(marketId, rows));
+      }
+      const keyParts = key.split('|');
+      const [evId, mktId, label] = keyParts;
+      const shinFairOdds = parseFloat(shinFair);
+      const refOdds = parseFloat(apiVal) || shinFairOdds;
+      const direction = (!isNaN(refOdds) && refOdds > 1) ? (val < refOdds ? 'DOWN' : 'UP') : 'UP';
+      if (!isNaN(shinFairOdds) && shinFairOdds > 1) {
+        setOverrideWithMeta(evId, mktId, label, val, direction, shinFairOdds);
+        const gap = val - shinFairOdds;
+        updateOverrideAlertState(evId, mktId, gap > 0 ? 'VALUE_BET' : 'CLEAN', Math.max(0, gap));
+      }
       setTradingMode(state.drawerEventId, 'manual');
       updateModeButton(state.drawerEventId);
       const ev = state.activeEvents.find(e => e.id.toString() === state.drawerEventId?.toString());
@@ -1550,6 +1733,10 @@ export function createMarketGroup(title, rows, extraClass = '', hasShowAll = fal
     const isOverridden = !!overrideVal;
     const displayPrice = overrideVal || row.value;
 
+    const ovFloat  = parseFloat(overrideVal);
+    const shinFloat = parseFloat(row.shinFair);
+    const isValueBet = isOverridden && !isNaN(ovFloat) && !isNaN(shinFloat) && shinFloat > 1 && ovFloat > shinFloat;
+
     const probBadge = row.prob != null
       ? `<span class="prob-badge">${(row.prob * 100).toFixed(1)}%</span>` : '';
 
@@ -1562,7 +1749,7 @@ export function createMarketGroup(title, rows, extraClass = '', hasShowAll = fal
 
     // Main price chip (API or Override)
     const bookieChip = document.createElement('div');
-    bookieChip.className = `price-chip bookie${isOverridden ? ' overridden' : ''}${overrideKey ? ' editable' : ''}`;
+    bookieChip.className = `price-chip bookie${isOverridden ? ' overridden' : ''}${overrideKey ? ' editable' : ''}${isValueBet ? ' value-bet-chip' : ''}`;
     bookieChip.title = overrideKey ? (isOverridden ? 'Click price to edit override' : 'Click to override price') : '';
 
     const chipLabel = document.createElement('span');
@@ -1586,17 +1773,23 @@ export function createMarketGroup(title, rows, extraClass = '', hasShowAll = fal
         clearBtn.addEventListener('click', e => {
           e.stopPropagation();
           clearOverride(overrideKey);
+          const [evId, mktId, lbl] = overrideKey.split('|');
+          clearOverrideMetaSelection(evId, mktId, lbl);
+          if (!hasAnyOverrideForEvent(evId)) {
+            setTradingMode(evId, 'auto');
+            updateModeButton(evId);
+          }
           const ev = state.activeEvents.find(e => e.id.toString() === state.drawerEventId?.toString());
           if (ev) renderDrawerMarkets(ev);
         });
         bookieChip.appendChild(clearBtn);
         // Click price to re-edit
         priceSpan.style.cursor = 'pointer';
-        priceSpan.addEventListener('click', () => makeEditable(bookieChip, priceSpan, overrideKey, displayPrice, rows, marketId));
+        priceSpan.addEventListener('click', () => makeEditable(bookieChip, priceSpan, overrideKey, displayPrice, rows, marketId, row.shinFair, row.value));
       } else {
         // Click anywhere on chip to open editor
         bookieChip.style.cursor = 'pointer';
-        bookieChip.addEventListener('click', () => makeEditable(bookieChip, priceSpan, overrideKey, displayPrice, rows, marketId));
+        bookieChip.addEventListener('click', () => makeEditable(bookieChip, priceSpan, overrideKey, displayPrice, rows, marketId, row.shinFair, row.value));
       }
     }
 

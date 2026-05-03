@@ -66,6 +66,13 @@ export function clearAllOverridesForEvent(eventId) {
   const prefix = `${eventId}|`;
   Object.keys(_overrides).forEach(k => { if (k.startsWith(prefix)) delete _overrides[k]; });
   localStorage.setItem('priceOverrides', JSON.stringify(_overrides));
+  Object.keys(_overrideMeta).forEach(k => { if (k.startsWith(prefix)) delete _overrideMeta[k]; });
+  localStorage.setItem('overrideMeta', JSON.stringify(_overrideMeta));
+}
+
+export function hasAnyOverrideForEvent(eventId) {
+  const prefix = `${eventId}|`;
+  return Object.keys(_overrides).some(k => k.startsWith(prefix));
 }
 
 // ── Trading mode (auto / manual) per event ─────────────────
@@ -241,4 +248,46 @@ export function setLeagueSetting(code, updates) {
   const current = _leagueSettings[String(code)] || { template: null, activation: 'off', alertFactor: 1 };
   _leagueSettings[String(code)] = { ...current, ...updates };
   localStorage.setItem('leagueSettings', JSON.stringify(_leagueSettings));
+}
+
+// ── Override metadata — per-market expiry tracking & alert state ──
+// Key: `${eventId}|${marketId}`
+// Value: { selections: { [label]: { overridePrice, direction, overrideImpliedProb, shinFairAtTime } }, alertState, valueBetGap, setAt }
+const _overrideMeta = JSON.parse(localStorage.getItem('overrideMeta') || '{}');
+
+export function setOverrideWithMeta(eventId, marketId, label, overridePrice, direction, shinFairAtTime) {
+  const key = `${eventId}|${marketId}`;
+  if (!_overrideMeta[key]) {
+    _overrideMeta[key] = { selections: {}, alertState: 'CLEAN', valueBetGap: 0, setAt: Date.now() };
+  }
+  const price = parseFloat(overridePrice);
+  _overrideMeta[key].selections[label] = {
+    overridePrice: price,
+    direction,
+    overrideImpliedProb: 1 / price,
+    shinFairAtTime: parseFloat(shinFairAtTime) || null,
+  };
+  localStorage.setItem('overrideMeta', JSON.stringify(_overrideMeta));
+}
+
+export function getOverrideMeta(eventId, marketId) {
+  return _overrideMeta[`${eventId}|${marketId}`] ?? null;
+}
+
+export function getAllOverrideMeta() { return _overrideMeta; }
+
+export function updateOverrideAlertState(eventId, marketId, alertState, valueBetGap) {
+  const key = `${eventId}|${marketId}`;
+  if (!_overrideMeta[key]) return;
+  _overrideMeta[key].alertState = alertState;
+  _overrideMeta[key].valueBetGap = valueBetGap;
+  localStorage.setItem('overrideMeta', JSON.stringify(_overrideMeta));
+}
+
+export function clearOverrideMetaSelection(eventId, marketId, label) {
+  const key = `${eventId}|${marketId}`;
+  if (!_overrideMeta[key]) return;
+  delete _overrideMeta[key].selections[label];
+  if (Object.keys(_overrideMeta[key].selections).length === 0) delete _overrideMeta[key];
+  localStorage.setItem('overrideMeta', JSON.stringify(_overrideMeta));
 }

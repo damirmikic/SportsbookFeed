@@ -1,6 +1,6 @@
 import { fetchLeagues } from './api.js';
 import { state } from './state.js';
-import { renderLeagues, closeDrawer, loadOdds } from './ui.js';
+import { renderLeagues, closeDrawer, loadOdds, filterAndRenderBoard } from './ui.js';
 import { renderAdminPanel } from './admin.js';
 import { renderTemplatesSection } from './templates-admin.js';
 
@@ -67,7 +67,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   closeDrawerBtn.addEventListener('click', closeDrawer);
   drawerOverlay.addEventListener('click', closeDrawer);
-  leagueSearchInput.addEventListener('input', () => renderLeagues(state.allLeagues));
+  leagueSearchInput.addEventListener('input', () => {
+    renderLeagues(state.allLeagues);
+    filterAndRenderBoard();
+  });
 
   document.addEventListener('league:selected', (e) => {
     state.currentLeagueCode = e.detail.code;

@@ -1,7 +1,8 @@
 // pricing.js — Template pricing engine
 // Steps are implemented incrementally; each function is independently importable.
 
-import { getMatchTemplate, getLeagueSetting, getTemplates, TIMELINE_NODES } from './state.js';
+import { getMatchTemplate, getLeagueSetting, getTemplates, TIMELINE_NODES, getAllOverrideMeta, updateOverrideAlertState } from './state.js';
+import { calculateShinNoVig } from './math.js';
 
 // ── Node thresholds: minutes before kick-off at which each node activates ──
 // INST is treated as Infinity — it is always the opening fallback.
@@ -115,4 +116,112 @@ export function resolveActiveKey(marketConfig, eventStartTime) {
   }
 
   return null; // No keys configured for the current time window
+}
+
+// ── Override expiry & alert evaluation ────────────────────
+
+function getTeamNames(event) {
+  let home = event.home || 'Home';
+  let away = event.away || 'Away';
+  if (event.participants) {
+    const h = event.participants.find(p => p.type === 'HOME' || p.participantType === 'Home');
+    const a = event.participants.find(p => p.type === 'AWAY' || p.participantType === 'Away');
+    if (h) home = h.name || h.englishName || home;
+    if (a) away = a.name || a.englishName || away;
+  }
+  return { home, away };
+}
+
+function getMatchPeriod(event) {
+  if (event.periods && !Array.isArray(event.periods)) return event.periods['0'];
+  const arr = Array.isArray(event.periods) ? event.periods : Object.values(event.periods || {});
+  return arr.find(p => p.num === 0 || p.periodNumber === 0) || arr[0];
+}
+
+function computeCurrentShinFairs(event, marketId) {
+  const matchPeriod = getMatchPeriod(event);
+  if (!matchPeriod) return null;
+
+  if (marketId === 'ml') {
+    const ml = matchPeriod.moneyLine || matchPeriod.moneyline;
+    if (!ml) return null;
+    const { home, away } = getTeamNames(event);
+    const shins = calculateShinNoVig([ml.homePrice || ml.home, ml.drawPrice || ml.draw, ml.awayPrice || ml.away]);
+    return { [home]: shins[0], 'Draw': shins[1], [away]: shins[2] };
+  }
+
+  if (marketId === 'ou') {
+    if (!Array.isArray(matchPeriod.overUnder)) return null;
+    const result = {};
+    matchPeriod.overUnder.forEach(ou => {
+      const shins = calculateShinNoVig([ou.overOdds, ou.underOdds]);
+      result[`Over ${ou.points}`] = shins[0];
+      result[`Under ${ou.points}`] = shins[1];
+    });
+    return result;
+  }
+
+  // Derived markets (btts, cs, hdp, etc.) — no fresh shin available from event data alone
+  return null;
+}
+
+/**
+ * Evaluates all active manual overrides each poll cycle.
+ * - Checks expiry: Shin fair crossing the override implied-prob threshold → auto-revert
+ * - Checks VALUE_BET: offer price exceeds Shin fair → alert state
+ * Returns array of expired selections: [{ eventId, marketId, label }]
+ */
+export function evaluateOverrides(activeEvents) {
+  const meta = getAllOverrideMeta();
+  const expiries = [];
+
+  for (const metaKey of Object.keys(meta)) {
+    const sepIdx = metaKey.indexOf('|');
+    const eventId  = metaKey.slice(0, sepIdx);
+    const marketId = metaKey.slice(sepIdx + 1);
+    const marketMeta = meta[metaKey];
+    if (!marketMeta?.selections) continue;
+
+    const event = activeEvents.find(e => e.id.toString() === eventId);
+    if (!event) continue;
+
+    const currentShins = computeCurrentShinFairs(event, marketId);
+    let maxGap = 0;
+    let hasValueBet = false;
+
+    for (const [label, selMeta] of Object.entries(marketMeta.selections)) {
+      // Use fresh shin where available; fall back to snapshot for derived markets
+      const shinFairOdds = currentShins
+        ? parseFloat(currentShins[label])
+        : parseFloat(selMeta.shinFairAtTime);
+
+      if (!shinFairOdds || isNaN(shinFairOdds) || shinFairOdds <= 1) continue;
+
+      // Expiry: only when we have a fresh shin to compare against
+      if (currentShins) {
+        const shinFairProb = 1 / shinFairOdds;
+        const expired = selMeta.direction === 'DOWN'
+          ? shinFairProb >= selMeta.overrideImpliedProb
+          : shinFairProb <= selMeta.overrideImpliedProb;
+        if (expired) {
+          expiries.push({ eventId, marketId, label });
+          continue;
+        }
+      }
+
+      // VALUE_BET: offer price above shin fair
+      const gap = selMeta.overridePrice - shinFairOdds;
+      if (gap > 0) {
+        hasValueBet = true;
+        if (gap > maxGap) maxGap = gap;
+      }
+    }
+
+    const newState = hasValueBet ? 'VALUE_BET' : 'CLEAN';
+    if (newState !== marketMeta.alertState || Math.abs(maxGap - marketMeta.valueBetGap) > 0.005) {
+      updateOverrideAlertState(eventId, marketId, newState, maxGap);
+    }
+  }
+
+  return expiries;
 }
