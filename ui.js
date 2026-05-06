@@ -232,6 +232,11 @@ export async function loadOdds(leagueCode, silent = false) {
     const data = await fetchOdds(leagueCode);
     renderOdds(data);
     processOverrideExpiries(evaluateOverrides(state.activeEvents));
+    // Re-render open drawer with fresh event data so overrides remain applied
+    if (state.drawerEventId) {
+      const freshEv = state.activeEvents.find(e => e.id.toString() === state.drawerEventId.toString());
+      if (freshEv) renderDrawerMarkets(freshEv);
+    }
   } catch (error) {
     console.error('Error fetching odds', error);
     if (!silent) {
@@ -1238,7 +1243,8 @@ function renderMarketTable(market) {
     input.step = '0.01';
     input.min = '1.01';
     input.value = ovValue;
-    input.placeholder = '-';
+    const offerForPlaceholder = computeOffer(row);
+    input.placeholder = (offerForPlaceholder && offerForPlaceholder > 1) ? offerForPlaceholder.toFixed(2) : '-';
 
     const confirm = () => {
       const val = parseFloat(input.value);
@@ -1418,6 +1424,10 @@ function renderTemplateBar(event, drawerContent) {
 }
 
 export function renderDrawerMarkets(event) {
+  // Always use the freshest event data so post-refresh renders reflect new API prices
+  const freshEvent = state.activeEvents.find(e => e.id.toString() === event.id.toString());
+  if (freshEvent) event = freshEvent;
+
   const drawerContent = document.getElementById('drawer-content');
   drawerContent.innerHTML = '';
 

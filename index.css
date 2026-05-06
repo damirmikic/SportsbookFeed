@@ -1181,6 +1181,11 @@ body {
   border-color: var(--accent-color);
 }
 
+.table-override-input::placeholder {
+  color: #475569;
+  font-style: italic;
+}
+
 .save-override-btn {
   padding: 4px 7px;
   font-size: 0.8rem;
