@@ -68,6 +68,8 @@ export function clearAllOverridesForEvent(eventId) {
   localStorage.setItem('priceOverrides', JSON.stringify(_overrides));
   Object.keys(_overrideMeta).forEach(k => { if (k.startsWith(prefix)) delete _overrideMeta[k]; });
   localStorage.setItem('overrideMeta', JSON.stringify(_overrideMeta));
+  delete _overriddenLambdas[String(eventId)];
+  localStorage.setItem('overriddenLambdas', JSON.stringify(_overriddenLambdas));
 }
 
 export function hasAnyOverrideForEvent(eventId) {
@@ -290,4 +292,22 @@ export function clearOverrideMetaSelection(eventId, marketId, label) {
   delete _overrideMeta[key].selections[label];
   if (Object.keys(_overrideMeta[key].selections).length === 0) delete _overrideMeta[key];
   localStorage.setItem('overrideMeta', JSON.stringify(_overrideMeta));
+}
+
+// ── Overridden lambdas (back-solved from 1x2/OU price overrides) ──────────
+// Stores { lh, la, rho, grid } per event; drives all derived market offer prices.
+const _overriddenLambdas = JSON.parse(localStorage.getItem('overriddenLambdas') || '{}');
+
+export function getOverriddenLambdas(eventId) {
+  return _overriddenLambdas[String(eventId)] ?? null;
+}
+
+export function setOverriddenLambdas(eventId, data) {
+  _overriddenLambdas[String(eventId)] = data;
+  localStorage.setItem('overriddenLambdas', JSON.stringify(_overriddenLambdas));
+}
+
+export function clearOverriddenLambdas(eventId) {
+  delete _overriddenLambdas[String(eventId)];
+  localStorage.setItem('overriddenLambdas', JSON.stringify(_overriddenLambdas));
 }

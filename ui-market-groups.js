@@ -1,0 +1,572 @@
+import { calculateShinNoVig, dcAsianHandicapOdds, dcAsianTotalOdds, dcAsianTeamTotalOdds } from './math.js';
+import { buildAllMarkets } from './markets.js';
+
+export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData, detailedAll, homeTeam, awayTeam) {
+  const groups = {
+    'MATCH ODDS': [],
+    'HANDICAP': [],
+    'GOALS': [],
+    'TEAM GOALS': [],
+    'HALVES': [],
+    'CORNERS': [],
+    'BOOKINGS': [],
+    'TEAM PROPS': [],
+    'SPECIALS': [],
+    'PLAYER MARKETS': []
+  };
+
+  // --- Main Markets ---
+  let shin1X2 = null;
+  if (matchPeriod.moneyLine || matchPeriod.moneyline) {
+    const ml = matchPeriod.moneyLine || matchPeriod.moneyline;
+    const odds = [ml.homePrice || ml.home, ml.drawPrice || ml.draw, ml.awayPrice || ml.away];
+    shin1X2 = calculateShinNoVig(odds);
+    const shin = shin1X2;
+    let modelRows = [null, null, null];
+    if (lambdaData) {
+      let pH = 0, pD = 0, pA = 0;
+      lambdaData.ft.grid.forEach(({ home, away, prob }) => {
+        if (home > away) pH += prob; else if (home === away) pD += prob; else pA += prob;
+      });
+      modelRows = [(1/pH).toFixed(3), (1/pD).toFixed(3), (1/pA).toFixed(3)];
+    }
+    groups['MATCH ODDS'].push({
+      id: 'ml',
+      name: '1x2',
+      rows: [
+        { label: homeTeam, value: odds[0] || '-', shinFair: shin[0], modelFair: modelRows[0] },
+        { label: 'Draw',   value: odds[1] || '-', shinFair: shin[1], modelFair: modelRows[1] },
+        { label: awayTeam, value: odds[2] || '-', shinFair: shin[2], modelFair: modelRows[2] }
+      ]
+    });
+  }
+
+  if (matchPeriod.handicap && Array.isArray(matchPeriod.handicap)) {
+    const fmt = s => { const n = parseFloat(s); return (n === 0 || isNaN(n)) ? '0' : (n > 0 ? `+${n}` : `${n}`); };
+    let hdps = [...matchPeriod.handicap].sort((a, b) => parseFloat(a.homeSpread) - parseFloat(b.homeSpread));
+    let minDiff = Infinity, balancedIdx = 0;
+    hdps.forEach((h, i) => {
+      const diff = Math.abs(parseFloat(h.homeOdds) - parseFloat(h.awayOdds));
+      if (diff < minDiff) { minDiff = diff; balancedIdx = i; }
+    });
+    let startIdx = Math.max(0, balancedIdx - 2);
+    let endIdx = Math.min(hdps.length - 1, startIdx + 4);
+    if (endIdx - startIdx < 4) startIdx = Math.max(0, endIdx - 4);
+    const selectedHdps = hdps.slice(startIdx, endIdx + 1);
+
+    const rows = [];
+    selectedHdps.forEach(h => {
+      const shin = calculateShinNoVig([h.homeOdds, h.awayOdds]);
+      let mHome = null, mAway = null;
+      if (lambdaData) {
+        const homeOdds = dcAsianHandicapOdds(lambdaData.ft.grid, parseFloat(h.homeSpread), false);
+        const awayOdds = dcAsianHandicapOdds(lambdaData.ft.grid, parseFloat(h.awaySpread), true);
+        if (homeOdds) mHome = homeOdds.toFixed(3);
+        if (awayOdds) mAway = awayOdds.toFixed(3);
+      }
+      rows.push({ label: `Home ${fmt(h.homeSpread)}`, value: h.homeOdds, shinFair: shin[0], modelFair: mHome });
+      rows.push({ label: `Away ${fmt(h.awaySpread)}`, value: h.awayOdds, shinFair: shin[1], modelFair: mAway });
+    });
+    groups['HANDICAP'].push({ id: 'hdp', name: 'Handicap (Best 5)', rows });
+  }
+
+  if (matchPeriod.overUnder && Array.isArray(matchPeriod.overUnder)) {
+    const rows = [];
+    const ous = [...matchPeriod.overUnder].sort((a, b) => parseFloat(a.points) - parseFloat(b.points));
+    ous.forEach(ou => {
+      const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
+      let mOver = null, mUnder = null;
+      if (lambdaData) {
+        const line = parseFloat(ou.points);
+        const overOdds  = dcAsianTotalOdds(lambdaData.ft.grid, line, true);
+        const underOdds = dcAsianTotalOdds(lambdaData.ft.grid, line, false);
+        if (overOdds)  mOver  = overOdds.toFixed(3);
+        if (underOdds) mUnder = underOdds.toFixed(3);
+      }
+      rows.push({ label: `Over ${ou.points}`,  value: ou.overOdds,  shinFair: shin[0], modelFair: mOver  });
+      rows.push({ label: `Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: mUnder });
+    });
+    groups['GOALS'].push({ id: 'ou', name: 'Total (All Lines)', rows });
+  }
+
+  const detailedFTPeriod = detailedAll?.normal?.periods?.['0'];
+  const ftTeamTotals = matchPeriod.teamTotals || matchPeriod.teamTotal ||
+                       detailedFTPeriod?.teamTotals || detailedFTPeriod?.teamTotal;
+  if (ftTeamTotals) {
+    const processTeamTotal = (tt, labelPrefix, teamName, isAway) => {
+      let ousArray = null;
+      if (Array.isArray(tt)) ousArray = tt;
+      else if (tt?.overUnder) ousArray = tt.overUnder;
+      else if (tt?.points !== undefined) ousArray = [tt];
+      if (!ousArray || !Array.isArray(ousArray)) return;
+      const rows = [];
+      const ous = [...ousArray].sort((a, b) => parseFloat(a.points) - parseFloat(b.points));
+      ous.forEach(ou => {
+        const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
+        let mOver = null, mUnder = null;
+        if (lambdaData) {
+          const line = parseFloat(ou.points);
+          const overOdds  = dcAsianTeamTotalOdds(lambdaData.ft.grid, line, true, isAway);
+          const underOdds = dcAsianTeamTotalOdds(lambdaData.ft.grid, line, false, isAway);
+          if (overOdds)  mOver  = overOdds.toFixed(3);
+          if (underOdds) mUnder = underOdds.toFixed(3);
+        }
+        rows.push({ label: `Over ${ou.points}`,  value: ou.overOdds,  shinFair: shin[0], modelFair: mOver  });
+        rows.push({ label: `Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: mUnder });
+      });
+      if (rows.length > 0) groups['TEAM GOALS'].push({ id: `tt_${labelPrefix}`, name: `${teamName} Totals`, rows });
+    };
+    processTeamTotal(ftTeamTotals.homeLines || ftTeamTotals.home, 'home', homeTeam, false);
+    processTeamTotal(ftTeamTotals.awayLines || ftTeamTotals.away, 'away', awayTeam, true);
+  }
+
+  if (h1Period && h1Period.overUnder && Array.isArray(h1Period.overUnder)) {
+    const rows = [];
+    const ous = [...h1Period.overUnder].sort((a, b) => parseFloat(a.points) - parseFloat(b.points));
+    ous.forEach(ou => {
+      const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
+      let mOver = null, mUnder = null;
+      if (lambdaData && lambdaData.h1) {
+        const line = parseFloat(ou.points);
+        const overOdds  = dcAsianTotalOdds(lambdaData.h1.grid, line, true);
+        const underOdds = dcAsianTotalOdds(lambdaData.h1.grid, line, false);
+        if (overOdds)  mOver  = overOdds.toFixed(3);
+        if (underOdds) mUnder = underOdds.toFixed(3);
+      }
+      rows.push({ label: `Over ${ou.points}`,  value: ou.overOdds,  shinFair: shin[0], modelFair: mOver  });
+      rows.push({ label: `Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: mUnder });
+    });
+    groups['HALVES'].push({ id: 'h1_ou', name: '1st Half Total', rows });
+  }
+
+  const detailedH1Period = detailedAll?.normal?.periods?.['1'];
+  const h1TeamTotals = (h1Period ? (h1Period.teamTotals || h1Period.teamTotal) : null) ||
+                       detailedH1Period?.teamTotals || detailedH1Period?.teamTotal;
+  if (h1TeamTotals) {
+    const processTeamTotalH1 = (tt, labelPrefix, teamName, isAway) => {
+      let ousArray = null;
+      if (Array.isArray(tt)) ousArray = tt;
+      else if (tt?.overUnder) ousArray = tt.overUnder;
+      else if (tt?.points !== undefined) ousArray = [tt];
+      if (!ousArray || !Array.isArray(ousArray)) return;
+      const rows = [];
+      const ous = [...ousArray].sort((a, b) => parseFloat(a.points) - parseFloat(b.points));
+      ous.forEach(ou => {
+        const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
+        let mOver = null, mUnder = null;
+        if (lambdaData && lambdaData.h1) {
+          const line = parseFloat(ou.points);
+          const overOdds  = dcAsianTeamTotalOdds(lambdaData.h1.grid, line, true, isAway);
+          const underOdds = dcAsianTeamTotalOdds(lambdaData.h1.grid, line, false, isAway);
+          if (overOdds)  mOver  = overOdds.toFixed(3);
+          if (underOdds) mUnder = underOdds.toFixed(3);
+        }
+        rows.push({ label: `Over ${ou.points}`,  value: ou.overOdds,  shinFair: shin[0], modelFair: mOver  });
+        rows.push({ label: `Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: mUnder });
+      });
+      if (rows.length > 0) groups['HALVES'].push({ id: `h1_tt_${labelPrefix}`, name: `1st Half ${teamName} Totals`, rows });
+    };
+    processTeamTotalH1(h1TeamTotals.homeLines || h1TeamTotals.home, 'home', homeTeam, false);
+    processTeamTotalH1(h1TeamTotals.awayLines || h1TeamTotals.away, 'away', awayTeam, true);
+  }
+
+  // --- Derived Markets ---
+  if (lambdaData) {
+    const derived = buildAllMarkets(lambdaData.ft.grid);
+    const teamProps = detailedAll.specials?.find(s => s.code === 'team-props')?.events || [];
+    const getPinnaclePrice = (marketId, label) => {
+      let eventName = '';
+      if (marketId === 'btts') eventName = 'Both Teams To Score?';
+      else if (marketId === 'dnb') eventName = 'Draw No Bet';
+      else if (marketId === 'dc') eventName = 'Double Chance';
+      else if (marketId === 'cs') eventName = 'Correct Score';
+      const mkt = teamProps.find(e => e.name === eventName);
+      if (!mkt) return null;
+      let pinLabel = label;
+      if (marketId === 'dnb') {
+        pinLabel = label === 'Home' ? homeTeam : awayTeam;
+      } else if (marketId === 'dc') {
+        if (label === '1X') pinLabel = `${homeTeam} Or Draw`;
+        else if (label === 'X2') pinLabel = `Draw Or ${awayTeam}`;
+        else if (label === '12') pinLabel = `${homeTeam} Or ${awayTeam}`;
+      } else if (marketId === 'cs') {
+        const parts = label.split('–');
+        if (parts.length === 2) pinLabel = `${homeTeam} ${parts[0]}, ${awayTeam} ${parts[1]}`;
+      }
+      const contestant = mkt.contestants?.find(c => c.n === pinLabel);
+      return contestant ? contestant.p : null;
+    };
+
+    derived.forEach(market => {
+      const rows = market.selections.map(s => {
+        const pinPrice = getPinnaclePrice(market.id, s.label);
+        return {
+          label: s.label,
+          value: pinPrice || null,
+          shinFair: null,
+          modelFair: s.price,
+          prob: s.prob,
+          isApiOnly: false
+        };
+      });
+      const withPin = rows.filter(r => r.value);
+      if (withPin.length >= 2) {
+        if (market.id === 'dc' && shin1X2) {
+          const p1 = 1 / parseFloat(shin1X2[0]);
+          const pX = 1 / parseFloat(shin1X2[1]);
+          const p2 = 1 / parseFloat(shin1X2[2]);
+          withPin.forEach(r => {
+            if (r.label === '1X') r.shinFair = (1 / (p1 + pX)).toFixed(2);
+            else if (r.label === '12') r.shinFair = (1 / (p1 + p2)).toFixed(2);
+            else if (r.label === 'X2') r.shinFair = (1 / (pX + p2)).toFixed(2);
+          });
+        } else {
+          const shinResults = calculateShinNoVig(withPin.map(r => r.value));
+          withPin.forEach((r, i) => { r.shinFair = shinResults[i]; });
+        }
+      }
+      const cat = market.id === 'cs' || market.id === 'btts' ? 'GOALS' : 'MATCH ODDS';
+      groups[cat].push({ id: market.id, name: market.name, rows });
+    });
+  }
+
+  // --- Additional Pinnacle Markets ---
+  if (detailedAll.specials && Array.isArray(detailedAll.specials)) {
+    detailedAll.specials.forEach(category => {
+      if (!category.events || category.events.length === 0) return;
+
+      category.events.forEach(mkt => {
+        if (['Both Teams To Score?', 'Draw No Bet', 'Double Chance', 'Correct Score'].includes(mkt.name)) return;
+        if (!mkt.contestants || mkt.contestants.length === 0) return;
+
+        const allPrices = mkt.contestants.map(c => parseFloat(c.p)).filter(p => !isNaN(p) && p > 1);
+        const targetSum = mkt.name.toLowerCase().includes('double chance') ? 2.0 : 1.0;
+        const shinAll   = allPrices.length >= 2 ? calculateShinNoVig(allPrices, targetSum) : allPrices.map(() => null);
+        const rows = mkt.contestants.map((c, i) => ({
+          label: c.n,
+          value: c.p,
+          shinFair: shinAll[i] ?? null,
+          modelFair: getModelPriceForSpecial(mkt.name, c.n, lambdaData, homeTeam, awayTeam),
+          isApiOnly: true
+        }));
+
+        const n = mkt.name.toLowerCase();
+        let catName;
+
+        if (n.includes('1st half') || n.includes('2nd half') || n.includes('first half') || n.includes('second half')) {
+          catName = 'HALVES';
+        } else if (n.includes('corner')) {
+          catName = 'CORNERS';
+        } else if (n.includes('booking') || n.includes('yellow card') || n.includes('red card') || n.includes('card')) {
+          catName = 'BOOKINGS';
+        } else if ((/^(home|away|[a-z ]+) goals/i.test(mkt.name) && !n.includes('total goals')) || n.includes('team total')) {
+          catName = 'TEAM GOALS';
+        } else if (n.includes('handicap') || n.includes('asian handicap') || n.includes('3-way handicap')) {
+          catName = 'HANDICAP';
+        } else if (
+          n.includes('total goals') || n.includes('exact goals') || n.includes('goals range') ||
+          n.includes('goals odd/even') || n.includes('odd/even') ||
+          n.includes('either team to score') || n.includes('both teams to score') ||
+          n.includes('anytime') || n.includes('over/under')
+        ) {
+          catName = 'GOALS';
+        } else if (
+          n.includes('first team to score') || n.includes('last team to score') ||
+          n.includes('clean sheet') || n.includes('win to nil') ||
+          n.includes('to win to nil') || n.includes('both halves') ||
+          (n.includes('to score') && !n.includes('player') && !n.includes('anytime'))
+        ) {
+          catName = 'TEAM PROPS';
+        } else if (category.code === 'player-props' || n.includes('anytime scorer') || n.includes('player to score')) {
+          catName = 'PLAYER MARKETS';
+        } else if (
+          n.includes('half time') || n.includes('ht/ft') || n.includes('halftime/fulltime') ||
+          n.includes('half-time/full-time') || n.includes('winning margin') ||
+          n.includes('winner') || n.includes('3-way') || n.includes('draw no bet')
+        ) {
+          catName = 'SPECIALS';
+        } else {
+          if (category.code === 'halves') catName = 'HALVES';
+          else if (category.code === 'player-props') catName = 'PLAYER MARKETS';
+          else catName = 'SPECIALS';
+        }
+
+        let marketDisplayName = mkt.name;
+        if (catName === 'TEAM GOALS' && /^.+\s+goals$/i.test(mkt.name)) {
+          marketDisplayName = mkt.name.replace(/\s+goals$/i, ' Exact Goals');
+        }
+        groups[catName].push({ id: `special_${mkt.id}`, name: marketDisplayName, rows });
+      });
+    });
+  }
+
+  Object.keys(groups).forEach(k => { if (groups[k].length === 0) delete groups[k]; });
+  return groups;
+}
+
+function getModelPriceForSpecial(marketName, selectionLabel, lambdaData, homeTeam, awayTeam) {
+  if (!lambdaData || !lambdaData.ft || !lambdaData.ft.grid) return null;
+  const n     = marketName.toLowerCase();
+  const label = selectionLabel.toLowerCase();
+
+  let grid = lambdaData.ft.grid;
+  if (n.includes('1st half')) grid = lambdaData.h1.grid;
+  else if (n.includes('2nd half')) grid = lambdaData.h2.grid;
+
+  if ((n.includes('both teams to score') || n.includes('btts')) && n.includes('total goals')) {
+    const isYes  = label.includes('yes');
+    const isOver = label.includes('over');
+    const lineMatch = label.match(/(over|under)\s+([0-9.]+)/);
+    const line = lineMatch ? parseFloat(lineMatch[2]) : 2.5;
+    let prob = 0;
+    grid.forEach(({ home, away, prob: p }) => {
+      const bttsMatch = (home > 0 && away > 0) === isYes;
+      const overMatch = (home + away > line) === isOver;
+      if (bttsMatch && overMatch) prob += p;
+    });
+    return prob > 0 ? (1 / prob).toFixed(3) : null;
+  }
+
+  if (n.includes('to score?') && !n.includes('both teams') && !n.includes('btts')) {
+    const isHomeMarket = n.includes('home') || (homeTeam && n.includes(homeTeam.toLowerCase()));
+    const isAwayMarket = n.includes('away') || (awayTeam && n.includes(awayTeam.toLowerCase()));
+    const isYes = label.includes('yes');
+    let prob = 0;
+    grid.forEach(({ home, away, prob: p }) => {
+      let hasScored = false;
+      if (isHomeMarket && !isAwayMarket) hasScored = (home > 0);
+      else if (isAwayMarket && !isHomeMarket) hasScored = (away > 0);
+      if (hasScored === isYes) prob += p;
+    });
+    return prob > 0 ? (1 / prob).toFixed(3) : null;
+  }
+
+  if (n.includes('both teams to score?') || n.includes('btts?')) {
+    const isYes = label.includes('yes');
+    let prob = 0;
+    grid.forEach(({ home, away, prob: p }) => {
+      if ((home > 0 && away > 0) === isYes) prob += p;
+    });
+    return prob > 0 ? (1 / prob).toFixed(3) : null;
+  }
+
+  if (n.includes('half-time/full-time') || n.includes('ht/ft')) {
+    if (!lambdaData.h1 || !lambdaData.h2) return null;
+    const h1Grid = lambdaData.h1.grid;
+    const h2Grid = lambdaData.h2.grid;
+    const parts = selectionLabel.split('-').map(p => p.trim());
+    if (parts.length !== 2) return null;
+    const getRes = (txt) => {
+      const t = txt.trim().toLowerCase();
+      const h = homeTeam.trim().toLowerCase();
+      const a = awayTeam.trim().toLowerCase();
+      if (t === 'draw' || t === 'x') return 0;
+      if (t === h || h.includes(t) || t === 'home' || t === '1') return 1;
+      if (t === a || a.includes(t) || t === 'away' || t === '2') return 2;
+      return null;
+    };
+    const htRes = getRes(parts[0]);
+    const ftRes = getRes(parts[1]);
+    if (htRes === null || ftRes === null) return null;
+    let prob = 0;
+    h1Grid.forEach(s1 => {
+      const s1Res = s1.home > s1.away ? 1 : (s1.home === s1.away ? 0 : 2);
+      if (s1Res !== htRes) return;
+      h2Grid.forEach(s2 => {
+        const fHome = s1.home + s2.home;
+        const fAway = s1.away + s2.away;
+        const fRes  = fHome > fAway ? 1 : (fHome === fAway ? 0 : 2);
+        if (fRes === ftRes) prob += s1.prob * s2.prob;
+      });
+    });
+    return prob > 0 ? (1 / prob).toFixed(3) : null;
+  }
+
+  if (n.includes('goals')) {
+    const goalCount = parseInt(label);
+    if (!isNaN(goalCount) && !n.includes('over/under') && !n.includes('asian') && !label.includes('-')) {
+      const isHomeMarket = n.includes('home') || (homeTeam && n.includes(homeTeam.toLowerCase()));
+      const isAwayMarket = n.includes('away') || (awayTeam && n.includes(awayTeam.toLowerCase()));
+      const isPlus = label.includes('+');
+      let prob = 0;
+      grid.forEach(({ home, away, prob: p }) => {
+        let val = home + away;
+        if (isHomeMarket && !isAwayMarket) val = home;
+        else if (isAwayMarket && !isHomeMarket) val = away;
+        if (isPlus) { if (val >= goalCount) prob += p; }
+        else        { if (val === goalCount) prob += p; }
+      });
+      return prob > 0 ? (1 / prob).toFixed(3) : null;
+    }
+  }
+
+  if (n.includes('win to nil')) {
+    const isHomeMarket = n.includes('home') || (homeTeam && n.includes(homeTeam.toLowerCase()));
+    const isAwayMarket = n.includes('away') || (awayTeam && n.includes(awayTeam.toLowerCase()));
+    const isYes = label.includes('yes');
+    let prob = 0;
+    grid.forEach(({ home, away, prob: p }) => {
+      let condition = false;
+      if (isHomeMarket && !isAwayMarket) condition = (home > 0 && away === 0);
+      else if (isAwayMarket && !isHomeMarket) condition = (away > 0 && home === 0);
+      if (condition === isYes) prob += p;
+    });
+    return prob > 0 ? (1 / prob).toFixed(3) : null;
+  }
+
+  if (n.includes('goals range') || n.includes('total goals range')) {
+    let prob = 0;
+    if (label.includes('+')) {
+      const minVal = parseInt(label);
+      grid.forEach(({ home, away, prob: p }) => { if ((home + away) >= minVal) prob += p; });
+    } else if (label.includes('-')) {
+      const parts = label.split('-').map(p => parseInt(p.trim()));
+      if (parts.length === 2) {
+        grid.forEach(({ home, away, prob: p }) => {
+          const total = home + away;
+          if (total >= parts[0] && total <= parts[1]) prob += p;
+        });
+      }
+    }
+    return prob > 0 ? (1 / prob).toFixed(3) : null;
+  }
+
+  if (n.includes('draw no bet') || n.includes('dnb')) {
+    let pH = 0, pA = 0;
+    grid.forEach(({ home, away, prob: p }) => {
+      if (home > away) pH += p; else if (away > home) pA += p;
+    });
+    const getRes = (txt) => {
+      const t = txt.toLowerCase();
+      const h = homeTeam.toLowerCase();
+      const a = awayTeam.toLowerCase();
+      if (t === h || h.includes(t) || t === 'home' || t === '1') return 1;
+      if (t === a || a.includes(t) || t === 'away' || t === '2') return 2;
+      return null;
+    };
+    const target = getRes(selectionLabel);
+    return target === 1 ? (1 / (pH / (pH + pA))).toFixed(3)
+         : target === 2 ? (1 / (pA / (pH + pA))).toFixed(3)
+         : null;
+  }
+
+  if (n.includes('double chance')) {
+    let pH = 0, pD = 0, pA = 0;
+    grid.forEach(({ home, away, prob: p }) => {
+      if (home > away) pH += p; else if (home === away) pD += p; else pA += p;
+    });
+    const ll = selectionLabel.toLowerCase();
+    const isHome = ll.includes(homeTeam.toLowerCase()) || ll.includes('home');
+    const isAway = ll.includes(awayTeam.toLowerCase()) || ll.includes('away');
+    const isDraw = ll.includes('draw') || ll.includes('x');
+    let prob = 0;
+    if (isHome && isDraw && !isAway) prob = pH + pD;
+    else if (isAway && isDraw && !isHome) prob = pD + pA;
+    else if (isHome && isAway) prob = pH + pA;
+    return prob > 0 ? (1 / prob).toFixed(3) : null;
+  }
+
+  if ((n.includes('both teams to score') || n.includes('btts')) && (n.includes('winner') || n.includes('result'))) {
+    const isYes  = label.includes('yes');
+    const parts  = selectionLabel.split('&').map(p => p.trim());
+    if (parts.length !== 2) return null;
+    const getWinnerRes = (txt) => {
+      const t = txt.toLowerCase();
+      const h = homeTeam.toLowerCase();
+      const a = awayTeam.toLowerCase();
+      if (t === 'draw' || t === 'x') return 0;
+      if (t === h || h.includes(t) || t === 'home' || t === '1') return 1;
+      if (t === a || a.includes(t) || t === 'away' || t === '2') return 2;
+      return null;
+    };
+    const targetRes = getWinnerRes(parts[1]);
+    if (targetRes === null) return null;
+    let prob = 0;
+    grid.forEach(({ home, away, prob: p }) => {
+      const bttsMatch = (home > 0 && away > 0) === isYes;
+      const res = home > away ? 1 : (home === away ? 0 : 2);
+      if (bttsMatch && res === targetRes) prob += p;
+    });
+    return prob > 0 ? (1 / prob).toFixed(3) : null;
+  }
+
+  if (n.includes('either team to score')) {
+    const isYes = label.includes('yes');
+    let prob = 0;
+    grid.forEach(({ home, away, prob: p }) => {
+      if (((home + away) > 0) === isYes) prob += p;
+    });
+    return prob > 0 ? (1 / prob).toFixed(3) : null;
+  }
+
+  if (n.includes('winner') && n.includes('total goals')) {
+    const parts = selectionLabel.split('&').map(p => p.trim());
+    if (parts.length !== 2) return null;
+    const ouTxt = parts[1].toLowerCase();
+    const getWinnerRes = (txt) => {
+      const t = txt.toLowerCase();
+      const h = homeTeam.toLowerCase();
+      const a = awayTeam.toLowerCase();
+      if (t === 'draw' || t === 'x') return 0;
+      if (t === h || h.includes(t) || t === 'home' || t === '1') return 1;
+      if (t === a || a.includes(t) || t === 'away' || t === '2') return 2;
+      return null;
+    };
+    const targetRes = getWinnerRes(parts[0]);
+    if (targetRes === null) return null;
+    const isOver    = ouTxt.includes('over');
+    const lineMatch = ouTxt.match(/[0-9.]+/);
+    const line      = lineMatch ? parseFloat(lineMatch[0]) : 2.5;
+    let prob = 0;
+    grid.forEach(({ home, away, prob: p }) => {
+      const res   = home > away ? 1 : (home === away ? 0 : 2);
+      const total = home + away;
+      if (res === targetRes && (isOver ? total > line : total < line)) prob += p;
+    });
+    return prob > 0 ? (1 / prob).toFixed(3) : null;
+  }
+
+  if ((n.includes('odd/even') || n.includes('odd & even')) && n.includes('total goals') && (label.includes('over') || label.includes('under'))) {
+    const isOdd  = label.includes('odd');
+    const isOver = label.includes('over');
+    const lineMatch = label.match(/(over|under)\s+([0-9.]+)/);
+    const line = lineMatch ? parseFloat(lineMatch[2]) : 2.5;
+    let prob = 0;
+    grid.forEach(({ home, away, prob: p }) => {
+      const total = home + away;
+      if (((total % 2 !== 0) === isOdd) && ((total > line) === isOver)) prob += p;
+    });
+    return prob > 0 ? (1 / prob).toFixed(3) : null;
+  }
+
+  if (n.includes('odd/even') || n.includes('odd & even')) {
+    const isOdd        = label.includes('odd');
+    const isHomeMarket = n.includes('home') || (homeTeam && n.includes(homeTeam.toLowerCase()));
+    const isAwayMarket = n.includes('away') || (awayTeam && n.includes(awayTeam.toLowerCase()));
+    let prob = 0;
+    grid.forEach(({ home, away, prob: p }) => {
+      let val = home + away;
+      if (isHomeMarket && !isAwayMarket) val = home;
+      else if (isAwayMarket && !isHomeMarket) val = away;
+      if ((val % 2 !== 0) === isOdd) prob += p;
+    });
+    return prob > 0 ? (1 / prob).toFixed(3) : null;
+  }
+
+  if (n.includes('team total')) {
+    const isOver    = label.includes('over');
+    const isUnder   = label.includes('under');
+    const lineMatch = label.match(/(over|under)\s+([0-9.]+)/);
+    if (lineMatch && (isOver || isUnder)) {
+      const line    = parseFloat(lineMatch[2]);
+      const isHome  = label.includes('home') || (homeTeam && label.includes(homeTeam.toLowerCase())) || n.includes('home') || (homeTeam && n.includes(homeTeam.toLowerCase()));
+      const isAway  = label.includes('away') || (awayTeam && label.includes(awayTeam.toLowerCase())) || n.includes('away') || (awayTeam && n.includes(awayTeam.toLowerCase()));
+      if (isHome !== isAway) {
+        const odds = dcAsianTeamTotalOdds(grid, line, isOver, isAway);
+        return odds ? odds.toFixed(3) : null;
+      }
+    }
+  }
+
+  return null;
+}

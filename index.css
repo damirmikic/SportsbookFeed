@@ -2561,6 +2561,15 @@ body {
 }
 .mkt-cfg-num:focus { outline: none; border-color: var(--accent-color); }
 
+.mkt-margin-suggest {
+  display: inline-block; margin-top: 5px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.4px;
+  color: var(--accent-color); opacity: 0.75;
+  cursor: pointer; user-select: none;
+  transition: opacity 0.15s;
+}
+.mkt-margin-suggest:hover { opacity: 1; text-decoration: underline; }
+
 /* ── Timeline ─────────────────────────────────────────── */
 .mkt-tl-wrap {
   display: flex; align-items: flex-start; gap: 10px;

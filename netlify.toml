@@ -8,6 +8,12 @@
   force  = true
 
 [[redirects]]
+  from   = "/api/odds/event/:id"
+  to     = "https://www.pinnacle888.com/sports-service/sv/euro/odds/event?eventId=:id&oddsType=1&locale=en_US&withCredentials=true"
+  status = 200
+  force  = true
+
+[[redirects]]
   from   = "/api/odds/:code"
   to     = "https://www.pinnacle888.com/sports-service/sv/euro/odds/league?sportId=29&oddsType=1&version=0&periodNum=-1&locale=en_US&leagueCode=:code&isHlE=true&isLive=false&eventType=0&withCredentials=true"
   status = 200

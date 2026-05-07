@@ -348,6 +348,9 @@ function marketCardHTML(def, config, group) {
             <label class="mkt-inline-field">Margin %
               <input type="number" class="mkt-margin-input mkt-cfg-num" data-id="${config.id}"
                 value="${config.margin}" min="0" max="50" step="0.1">
+              <span class="mkt-margin-suggest" data-suggest="${defaultsForMarket(config.id).margin}">
+                ★ Suggested: ${defaultsForMarket(config.id).margin}%
+              </span>
             </label>
             <label class="mkt-inline-field">Max Stake £
               <input type="number" class="mkt-maxbet-input mkt-cfg-num" data-id="${config.id}"
@@ -715,6 +718,9 @@ function wireMarketEvents(backdrop) {
     cb.addEventListener('change', () => {
       const card  = cb.closest('.mkt-card');
       if (card) card.classList.toggle('mkt-card-off', !cb.checked);
+      if (cb.checked) {
+        card?.querySelector('.mkt-inline-cfg')?.classList.remove('hidden');
+      }
       const group = card?.dataset.group;
       if (!group) return;
       const grpBtn = backdrop.querySelector(`.mkt-grp-toggle-all[data-group="${group}"]`);
@@ -746,6 +752,14 @@ function wireMarketEvents(backdrop) {
   // Timeline node click → key popover
   backdrop.querySelectorAll('.mkt-tl-node').forEach(n =>
     n.addEventListener('click', e => { e.stopPropagation(); openKeyPopover(n); })
+  );
+
+  // Suggested margin chip → apply value
+  backdrop.querySelectorAll('.mkt-margin-suggest').forEach(chip =>
+    chip.addEventListener('click', () => {
+      const input = chip.closest('.mkt-inline-field')?.querySelector('.mkt-margin-input');
+      if (input) { input.value = chip.dataset.suggest; input.dispatchEvent(new Event('change')); }
+    })
   );
 
   // COPY CONFIG
