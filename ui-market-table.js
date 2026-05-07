@@ -1,6 +1,6 @@
 import { state, getOverride, setOverride, getOverrideMeta, setOverrideWithMeta, updateOverrideAlertState, setTradingMode, getOverriddenLambdas, setOverriddenLambdas, isSuspended, setSuspension, clearOverride, clearOverrideMetaSelection, hasAnyOverrideForEvent, clearOverriddenLambdas } from './state.js';
 import { resolveTemplate, getMarketConfig, resolveActiveKey } from './pricing.js';
-import { calculateShinNoVig, solveLambdasAsync } from './math.js';
+import { calculateShinNoVig, solveLambdasAsync, applyMarginAndLadder } from './math.js';
 import { calcMargin, marginBadgeHTML } from './ui-helpers.js';
 import { updateModeButton, renderDrawerMarkets } from './ui-drawer.js';
 
@@ -213,7 +213,7 @@ export function renderMarketTable(market) {
             const tl = resolveActiveKey(offerMktConf, eventStart);
             if (tl?.key != null) marginPct = tl.key;
           }
-          if (marginPct != null) return modelFair / (1 + marginPct / 100);
+          if (marginPct != null) return applyMarginAndLadder(modelFair, marginPct, offerMktConf.ladder ?? 'eu');
         }
         const rowIdx    = market.rows.indexOf(row);
         const isPaired  = market.id === 'ou' || market.id === 'hdp';
@@ -237,7 +237,7 @@ export function renderMarketTable(market) {
       }
       if (marginPct != null) {
         const shin = parseFloat(row.shinFair);
-        if (!isNaN(shin) && shin > 1) return shin / (1 + marginPct / 100);
+        if (!isNaN(shin) && shin > 1) return applyMarginAndLadder(shin, marginPct, offerMktConf.ladder ?? 'eu');
       }
     }
 

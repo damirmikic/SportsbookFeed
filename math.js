@@ -238,6 +238,54 @@ export function solveLambdas(pH, pD, pA, pOver, totalLine) {
   return { lh: bestLh, la: bestLa, rho: bestRho, scores: scores.slice(0, 6) };
 }
 
+// ── Odds laddering ────────────────────────────────────────────────────────────
+
+// EU decimal ladder: floor to the step size for the price range.
+// Flooring keeps offered odds at or below the margined fair, preserving bookmaker margin.
+function snapEu(odds) {
+  if (odds < 2)   return Math.floor(odds * 100) / 100;
+  if (odds < 3)   return Math.floor(odds *  50) / 50;
+  if (odds < 4)   return Math.floor(odds *  20) / 20;
+  if (odds < 6)   return Math.floor(odds *  10) / 10;
+  if (odds < 10)  return Math.floor(odds *   5) / 5;
+  if (odds < 20)  return Math.floor(odds *   2) / 2;
+  if (odds < 30)  return Math.floor(odds);
+  if (odds < 50)  return Math.floor(odds  / 2)  * 2;
+  if (odds < 100) return Math.floor(odds  / 5)  * 5;
+  return           Math.floor(odds  / 10) * 10;
+}
+
+// US (American) ladder: snap to nearest 5-unit increment, rounding against the bettor.
+function snapUs(euOdds) {
+  if (euOdds >= 2.0) {
+    const us = (euOdds - 1) * 100;
+    return 1 + (Math.floor(us / 5) * 5) / 100;
+  }
+  // Negative US odds: ceil the absolute value → more negative → lower EU odds
+  const usAbs    = 100 / (euOdds - 1);                // positive magnitude, e.g. 208.33
+  const snapped  = Math.ceil(usAbs / 5) * 5;           // e.g. 210
+  return 1 + 100 / snapped;
+}
+
+/**
+ * Applies a margin percentage to a fair-odds value, then snaps the result
+ * to the standard increment ladder for the given format.
+ *
+ * @param {number|string} fairOdds  - No-vig (fair) decimal odds
+ * @param {number|string} marginPct - Target margin, e.g. 5 means 5%
+ * @param {'eu'|'us'|'hk'|'malay'|'indo'} [ladder='eu']
+ * @returns {number|null}  Snapped offered odds, or null if inputs are invalid
+ */
+export function applyMarginAndLadder(fairOdds, marginPct, ladder = 'eu') {
+  const fair = parseFloat(fairOdds);
+  if (isNaN(fair) || fair <= 1) return null;
+  const margined = fair / (1 + (parseFloat(marginPct) || 0) / 100);
+  if (margined <= 1) return null;
+  if (ladder === 'us') return snapUs(margined);
+  // eu, hk, malay, indo all snap on the EU decimal scale
+  return snapEu(margined);
+}
+
 // ── Off-thread solver ─────────────────────────────────────────────────────────
 
 let _solverWorker = null;

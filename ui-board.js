@@ -1,8 +1,9 @@
 import { state, snapshotOdds, getOverride, getAllOverrideMeta, getTradingMode, isSuspended, hasAnySuspension, clearOverride, clearOverrideMetaSelection, hasAnyOverrideForEvent, setTradingMode, clearOverriddenLambdas } from './state.js';
 import { fetchOdds } from './api.js';
-import { evaluateOverrides } from './pricing.js';
+import { evaluateOverrides, resolveTemplate, getMarketConfig, resolveActiveKey } from './pricing.js';
 import { openDrawer, updateModeButton, renderDrawerMarkets } from './ui-drawer.js';
 import { getTeamNames } from './utils.js';
+import { calculateShinNoVig, applyMarginAndLadder } from './math.js';
 
 // ── Override expiry processing ────────────────────────────────────────────────
 
@@ -94,7 +95,6 @@ function renderEventTable(eventsToRender) {
       ? new Date(eventTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       : 'N/A';
 
-    let odds1 = '-', oddsX = '-', odds2 = '-';
     let matchPeriod;
     if (event.periods && !Array.isArray(event.periods)) {
       matchPeriod = event.periods['0'];
@@ -105,12 +105,15 @@ function renderEventTable(eventsToRender) {
       matchPeriod = arr.find(p => p.num === 0 || p.periodNumber === 0) || arr[0];
     }
 
+    // Raw Pinnacle values — used for trend arrows regardless of display mode
+    let raw1 = '-', rawX = '-', raw2 = '-';
     if (matchPeriod && (matchPeriod.moneyLine || matchPeriod.moneyline)) {
       const ml = matchPeriod.moneyLine || matchPeriod.moneyline;
-      odds1 = ml.homePrice || ml.home || '-';
-      oddsX = ml.drawPrice || ml.draw || '-';
-      odds2 = ml.awayPrice || ml.away || '-';
+      raw1 = ml.homePrice || ml.home || '-';
+      rawX = ml.drawPrice || ml.draw || '-';
+      raw2 = ml.awayPrice || ml.away || '-';
     }
+    let odds1 = raw1, oddsX = rawX, odds2 = raw2;
 
     let oddsOver = '-', oddsUnder = '-';
     if (matchPeriod?.overUnder) {
@@ -118,12 +121,46 @@ function renderEventTable(eventsToRender) {
       if (ou25) { oddsOver = ou25.overOdds || ou25.over || '-'; oddsUnder = ou25.underOdds || ou25.under || '-'; }
     }
 
-    const evtSuspended = isSuspended(event.id, 'event');
-    const mlSuspended  = isSuspended(event.id, 'ml');
-    const ouSuspended  = isSuspended(event.id, 'ou');
-    const anySusp = evtSuspended || mlSuspended || ouSuspended || hasAnySuspension(event.id);
-
     const isManual = getTradingMode(event.id) === 'manual';
+
+    // Compute offered prices (AUTO mode, template assigned) — margin + ladder applied
+    if (!isManual && matchPeriod) {
+      const { template: offerTpl } = resolveTemplate(event.id, state.currentLeagueCode);
+      if (offerTpl) {
+        const eventStart = event.starts || event.startTime || event.time;
+        const mlConf = getMarketConfig(offerTpl, '1x2');
+        if (mlConf?.enabled && (matchPeriod.moneyLine || matchPeriod.moneyline)) {
+          const ml   = matchPeriod.moneyLine || matchPeriod.moneyline;
+          const shin = calculateShinNoVig([ml.homePrice || ml.home, ml.drawPrice || ml.draw, ml.awayPrice || ml.away]);
+          let margin = mlConf.margin;
+          const tl = eventStart ? resolveActiveKey(mlConf, eventStart) : null;
+          if (tl?.key != null) margin = tl.key;
+          const ladder = mlConf.ladder || 'eu';
+          const o1 = applyMarginAndLadder(parseFloat(shin[0]), margin, ladder);
+          const oX = applyMarginAndLadder(parseFloat(shin[1]), margin, ladder);
+          const o2 = applyMarginAndLadder(parseFloat(shin[2]), margin, ladder);
+          if (o1 > 1) odds1 = o1.toFixed(2);
+          if (oX > 1) oddsX = oX.toFixed(2);
+          if (o2 > 1) odds2 = o2.toFixed(2);
+        }
+        const ouConf = getMarketConfig(offerTpl, 'ou25');
+        if (ouConf?.enabled && Array.isArray(matchPeriod.overUnder)) {
+          const ou25 = matchPeriod.overUnder.find(ou => parseFloat(ou.points) === 2.5);
+          if (ou25) {
+            const shin = calculateShinNoVig([ou25.overOdds, ou25.underOdds]);
+            let margin = ouConf.margin;
+            const tl = eventStart ? resolveActiveKey(ouConf, eventStart) : null;
+            if (tl?.key != null) margin = tl.key;
+            const ladder = ouConf.ladder || 'eu';
+            const oOver = applyMarginAndLadder(parseFloat(shin[0]), margin, ladder);
+            const oUnd  = applyMarginAndLadder(parseFloat(shin[1]), margin, ladder);
+            if (oOver > 1) oddsOver  = oOver.toFixed(2);
+            if (oUnd  > 1) oddsUnder = oUnd.toFixed(2);
+          }
+        }
+      }
+    }
+
     let m1 = false, mX = false, m2 = false, mOver = false, mUnder = false;
     if (isManual) {
       const o1    = getOverride(`${event.id}|ml|${homeTeam}`);
@@ -138,16 +175,22 @@ function renderEventTable(eventsToRender) {
       if (oUnd)  { oddsUnder = oUnd;  mUnder = true; }
     }
 
+    const evtSuspended = isSuspended(event.id, 'event');
+    const mlSuspended  = isSuspended(event.id, 'ml');
+    const ouSuspended  = isSuspended(event.id, 'ou');
+    const anySusp = evtSuspended || mlSuspended || ouSuspended || hasAnySuspension(event.id);
+
+    // Trend arrows compare raw Pinnacle prices to detect feed movement
     const prev = state.previousOdds[event.id] || {};
-    const trend = (val, prevVal, isManualCell) => {
-      if (isManualCell || !prevVal || val === '-') return '';
-      const diff = parseFloat(val) - prevVal;
+    const trend = (rawVal, prevVal, isManualCell) => {
+      if (isManualCell || !prevVal || rawVal === '-') return '';
+      const diff = parseFloat(rawVal) - prevVal;
       if (Math.abs(diff) < 0.001) return '';
       return diff > 0 ? ' price-up' : ' price-down';
     };
-    const t1 = trend(odds1, prev.home, m1);
-    const tX = trend(oddsX, prev.draw, mX);
-    const t2 = trend(odds2, prev.away, m2);
+    const t1 = trend(raw1, prev.home, m1);
+    const tX = trend(rawX, prev.draw, mX);
+    const t2 = trend(raw2, prev.away, m2);
 
     const allMeta = getAllOverrideMeta();
     const hasValueBet = isManual && Object.keys(allMeta).some(
