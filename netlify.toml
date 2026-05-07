@@ -1,6 +1,9 @@
 [build]
   publish = "."
 
+[functions]
+  directory = "netlify/functions"
+
 [[redirects]]
   from   = "/api/leagues"
   to     = "https://www.pinnacle888.com/sports-service/sv/euro/leagues?sportId=29&locale=en_US&withCredentials=true"
@@ -18,3 +21,18 @@
   to     = "https://www.pinnacle888.com/sports-service/sv/euro/odds/league?sportId=29&oddsType=1&version=0&periodNum=-1&locale=en_US&leagueCode=:code&isHlE=true&isLive=false&eventType=0&withCredentials=true"
   status = 200
   force  = true
+
+[[redirects]]
+  from   = "/api/traders"
+  to     = "/.netlify/functions/traders"
+  status = 200
+
+[[redirects]]
+  from   = "/api/shared-state"
+  to     = "/.netlify/functions/shared-state"
+  status = 200
+
+[[redirects]]
+  from   = "/api/trader-state"
+  to     = "/.netlify/functions/trader-state"
+  status = 200

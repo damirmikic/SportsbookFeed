@@ -33,3 +33,57 @@ export async function fetchEventOdds(eventId) {
   if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
   return await response.json();
 }
+
+async function jsonRequest(url, options = {}) {
+  const response = await fetch(url, {
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    ...options,
+  });
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `HTTP error! status: ${response.status}`);
+  }
+  return await response.json();
+}
+
+export async function fetchTraders() {
+  return await jsonRequest('/api/traders');
+}
+
+export async function createTrader(name, color, pin) {
+  return await jsonRequest('/api/traders', {
+    method: 'POST',
+    body: JSON.stringify({ name, color, pin }),
+  });
+}
+
+export async function verifyTraderPin(id, pin) {
+  return await jsonRequest('/api/traders?verify=1', {
+    method: 'POST',
+    body: JSON.stringify({ id, pin }),
+  });
+}
+
+export async function fetchSharedState() {
+  return await jsonRequest('/api/shared-state');
+}
+
+export async function pushSharedState(entity, data, traderId = null) {
+  const params = new URLSearchParams({ entity });
+  if (traderId) params.set('traderId', traderId);
+  return await jsonRequest(`/api/shared-state?${params.toString()}`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function fetchTraderState(traderId) {
+  return await jsonRequest(`/api/trader-state?traderId=${encodeURIComponent(traderId)}`);
+}
+
+export async function pushTraderState(traderId, entity, data) {
+  return await jsonRequest(`/api/trader-state?traderId=${encodeURIComponent(traderId)}&entity=${encodeURIComponent(entity)}`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
