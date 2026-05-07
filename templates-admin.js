@@ -4,6 +4,7 @@ import {
 } from './state.js';
 import { state } from './state.js';
 import { fetchEventOdds } from './api.js';
+import { getTeamNames } from './utils.js';
 
 // ── Filter state ──────────────────────────────────────────
 const tplFilters = { type: '', activeOnly: true };
@@ -27,17 +28,6 @@ function enabledCount(tpl) {
 
 function typeLabel(type) {
   return { prematch: 'Pre-match', live: 'Live', both: 'Both' }[type] || type;
-}
-
-function getTeamName(event, side) {
-  if (event.participants) {
-    const p = event.participants.find(p =>
-      p.type === side || p.participantType === side ||
-      p.type === side.charAt(0) + side.slice(1).toLowerCase()
-    );
-    if (p) return p.name || p.englishName;
-  }
-  return side === 'HOME' ? (event.home || 'Home') : (event.away || 'Away');
 }
 
 // Returns the active market definition list:
@@ -130,8 +120,7 @@ function extractMarketsFromEvent(event, detailed) {
     markets.push({ id, group, name });
   }
 
-  const home = getTeamName(event, 'HOME');
-  const away = getTeamName(event, 'AWAY');
+  const { home, away } = getTeamNames(event);
 
   // Normalise periods object
   const periods = (!Array.isArray(event.periods) && event.periods) ? event.periods : {};
@@ -791,8 +780,7 @@ async function loadMarketsFromFeed(backdrop) {
       state.detailedOdds[event.id] = detailed;
     }
 
-    const home    = getTeamName(event, 'HOME');
-    const away    = getTeamName(event, 'AWAY');
+    const { home, away } = getTeamNames(event);
     const markets = extractMarketsFromEvent(event, detailed);
 
     setDiscoveredMarkets({

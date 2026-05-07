@@ -1,10 +1,11 @@
 import { state, getTradingMode, clearAllOverridesForEvent, setTradingMode, isSuspended, setSuspension, getLeagueSetting, getTemplates, setMatchTemplate, getOverriddenLambdas } from './state.js';
 import { fetchEventOdds } from './api.js';
 import { resolveTemplate } from './pricing.js';
-import { calculateTeamLambdas } from './math.js';
+import { calculateTeamLambdasAsync } from './math.js';
 import { getEffectiveMatchPeriod } from './ui-helpers.js';
 import { groupMarketsByCategory } from './ui-market-groups.js';
 import { renderMarketTable, createLambdaSection } from './ui-market-table.js';
+import { getTeamNames } from './utils.js';
 
 // ── Drawer header controls ────────────────────────────────────────────────────
 
@@ -98,14 +99,7 @@ export async function openDrawer(eventId) {
   updateModeButton(eventId);
   updateSuspendButton(eventId);
 
-  let homeTeam = event.home || 'Home';
-  let awayTeam = event.away || 'Away';
-  if (event.participants) {
-    const h = event.participants.find(p => p.type === 'HOME' || p.participantType === 'Home');
-    const a = event.participants.find(p => p.type === 'AWAY' || p.participantType === 'Away');
-    if (h) homeTeam = h.name;
-    if (a) awayTeam = a.name;
-  }
+  const { home: homeTeam, away: awayTeam } = getTeamNames(event);
 
   document.getElementById('drawer-match-name').textContent = `${homeTeam} vs ${awayTeam}`;
   const eventTime = event.starts || event.startTime || event.time;
@@ -131,7 +125,7 @@ export function closeDrawer() {
 
 // ── Main drawer render ────────────────────────────────────────────────────────
 
-export function renderDrawerMarkets(event) {
+export async function renderDrawerMarkets(event) {
   const freshEvent = state.activeEvents.find(e => e.id.toString() === event.id.toString());
   if (freshEvent) event = freshEvent;
 
@@ -155,20 +149,13 @@ export function renderDrawerMarkets(event) {
     return;
   }
 
-  let homeTeam = event.home || 'Home';
-  let awayTeam = event.away || 'Away';
-  if (event.participants) {
-    const h = event.participants.find(p => p.type === 'HOME' || p.participantType === 'Home');
-    const a = event.participants.find(p => p.type === 'AWAY' || p.participantType === 'Away');
-    if (h) homeTeam = h.name || h.englishName;
-    if (a) awayTeam = a.name || a.englishName;
-  }
+  const { home: homeTeam, away: awayTeam } = getTeamNames(event);
 
   const isManual        = getTradingMode(event.id) === 'manual';
   const effectivePeriod = isManual
     ? getEffectiveMatchPeriod(matchPeriod, event.id, homeTeam, awayTeam)
     : matchPeriod;
-  const lambdaData      = calculateTeamLambdas(effectivePeriod, h1Period);
+  const lambdaData      = await calculateTeamLambdasAsync(effectivePeriod, h1Period);
 
   const ovLambdas          = getOverriddenLambdas(event.id);
   const effectiveLambdaData = (ovLambdas && lambdaData)

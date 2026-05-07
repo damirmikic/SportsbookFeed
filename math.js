@@ -238,6 +238,45 @@ export function solveLambdas(pH, pD, pA, pOver, totalLine) {
   return { lh: bestLh, la: bestLa, rho: bestRho, scores: scores.slice(0, 6) };
 }
 
+// ── Off-thread solver ─────────────────────────────────────────────────────────
+
+let _solverWorker = null;
+const _pending = new Map();
+let _nextId = 0;
+
+function getSolverWorker() {
+  if (!_solverWorker) {
+    _solverWorker = new Worker(new URL('./solver.worker.js', import.meta.url), { type: 'module' });
+    _solverWorker.onmessage = ({ data: { id, result, error } }) => {
+      const p = _pending.get(id);
+      _pending.delete(id);
+      if (p) error ? p.reject(new Error(error)) : p.resolve(result);
+    };
+    _solverWorker.onerror = (e) => {
+      _pending.forEach(p => p.reject(e));
+      _pending.clear();
+      _solverWorker = null;
+    };
+  }
+  return _solverWorker;
+}
+
+function postToSolver(type, payload) {
+  return new Promise((resolve, reject) => {
+    const id = _nextId++;
+    _pending.set(id, { resolve, reject });
+    getSolverWorker().postMessage({ id, type, payload });
+  });
+}
+
+export function solveLambdasAsync(pH, pD, pA, pOver, ouLine) {
+  return postToSolver('SOLVE_LAMBDAS', { pH, pD, pA, pOver, ouLine });
+}
+
+export function calculateTeamLambdasAsync(matchPeriod, h1Period) {
+  return postToSolver('CALCULATE_TEAM_LAMBDAS', { matchPeriod, h1Period });
+}
+
 export function calculateTeamLambdas(matchPeriod, h1Period) {
   if (!matchPeriod) return null;
 

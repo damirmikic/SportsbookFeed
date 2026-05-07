@@ -48,7 +48,9 @@ export function snapshotOdds() {
 }
 
 // ── Manual price overrides ─────────────────────────────────
-const _overrides = JSON.parse(localStorage.getItem('priceOverrides') || '{}');
+const _overrides         = JSON.parse(localStorage.getItem('priceOverrides') || '{}');
+const _overrideMeta      = JSON.parse(localStorage.getItem('overrideMeta') || '{}');
+const _overriddenLambdas = JSON.parse(localStorage.getItem('overriddenLambdas') || '{}');
 
 export function getOverride(key) { return _overrides[key] || null; }
 
@@ -255,7 +257,6 @@ export function setLeagueSetting(code, updates) {
 // ── Override metadata — per-market expiry tracking & alert state ──
 // Key: `${eventId}|${marketId}`
 // Value: { selections: { [label]: { overridePrice, direction, overrideImpliedProb, shinFairAtTime } }, alertState, valueBetGap, setAt }
-const _overrideMeta = JSON.parse(localStorage.getItem('overrideMeta') || '{}');
 
 export function setOverrideWithMeta(eventId, marketId, label, overridePrice, direction, shinFairAtTime) {
   const key = `${eventId}|${marketId}`;
@@ -296,7 +297,6 @@ export function clearOverrideMetaSelection(eventId, marketId, label) {
 
 // ── Overridden lambdas (back-solved from 1x2/OU price overrides) ──────────
 // Stores { lh, la, rho, grid } per event; drives all derived market offer prices.
-const _overriddenLambdas = JSON.parse(localStorage.getItem('overriddenLambdas') || '{}');
 
 export function getOverriddenLambdas(eventId) {
   return _overriddenLambdas[String(eventId)] ?? null;

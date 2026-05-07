@@ -3,6 +3,7 @@
 
 import { getMatchTemplate, getLeagueSetting, getTemplates, TIMELINE_NODES, getAllOverrideMeta, updateOverrideAlertState } from './state.js';
 import { calculateShinNoVig } from './math.js';
+import { getTeamNames } from './utils.js';
 
 // ── Node thresholds: minutes before kick-off at which each node activates ──
 // INST is treated as Infinity — it is always the opening fallback.
@@ -119,18 +120,6 @@ export function resolveActiveKey(marketConfig, eventStartTime) {
 }
 
 // ── Override expiry & alert evaluation ────────────────────
-
-function getTeamNames(event) {
-  let home = event.home || 'Home';
-  let away = event.away || 'Away';
-  if (event.participants) {
-    const h = event.participants.find(p => p.type === 'HOME' || p.participantType === 'Home');
-    const a = event.participants.find(p => p.type === 'AWAY' || p.participantType === 'Away');
-    if (h) home = h.name || h.englishName || home;
-    if (a) away = a.name || a.englishName || away;
-  }
-  return { home, away };
-}
 
 function getMatchPeriod(event) {
   if (event.periods && !Array.isArray(event.periods)) return event.periods['0'];

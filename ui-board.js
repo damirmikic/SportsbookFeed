@@ -2,6 +2,7 @@ import { state, snapshotOdds, getOverride, getAllOverrideMeta, getTradingMode, i
 import { fetchOdds } from './api.js';
 import { evaluateOverrides } from './pricing.js';
 import { openDrawer, updateModeButton, renderDrawerMarkets } from './ui-drawer.js';
+import { getTeamNames } from './utils.js';
 
 // ── Override expiry processing ────────────────────────────────────────────────
 
@@ -86,18 +87,7 @@ function renderEventTable(eventsToRender) {
     </tr></thead><tbody>`;
 
   eventsToRender.forEach(event => {
-    let homeTeam = event.home || event.homeTeam?.name;
-    let awayTeam = event.away || event.awayTeam?.name;
-    if (!homeTeam && event.participants) {
-      const h = event.participants.find(p => p.type === 'HOME' || p.participantType === 'Home');
-      if (h) homeTeam = h.name || h.englishName;
-    }
-    if (!awayTeam && event.participants) {
-      const a = event.participants.find(p => p.type === 'AWAY' || p.participantType === 'Away');
-      if (a) awayTeam = a.name || a.englishName;
-    }
-    homeTeam = homeTeam || 'Home';
-    awayTeam = awayTeam || 'Away';
+    const { home: homeTeam, away: awayTeam } = getTeamNames(event);
 
     const eventTime = event.starts || event.startTime || event.time;
     const time = eventTime

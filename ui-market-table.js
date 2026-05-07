@@ -1,12 +1,12 @@
 import { state, getOverride, setOverride, getOverrideMeta, setOverrideWithMeta, updateOverrideAlertState, setTradingMode, getOverriddenLambdas, setOverriddenLambdas, isSuspended, setSuspension, clearOverride, clearOverrideMetaSelection, hasAnyOverrideForEvent, clearOverriddenLambdas } from './state.js';
 import { resolveTemplate, getMarketConfig, resolveActiveKey } from './pricing.js';
-import { calculateShinNoVig, solveLambdas, buildScoreGrid } from './math.js';
+import { calculateShinNoVig, solveLambdasAsync } from './math.js';
 import { calcMargin, marginBadgeHTML } from './ui-helpers.js';
 import { updateModeButton, renderDrawerMarkets } from './ui-drawer.js';
 
 // ── Lambda back-solve ─────────────────────────────────────────────────────────
 
-function solveLambdasFromOverrides(eventId, changedMarketId, changedRows, drawerEvent) {
+async function solveLambdasFromOverrides(eventId, changedMarketId, changedRows, drawerEvent) {
   let pH = null, pD = null, pA = null, pOver = null, ouLine = null;
 
   const getMatchPeriod = (ev) => {
@@ -71,9 +71,8 @@ function solveLambdasFromOverrides(eventId, changedMarketId, changedRows, drawer
 
   if (pH === null || pD === null || pA === null) return;
 
-  const solved = solveLambdas(pH, pD, pA, pOver, ouLine);
-  const grid   = buildScoreGrid(solved.lh, solved.la, solved.rho);
-  setOverriddenLambdas(eventId, { lh: solved.lh, la: solved.la, rho: solved.rho, grid });
+  const { lh, la, rho, grid } = await solveLambdasAsync(pH, pD, pA, pOver, ouLine);
+  setOverriddenLambdas(eventId, { lh, la, rho, grid });
 }
 
 // ── Reprice helpers ───────────────────────────────────────────────────────────
@@ -123,8 +122,8 @@ function repriceOthers(changedKey, newPrice, rows, marketId, targetMargin = null
   });
 }
 
-function resolveTargetMargin(marketId, repriceRows) {
-  const { template } = resolveTemplate(state.drawerEventId, state.currentLeagueCode);
+function resolveTargetMargin(eventId, leagueCode, marketId, repriceRows) {
+  const { template } = resolveTemplate(eventId, leagueCode);
   const marketConf   = template ? getMarketConfig(template, marketId) : null;
   if (marketConf?.margin != null) return 1 + marketConf.margin / 100;
   return repriceRows.reduce((s, r) => {
@@ -148,10 +147,10 @@ function makeEditable(chip, priceSpan, key, currentVal, rows = [], marketId = ''
     const val = parseFloat(input.value);
     if (val > 1) {
       setOverride(key, val);
-      if (rows.length > 1 && marketId) {
-        repriceOthers(key, val, rows, marketId, resolveTargetMargin(marketId, rows));
-      }
       const [evId, mktId, label] = key.split('|');
+      if (rows.length > 1 && marketId) {
+        repriceOthers(key, val, rows, marketId, resolveTargetMargin(evId, state.currentLeagueCode, marketId, rows));
+      }
       const shinFairOdds = parseFloat(shinFair);
       const refOdds      = parseFloat(apiVal) || shinFairOdds;
       const direction    = (!isNaN(refOdds) && refOdds > 1) ? (val < refOdds ? 'DOWN' : 'UP') : 'UP';
@@ -339,7 +338,7 @@ export function renderMarketTable(market) {
       const offerForPh  = computeOffer(row);
       input.placeholder = (offerForPh && offerForPh > 1) ? offerForPh.toFixed(2) : '-';
 
-      const confirmOverride = () => {
+      const confirmOverride = async () => {
         const val = parseFloat(input.value);
         if (!(val > 1)) return;
 
@@ -351,7 +350,7 @@ export function renderMarketTable(market) {
           ? market.rows.slice(pairStart, pairStart + 2)
           : market.rows;
         if (repriceRows.length > 1) {
-          repriceOthers(overrideKey, val, repriceRows, market.id, resolveTargetMargin(market.id, repriceRows));
+          repriceOthers(overrideKey, val, repriceRows, market.id, resolveTargetMargin(state.drawerEventId, state.currentLeagueCode, market.id, repriceRows));
         }
 
         repriceRows.forEach(r => {
@@ -373,7 +372,7 @@ export function renderMarketTable(market) {
         });
         updateOverrideAlertState(state.drawerEventId, market.id, hasVB ? 'VALUE_BET' : 'CLEAN', maxGap);
 
-        solveLambdasFromOverrides(state.drawerEventId, market.id, market.rows, drawerEvent);
+        await solveLambdasFromOverrides(state.drawerEventId, market.id, market.rows, drawerEvent);
         setTradingMode(state.drawerEventId, 'manual');
         updateModeButton(state.drawerEventId);
         const ev = state.activeEvents.find(e => e.id.toString() === state.drawerEventId?.toString());
