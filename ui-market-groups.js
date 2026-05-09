@@ -121,6 +121,43 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
     processTeamTotal(ftTeamTotals.awayLines || ftTeamTotals.away, 'away', awayTeam, true);
   }
 
+  if (h1Period && (h1Period.moneyLine || h1Period.moneyline)) {
+    const ml = h1Period.moneyLine || h1Period.moneyline;
+    const odds = [ml.homePrice || ml.home, ml.drawPrice || ml.draw, ml.awayPrice || ml.away];
+    const shin = calculateShinNoVig(odds);
+    let modelRows = [null, null, null];
+    if (lambdaData && lambdaData.h1) {
+      let pH = 0, pD = 0, pA = 0;
+      lambdaData.h1.grid.forEach(({ home, away, prob }) => {
+        if (home > away) pH += prob; else if (home === away) pD += prob; else pA += prob;
+      });
+      modelRows = [(1/pH).toFixed(3), (1/pD).toFixed(3), (1/pA).toFixed(3)];
+    }
+    groups['1ST HALF'].push({
+      id: 'h1_ml',
+      name: '1st Half 1x2',
+      rows: [
+        { label: homeTeam, value: odds[0] || '-', shinFair: shin[0], modelFair: modelRows[0] },
+        { label: 'Draw',   value: odds[1] || '-', shinFair: shin[1], modelFair: modelRows[1] },
+        { label: awayTeam, value: odds[2] || '-', shinFair: shin[2], modelFair: modelRows[2] }
+      ]
+    });
+  } else if (lambdaData && lambdaData.h1) {
+    let pH = 0, pD = 0, pA = 0;
+    lambdaData.h1.grid.forEach(({ home, away, prob }) => {
+      if (home > away) pH += prob; else if (home === away) pD += prob; else pA += prob;
+    });
+    groups['1ST HALF'].push({
+      id: 'h1_ml',
+      name: '1st Half 1x2',
+      rows: [
+        { label: homeTeam, value: null, shinFair: null, modelFair: (1/pH).toFixed(3) },
+        { label: 'Draw',   value: null, shinFair: null, modelFair: (1/pD).toFixed(3) },
+        { label: awayTeam, value: null, shinFair: null, modelFair: (1/pA).toFixed(3) }
+      ]
+    });
+  }
+
   if (h1Period && h1Period.overUnder && Array.isArray(h1Period.overUnder)) {
     const rows = [];
     const ous = [...h1Period.overUnder].sort((a, b) => parseFloat(a.points) - parseFloat(b.points));
@@ -255,6 +292,33 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
         ]
       });
 
+      const pH1btts = h1.reduce((s, { home, away, prob }) => home > 0 && away > 0 ? s + prob : s, 0);
+      groups['1ST HALF'].push({
+        id: 'h1_btts',
+        name: '1st Half Both Teams To Score',
+        rows: [
+          { label: 'Yes', value: null, shinFair: null, modelFair: (1 / pH1btts).toFixed(3), prob: pH1btts },
+          { label: 'No',  value: null, shinFair: null, modelFair: (1 / (1 - pH1btts)).toFixed(3), prob: 1 - pH1btts }
+        ]
+      });
+
+      const h1ResultBttsOutcomes = [
+        { label: 'Home & Yes', resCheck: (h, a) => h > a, btts: true  },
+        { label: 'Home & No',  resCheck: (h, a) => h > a, btts: false },
+        { label: 'Draw & Yes', resCheck: (h, a) => h === a, btts: true  },
+        { label: 'Draw & No',  resCheck: (h, a) => h === a, btts: false },
+        { label: 'Away & Yes', resCheck: (h, a) => a > h, btts: true  },
+        { label: 'Away & No',  resCheck: (h, a) => a > h, btts: false },
+      ];
+      const h1ResultBttsRows = h1ResultBttsOutcomes.map(({ label, resCheck, btts }) => {
+        let prob = 0;
+        h1.forEach(({ home, away, prob: p }) => {
+          if (resCheck(home, away) && (home > 0 && away > 0) === btts) prob += p;
+        });
+        return { label, value: null, shinFair: null, modelFair: prob > 0 ? (1 / prob).toFixed(3) : null, prob };
+      });
+      groups['1ST HALF'].push({ id: 'h1_result_btts', name: '1st Half Result & BTTS', rows: h1ResultBttsRows });
+
       const pH1over = h1.reduce((s, { home, away, prob }) => home + away >= 2 ? s + prob : s, 0);
       const pH2over = h2.reduce((s, { home, away, prob }) => home + away >= 2 ? s + prob : s, 0);
       const pBothOver = pH1over * pH2over;
@@ -300,6 +364,25 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
         rows: [
           { label: 'Yes', value: null, shinFair: null, modelFair: (1 / pAwayWinBoth).toFixed(3), prob: pAwayWinBoth },
           { label: 'No',  value: null, shinFair: null, modelFair: (1 / (1 - pAwayWinBoth)).toFixed(3), prob: 1 - pAwayWinBoth }
+        ]
+      });
+
+      const pHomeWinEither = pH1homeWin + pH2homeWin - pHomeWinBoth;
+      const pAwayWinEither = pH1awayWin + pH2awayWin - pAwayWinBoth;
+      groups['TEAM PROPS'].push({
+        id: 'home_win_either_half',
+        name: `${homeTeam} To Win Either Half`,
+        rows: [
+          { label: 'Yes', value: null, shinFair: null, modelFair: (1 / pHomeWinEither).toFixed(3), prob: pHomeWinEither },
+          { label: 'No',  value: null, shinFair: null, modelFair: (1 / (1 - pHomeWinEither)).toFixed(3), prob: 1 - pHomeWinEither }
+        ]
+      });
+      groups['TEAM PROPS'].push({
+        id: 'away_win_either_half',
+        name: `${awayTeam} To Win Either Half`,
+        rows: [
+          { label: 'Yes', value: null, shinFair: null, modelFair: (1 / pAwayWinEither).toFixed(3), prob: pAwayWinEither },
+          { label: 'No',  value: null, shinFair: null, modelFair: (1 / (1 - pAwayWinEither)).toFixed(3), prob: 1 - pAwayWinEither }
         ]
       });
 
@@ -359,6 +442,7 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
         if (mkt.name.toLowerCase().includes('both halves over')) return;
         if (mkt.name.toLowerCase().includes('both halves under')) return;
         if (mkt.name.toLowerCase().includes('to win both halves')) return;
+        if (mkt.name.toLowerCase().includes('to win either half')) return;
         if (!mkt.contestants || mkt.contestants.length === 0) return;
 
         const allPrices = mkt.contestants.map(c => parseFloat(c.p)).filter(p => !isNaN(p) && p > 1);
