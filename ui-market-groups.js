@@ -279,6 +279,30 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
         ]
       });
 
+      // --- Win Both Halves ---
+      const pH1homeWin = h1.reduce((s, { home, away, prob: p }) => home > away ? s + p : s, 0);
+      const pH2homeWin = h2.reduce((s, { home, away, prob: p }) => home > away ? s + p : s, 0);
+      const pH1awayWin = h1.reduce((s, { home, away, prob: p }) => away > home ? s + p : s, 0);
+      const pH2awayWin = h2.reduce((s, { home, away, prob: p }) => away > home ? s + p : s, 0);
+      const pHomeWinBoth = pH1homeWin * pH2homeWin;
+      const pAwayWinBoth = pH1awayWin * pH2awayWin;
+      groups['TEAM PROPS'].push({
+        id: 'home_win_both_halves',
+        name: `${homeTeam} To Win Both Halves`,
+        rows: [
+          { label: 'Yes', value: null, shinFair: null, modelFair: (1 / pHomeWinBoth).toFixed(3), prob: pHomeWinBoth },
+          { label: 'No',  value: null, shinFair: null, modelFair: (1 / (1 - pHomeWinBoth)).toFixed(3), prob: 1 - pHomeWinBoth }
+        ]
+      });
+      groups['TEAM PROPS'].push({
+        id: 'away_win_both_halves',
+        name: `${awayTeam} To Win Both Halves`,
+        rows: [
+          { label: 'Yes', value: null, shinFair: null, modelFair: (1 / pAwayWinBoth).toFixed(3), prob: pAwayWinBoth },
+          { label: 'No',  value: null, shinFair: null, modelFair: (1 / (1 - pAwayWinBoth)).toFixed(3), prob: 1 - pAwayWinBoth }
+        ]
+      });
+
       // --- 2nd Half derived markets (Pinnacle doesn't offer these) ---
       let pH2win = 0, pH2draw = 0, pH2loss = 0;
       h2.forEach(({ home, away, prob: p }) => {
@@ -334,6 +358,7 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
         if (mkt.name.toLowerCase().includes('to score in both halves')) return;
         if (mkt.name.toLowerCase().includes('both halves over')) return;
         if (mkt.name.toLowerCase().includes('both halves under')) return;
+        if (mkt.name.toLowerCase().includes('to win both halves')) return;
         if (!mkt.contestants || mkt.contestants.length === 0) return;
 
         const allPrices = mkt.contestants.map(c => parseFloat(c.p)).filter(p => !isNaN(p) && p > 1);
@@ -415,6 +440,20 @@ function getModelPriceForSpecial(marketName, selectionLabel, lambdaData, homeTea
   let grid = lambdaData.ft.grid;
   if (n.includes('1st half')) grid = lambdaData.h1.grid;
   else if (n.includes('2nd half')) grid = lambdaData.h2.grid;
+
+  if (n.includes('to win both halves')) {
+    if (!lambdaData.h1 || !lambdaData.h2) return null;
+    const isHomeMarket = n.includes('home') || (homeTeam && n.includes(homeTeam.toLowerCase()));
+    const isAwayMarket = n.includes('away') || (awayTeam && n.includes(awayTeam.toLowerCase()));
+    const isYes = label.includes('yes');
+    const pH1 = lambdaData.h1.grid.reduce((s, { home, away, prob: p }) =>
+      (isHomeMarket && !isAwayMarket ? home > away : away > home) ? s + p : s, 0);
+    const pH2 = lambdaData.h2.grid.reduce((s, { home, away, prob: p }) =>
+      (isHomeMarket && !isAwayMarket ? home > away : away > home) ? s + p : s, 0);
+    const pBoth = pH1 * pH2;
+    const pTarget = isYes ? pBoth : 1 - pBoth;
+    return pTarget > 0 ? (1 / pTarget).toFixed(3) : null;
+  }
 
   if (n.includes('to score in both halves')) {
     if (!lambdaData.h1 || !lambdaData.h2) return null;
