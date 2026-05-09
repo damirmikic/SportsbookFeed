@@ -7,7 +7,8 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
     'HANDICAP': [],
     'GOALS': [],
     'TEAM GOALS': [],
-    'HALVES': [],
+    '1ST HALF': [],
+    '2ND HALF': [],
     'CORNERS': [],
     'BOOKINGS': [],
     'TEAM PROPS': [],
@@ -136,7 +137,7 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
       rows.push({ label: `Over ${ou.points}`,  value: ou.overOdds,  shinFair: shin[0], modelFair: mOver  });
       rows.push({ label: `Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: mUnder });
     });
-    groups['HALVES'].push({ id: 'h1_ou', name: '1st Half Total', rows });
+    groups['1ST HALF'].push({ id: 'h1_ou', name: '1st Half Total', rows });
   }
 
   const detailedH1Period = detailedAll?.normal?.periods?.['1'];
@@ -164,7 +165,7 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
         rows.push({ label: `Over ${ou.points}`,  value: ou.overOdds,  shinFair: shin[0], modelFair: mOver  });
         rows.push({ label: `Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: mUnder });
       });
-      if (rows.length > 0) groups['HALVES'].push({ id: `h1_tt_${labelPrefix}`, name: `1st Half ${teamName} Totals`, rows });
+      if (rows.length > 0) groups['1ST HALF'].push({ id: `h1_tt_${labelPrefix}`, name: `1st Half ${teamName} Totals`, rows });
     };
     processTeamTotalH1(h1TeamTotals.homeLines || h1TeamTotals.home, 'home', homeTeam, false);
     processTeamTotalH1(h1TeamTotals.awayLines || h1TeamTotals.away, 'away', awayTeam, true);
@@ -265,6 +266,61 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
           { label: 'No',  value: null, shinFair: null, modelFair: (1 / (1 - pBothOver)).toFixed(3), prob: 1 - pBothOver }
         ]
       });
+
+      const pH1under = h1.reduce((s, { home, away, prob }) => home + away <= 1 ? s + prob : s, 0);
+      const pH2under = h2.reduce((s, { home, away, prob }) => home + away <= 1 ? s + prob : s, 0);
+      const pBothUnder = pH1under * pH2under;
+      groups['GOALS'].push({
+        id: 'both_halves_under15',
+        name: 'Both Halves Under 1.5',
+        rows: [
+          { label: 'Yes', value: null, shinFair: null, modelFair: (1 / pBothUnder).toFixed(3), prob: pBothUnder },
+          { label: 'No',  value: null, shinFair: null, modelFair: (1 / (1 - pBothUnder)).toFixed(3), prob: 1 - pBothUnder }
+        ]
+      });
+
+      // --- 2nd Half derived markets (Pinnacle doesn't offer these) ---
+      let pH2win = 0, pH2draw = 0, pH2loss = 0;
+      h2.forEach(({ home, away, prob: p }) => {
+        if (home > away) pH2win += p;
+        else if (home === away) pH2draw += p;
+        else pH2loss += p;
+      });
+      groups['2ND HALF'].push({
+        id: 'h2_ml',
+        name: '2nd Half 1x2',
+        rows: [
+          { label: homeTeam, value: null, shinFair: null, modelFair: (1 / pH2win).toFixed(3) },
+          { label: 'Draw',   value: null, shinFair: null, modelFair: (1 / pH2draw).toFixed(3) },
+          { label: awayTeam, value: null, shinFair: null, modelFair: (1 / pH2loss).toFixed(3) }
+        ]
+      });
+
+      const h2OuLines = h1Period && Array.isArray(h1Period.overUnder) && h1Period.overUnder.length
+        ? [...new Set(h1Period.overUnder.map(o => parseFloat(o.points)).filter(l => !isNaN(l)))].sort((a, b) => a - b)
+        : [0.5, 1, 1.5];
+
+      const h2OuRows = [];
+      h2OuLines.forEach(line => {
+        const mOver  = dcAsianTotalOdds(h2, line, true);
+        const mUnder = dcAsianTotalOdds(h2, line, false);
+        if (mOver)  h2OuRows.push({ label: `Over ${line}`,  value: null, shinFair: null, modelFair: mOver.toFixed(3) });
+        if (mUnder) h2OuRows.push({ label: `Under ${line}`, value: null, shinFair: null, modelFair: mUnder.toFixed(3) });
+      });
+      if (h2OuRows.length) groups['2ND HALF'].push({ id: 'h2_ou', name: '2nd Half Total', rows: h2OuRows });
+
+      const addH2TeamTotal = (isAway, teamName, labelPrefix) => {
+        const rows = [];
+        h2OuLines.forEach(line => {
+          const mOver  = dcAsianTeamTotalOdds(h2, line, true, isAway);
+          const mUnder = dcAsianTeamTotalOdds(h2, line, false, isAway);
+          if (mOver)  rows.push({ label: `Over ${line}`,  value: null, shinFair: null, modelFair: mOver.toFixed(3) });
+          if (mUnder) rows.push({ label: `Under ${line}`, value: null, shinFair: null, modelFair: mUnder.toFixed(3) });
+        });
+        if (rows.length) groups['2ND HALF'].push({ id: `h2_tt_${labelPrefix}`, name: `2nd Half ${teamName} Totals`, rows });
+      };
+      addH2TeamTotal(false, homeTeam, 'home');
+      addH2TeamTotal(true, awayTeam, 'away');
     }
   }
 
@@ -277,6 +333,7 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
         if (['Both Teams To Score?', 'Draw No Bet', 'Double Chance', 'Correct Score'].includes(mkt.name)) return;
         if (mkt.name.toLowerCase().includes('to score in both halves')) return;
         if (mkt.name.toLowerCase().includes('both halves over')) return;
+        if (mkt.name.toLowerCase().includes('both halves under')) return;
         if (!mkt.contestants || mkt.contestants.length === 0) return;
 
         const allPrices = mkt.contestants.map(c => parseFloat(c.p)).filter(p => !isNaN(p) && p > 1);
@@ -293,8 +350,10 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
         const n = mkt.name.toLowerCase();
         let catName;
 
-        if (n.includes('1st half') || n.includes('2nd half') || n.includes('first half') || n.includes('second half')) {
-          catName = 'HALVES';
+        if (n.includes('2nd half') || n.includes('second half')) {
+          catName = '2ND HALF';
+        } else if (n.includes('1st half') || n.includes('first half')) {
+          catName = '1ST HALF';
         } else if (n.includes('corner')) {
           catName = 'CORNERS';
         } else if (n.includes('booking') || n.includes('yellow card') || n.includes('red card') || n.includes('card')) {
@@ -331,7 +390,7 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
         ) {
           catName = 'SPECIALS';
         } else {
-          if (category.code === 'halves') catName = 'HALVES';
+          if (category.code === 'halves') catName = n.includes('2nd half') || n.includes('second half') ? '2ND HALF' : '1ST HALF';
           else catName = 'SPECIALS';
         }
 
@@ -385,6 +444,19 @@ function getModelPriceForSpecial(marketName, selectionLabel, lambdaData, homeTea
     const pH1o = lambdaData.h1.grid.reduce((s, { home, away, prob: p }) => home + away >= threshold ? s + p : s, 0);
     const pH2o = lambdaData.h2.grid.reduce((s, { home, away, prob: p }) => home + away >= threshold ? s + p : s, 0);
     const pBoth = pH1o * pH2o;
+    const pTarget = isYes ? pBoth : 1 - pBoth;
+    return pTarget > 0 ? (1 / pTarget).toFixed(3) : null;
+  }
+
+  if (n.includes('both halves under')) {
+    if (!lambdaData.h1 || !lambdaData.h2) return null;
+    const lineMatch = n.match(/both halves under\s+([0-9.]+)/);
+    const line = lineMatch ? parseFloat(lineMatch[1]) : 1.5;
+    const threshold = Math.floor(line);
+    const isYes = label.includes('yes');
+    const pH1u = lambdaData.h1.grid.reduce((s, { home, away, prob: p }) => home + away <= threshold ? s + p : s, 0);
+    const pH2u = lambdaData.h2.grid.reduce((s, { home, away, prob: p }) => home + away <= threshold ? s + p : s, 0);
+    const pBoth = pH1u * pH2u;
     const pTarget = isYes ? pBoth : 1 - pBoth;
     return pTarget > 0 ? (1 / pTarget).toFixed(3) : null;
   }
