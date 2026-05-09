@@ -286,6 +286,7 @@ body {
   padding: 0.875rem;
   cursor: pointer;
   transition: background 0.12s, border-color 0.12s, transform 0.08s;
+  -webkit-user-select: none;
   user-select: none;
 }
 
