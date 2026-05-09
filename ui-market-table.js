@@ -7,7 +7,8 @@ import { updateModeButton, renderDrawerMarkets } from './ui-drawer.js';
 // ── Lambda back-solve ─────────────────────────────────────────────────────────
 
 async function solveLambdasFromOverrides(eventId, changedMarketId, changedRows, drawerEvent) {
-  let pH = null, pD = null, pA = null, pOver = null, ouLine = null;
+  let pH = null, pD = null, pA = null;
+  const ouLines = [];
 
   const getMatchPeriod = (ev) => {
     if (!ev) return null;
@@ -53,25 +54,35 @@ async function solveLambdasFromOverrides(eventId, changedMarketId, changedRows, 
     }
   }
 
-  const ovO25 = getOverride(`${eventId}|ou|Over 2.5`);
-  const ovU25 = getOverride(`${eventId}|ou|Under 2.5`);
-  if (ovO25 && ovU25) {
-    const shins = calculateShinNoVig([parseFloat(ovO25), parseFloat(ovU25)]);
-    pOver  = 1 / parseFloat(shins[0]);
-    ouLine = 2.5;
-  } else if (mp?.overUnder) {
-    const ou25 = mp.overUnder.find(o => parseFloat(o.points) === 2.5)
-      || mp.overUnder.reduce((b, o) => Math.abs(parseFloat(o.points) - 2.5) < Math.abs(parseFloat(b.points) - 2.5) ? o : b);
-    if (ou25) {
-      const shins = calculateShinNoVig([ou25.overOdds, ou25.underOdds]);
+  // Collect OU lines (prefer overrides; fall back to raw market data for each target line).
+  const seen = new Set();
+  for (const target of [1.5, 2.5, 3.5]) {
+    const labelO = `Over ${target}`, labelU = `Under ${target}`;
+    const ovO = getOverride(`${eventId}|ou|${labelO}`);
+    const ovU = getOverride(`${eventId}|ou|${labelU}`);
+    if (ovO && ovU) {
+      const shins = calculateShinNoVig([parseFloat(ovO), parseFloat(ovU)]);
       const f = parseFloat(shins[0]);
-      if (!isNaN(f) && f > 1) { pOver = 1 / f; ouLine = parseFloat(ou25.points); }
+      if (!isNaN(f) && f > 1 && !seen.has(target)) { seen.add(target); ouLines.push({ line: target, pOver: 1 / f }); }
+    } else if (mp?.overUnder) {
+      const ou = mp.overUnder.find(o => parseFloat(o.points) === target)
+        ?? mp.overUnder.reduce((b, o) =>
+          Math.abs(parseFloat(o.points) - target) < Math.abs(parseFloat(b.points) - target) ? o : b
+        );
+      if (ou) {
+        const line = parseFloat(ou.points);
+        if (!seen.has(line)) {
+          const shins = calculateShinNoVig([ou.overOdds, ou.underOdds]);
+          const f = parseFloat(shins[0]);
+          if (!isNaN(f) && f > 1) { seen.add(line); ouLines.push({ line, pOver: 1 / f }); }
+        }
+      }
     }
   }
 
   if (pH === null || pD === null || pA === null) return;
 
-  const { lh, la, rho, grid } = await solveLambdasAsync(pH, pD, pA, pOver, ouLine);
+  const { lh, la, rho, grid } = await solveLambdasAsync(pH, pD, pA, ouLines);
   setOverriddenLambdas(eventId, { lh, la, rho, grid });
 }
 
