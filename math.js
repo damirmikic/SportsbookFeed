@@ -96,7 +96,15 @@ export function calcAsianOdds(pWin, pLoss, pPush, pHalfWin, pHalfLoss) {
   return 1 + (num / denom);
 }
 
-export function buildScoreGrid(lh, la, rho, maxGoals = 10) {
+// For Poisson(λ), P(k) is negligible beyond k ≈ λ + 4√λ.
+// Clamp to at least 8 so low-lambda matches still have sufficient resolution.
+function adaptiveMaxGoals(lh, la) {
+  const lMax = Math.max(lh, la);
+  return Math.max(8, Math.ceil(lMax + 4 * Math.sqrt(lMax) + 1));
+}
+
+export function buildScoreGrid(lh, la, rho, maxGoals = 0) {
+  if (maxGoals <= 0) maxGoals = adaptiveMaxGoals(lh, la);
   const grid = [];
   let sum = 0;
   for (let i = 0; i <= maxGoals; i++) {
@@ -106,10 +114,7 @@ export function buildScoreGrid(lh, la, rho, maxGoals = 10) {
       sum += p;
     }
   }
-  // Normalize to 1.0
-  if (sum > 0) {
-    grid.forEach(s => s.prob /= sum);
-  }
+  if (sum > 0) grid.forEach(s => s.prob /= sum);
   return grid;
 }
 
@@ -197,45 +202,129 @@ export function dcAsianTeamTotalOdds(grid, line, isOver, isAway = false) {
   return calcAsianOdds(pWin, pLoss, pPush, pHalfWin, pHalfLoss);
 }
 
-export function solveLambdas(pH, pD, pA, pOver, totalLine) {
-  let bestLh = 1, bestLa = 1, bestRho = 0, bestErr = Infinity;
+// ── DC solver: warm start + Adam gradient descent ────────────────────────────
 
-  const calcErr = (lh, la, rho) => {
-    const p = dcMatchProbs(lh, la, rho);
-    let err = (p.pH - pH) ** 2 + (p.pD - pD) ** 2 + (p.pA - pA) ** 2;
-    if (pOver !== null && totalLine !== null) {
-      err += (dcOverProb(lh, la, rho, totalLine) - pOver) ** 2;
-    }
-    return err;
-  };
+// Estimate initial [λh, λa, ρ] from market prices.
+//
+// λ_total: binary-search Poisson CDF against the OU line closest to 2.5.
+// λh/λa split: home/away strength ratio from 1x2 probs.
+// ρ seed: analytical formula from draw-probability discrepancy.
+//   pD_dc = pD_poisson - ρ*(P00*λh*λa + P11)  →  ρ = (pD_poisson - pD) / (P00*λh*λa + P11)
+function warmStart(pH, pD, pA, ouLines) {
+  // Pick the OU line closest to 2.5 for total goals estimation
+  const ref = ouLines.length
+    ? ouLines.reduce((b, o) => Math.abs(o.line - 2.5) < Math.abs(b.line - 2.5) ? o : b)
+    : null;
 
-  for (let lh = 0.3; lh <= 4.0; lh += 0.15) {
-    for (let la = 0.3; la <= 4.0; la += 0.15) {
-      for (let rho = -0.15; rho <= 0.05; rho += 0.025) {
-        const err = calcErr(lh, la, rho);
-        if (err < bestErr) { bestErr = err; bestLh = lh; bestLa = la; bestRho = rho; }
-      }
+  let lTotal = 2.5;
+  if (ref && ref.pOver > 0 && ref.pOver < 1) {
+    const k = Math.floor(ref.line);
+    let lo = 0.3, hi = 9.0;
+    for (let i = 0; i < 50; i++) {
+      const mid = (lo + hi) / 2;
+      let pUnder = 0;
+      for (let j = 0; j <= k; j++) pUnder += poissonPmf(j, mid);
+      if (1 - pUnder > ref.pOver) hi = mid; else lo = mid;
     }
+    lTotal = (lo + hi) / 2;
   }
 
-  const rLh = bestLh, rLa = bestLa, rRho = bestRho;
-  for (let lh = rLh - 0.2; lh <= rLh + 0.2; lh += 0.01) {
-    for (let la = rLa - 0.2; la <= rLa + 0.2; la += 0.01) {
-      for (let rho = rRho - 0.03; rho <= rRho + 0.03; rho += 0.005) {
-        if (lh <= 0 || la <= 0) continue;
-        const err = calcErr(lh, la, rho);
-        if (err < bestErr) { bestErr = err; bestLh = lh; bestLa = la; bestRho = rho; }
-      }
+  const strength = (pH + 0.5 * pD) / Math.max(0.01, pA + 0.5 * pD);
+  const lh = Math.max(0.2, lTotal * strength / (1 + strength));
+  const la = Math.max(0.2, lTotal / (1 + strength));
+
+  // Analytical ρ seed from draw discrepancy (exact, not an approximation)
+  const p00 = poissonPmf(0, lh) * poissonPmf(0, la);
+  const p11 = poissonPmf(1, lh) * poissonPmf(1, la);
+  let pD_poisson = 0;
+  const kMax = Math.ceil(lTotal * 3 + 4);
+  for (let k = 0; k <= kMax; k++) pD_poisson += poissonPmf(k, lh) * poissonPmf(k, la);
+  const denom = p00 * lh * la + p11;
+  const rho = denom > 1e-10
+    ? Math.max(-0.25, Math.min(0.1, (pD_poisson - pD) / denom))
+    : -0.05;
+
+  return [lh, la, rho];
+}
+
+// Adam optimizer with numerical gradients and optional box constraints.
+// Typically converges in 50-150 iterations for DC parameters.
+function adamOptimize(x0, lossFn, { lr = 0.01, maxIter = 300, tol = 1e-11, bounds } = {}) {
+  const n = x0.length;
+  const x = [...x0];
+  const m = new Array(n).fill(0);
+  const v = new Array(n).fill(0);
+  const b1 = 0.9, b2 = 0.999, eps = 1e-8, H = 1e-5;
+  let prevLoss = Infinity;
+
+  for (let iter = 1; iter <= maxIter; iter++) {
+    const loss = lossFn(x);
+    if (Math.abs(prevLoss - loss) < tol) break;
+    prevLoss = loss;
+
+    const b1t = b1 ** iter, b2t = b2 ** iter;
+    for (let i = 0; i < n; i++) {
+      const xp = [...x]; xp[i] = bounds ? Math.min(bounds[i][1], x[i] + H) : x[i] + H;
+      const xm = [...x]; xm[i] = bounds ? Math.max(bounds[i][0], x[i] - H) : x[i] - H;
+      const gi = (lossFn(xp) - lossFn(xm)) / (xp[i] - xm[i]);
+      m[i] = b1 * m[i] + (1 - b1) * gi;
+      v[i] = b2 * v[i] + (1 - b2) * gi * gi;
+      x[i] -= lr * (m[i] / (1 - b1t)) / (Math.sqrt(v[i] / (1 - b2t)) + eps);
+      if (bounds) x[i] = Math.max(bounds[i][0], Math.min(bounds[i][1], x[i]));
     }
   }
+  return x;
+}
+
+// Joint loss: 1x2 + all OU lines + optional Asian HCP.
+// Grid is built once per evaluation and shared across all constraints.
+// maxG is fixed at call-site from warm-start lambdas for a stable loss landscape.
+function solverLoss(params, pH, pD, pA, ouLines, hcpSpread, hcpPHome, maxG) {
+  const [lh, la, rho] = params;
+  if (lh <= 0.05 || la <= 0.05) return 1e8;
+
+  const grid = buildScoreGrid(lh, la, rho, maxG);
+  let pH_m = 0, pD_m = 0, pA_m = 0;
+  for (const { home, away, prob } of grid) {
+    if (home > away) pH_m += prob;
+    else if (home === away) pD_m += prob;
+    else pA_m += prob;
+  }
+
+  let loss = (pH_m - pH) ** 2 + (pD_m - pD) ** 2 + (pA_m - pA) ** 2;
+
+  for (const { line, pOver } of ouLines) {
+    let pOver_m = 0;
+    for (const { home, away, prob } of grid) {
+      if (home + away > line) pOver_m += prob;
+    }
+    loss += (pOver_m - pOver) ** 2;
+  }
+
+  if (hcpSpread !== null && hcpPHome !== null) {
+    const hcpOdds = dcAsianHandicapOdds(grid, hcpSpread, false);
+    if (hcpOdds !== null && hcpOdds > 1) loss += (1 / hcpOdds - hcpPHome) ** 2;
+  }
+  return loss;
+}
+
+// ouLines: array of { line, pOver } — pass as many OU lines as available (1.5, 2.5, 3.5).
+export function solveLambdas(pH, pD, pA, ouLines = [], hcpSpread = null, hcpPHome = null) {
+  const [lh0, la0, rho0] = warmStart(pH, pD, pA, ouLines);
+  const maxG = adaptiveMaxGoals(lh0, la0); // fixed for this solve — keeps loss landscape stable
+  const [lh, la, rho] = adamOptimize(
+    [lh0, la0, rho0],
+    p => solverLoss(p, pH, pD, pA, ouLines, hcpSpread, hcpPHome, maxG),
+    { lr: 0.01, maxIter: 300, tol: 1e-11, bounds: [[0.1, 6], [0.1, 6], [-0.25, 0.1]] }
+  );
 
   const scores = [];
   for (let i = 0; i <= 6; i++)
     for (let j = 0; j <= 6; j++)
-      scores.push({ home: i, away: j, prob: scoreProb(i, j, bestLh, bestLa, bestRho) });
+      scores.push({ home: i, away: j, prob: scoreProb(i, j, lh, la, rho) });
   scores.sort((a, b) => b.prob - a.prob);
 
-  return { lh: bestLh, la: bestLa, rho: bestRho, scores: scores.slice(0, 6) };
+  return { lh, la, rho, scores: scores.slice(0, 6) };
 }
 
 // ── Odds laddering ────────────────────────────────────────────────────────────
@@ -317,8 +406,8 @@ function postToSolver(type, payload) {
   });
 }
 
-export function solveLambdasAsync(pH, pD, pA, pOver, ouLine) {
-  return postToSolver('SOLVE_LAMBDAS', { pH, pD, pA, pOver, ouLine });
+export function solveLambdasAsync(pH, pD, pA, ouLines = [], hcpSpread = null, hcpPHome = null) {
+  return postToSolver('SOLVE_LAMBDAS', { pH, pD, pA, ouLines, hcpSpread, hcpPHome });
 }
 
 export function calculateTeamLambdasAsync(matchPeriod, h1Period) {
@@ -343,29 +432,61 @@ export function calculateTeamLambdas(matchPeriod, h1Period) {
   const s = pH + pD + pA;
   pH /= s; pD /= s; pA /= s;
 
-  let pOver = null, totalLine = null;
-  if (matchPeriod.overUnder && Array.isArray(matchPeriod.overUnder)) {
-    let ou25 = matchPeriod.overUnder.find(ou => parseFloat(ou.points) === 2.5);
-    if (!ou25) ou25 = matchPeriod.overUnder.reduce((b, ou) =>
-      Math.abs(parseFloat(ou.points) - 2.5) < Math.abs(parseFloat(b.points) - 2.5) ? ou : b);
-    if (ou25) {
-      const fairOU = calculateShinNoVig([ou25.overOdds, ou25.underOdds]);
-      const fOver = parseFloat(fairOU[0]);
-      if (!isNaN(fOver)) { pOver = 1 / fOver; totalLine = parseFloat(ou25.points); }
+  // Collect OU 1.5, 2.5, 3.5 — deduped by actual line value to avoid double-counting.
+  const ouLines = [];
+  if (Array.isArray(matchPeriod.overUnder) && matchPeriod.overUnder.length > 0) {
+    const seen = new Set();
+    for (const target of [1.5, 2.5, 3.5]) {
+      const ou = matchPeriod.overUnder.find(o => parseFloat(o.points) === target)
+        ?? matchPeriod.overUnder.reduce((b, o) =>
+          Math.abs(parseFloat(o.points) - target) < Math.abs(parseFloat(b.points) - target) ? o : b
+        );
+      if (!ou) continue;
+      const line = parseFloat(ou.points);
+      if (seen.has(line)) continue;
+      seen.add(line);
+      const fair = calculateShinNoVig([ou.overOdds, ou.underOdds]);
+      const fOver = parseFloat(fair[0]);
+      if (!isNaN(fOver) && fOver > 1) ouLines.push({ line, pOver: 1 / fOver });
     }
   }
 
-  const solved = solveLambdas(pH, pD, pA, pOver, totalLine);
+  // Asian HCP: main line (non-alt, closest spread to 0) as third solver constraint.
+  let hcpSpread = null, hcpPHome = null;
+  const spreads = matchPeriod.spreads;
+  if (Array.isArray(spreads) && spreads.length > 0) {
+    const main = spreads
+      .filter(s => !s.altLineId)
+      .sort((a, b) =>
+        Math.abs(parseFloat(a.hdp ?? a.handicap ?? 0)) -
+        Math.abs(parseFloat(b.hdp ?? b.handicap ?? 0))
+      )[0] ?? spreads[0];
+    const hdp = parseFloat(main.hdp ?? main.handicap ?? NaN);
+    const ho  = parseFloat(main.homeOdds);
+    const ao  = parseFloat(main.awayOdds);
+    if (!isNaN(hdp) && ho > 1 && ao > 1) {
+      const fair = calculateShinNoVig([ho, ao]);
+      hcpSpread = hdp;
+      hcpPHome  = 1 / parseFloat(fair[0]);
+    }
+  }
+
+  const solved = solveLambdas(pH, pD, pA, ouLines, hcpSpread, hcpPHome);
 
   let t = 0.45;
-  if (h1Period && h1Period.overUnder && Array.isArray(h1Period.overUnder) && h1Period.overUnder.length > 0) {
+  if (h1Period && Array.isArray(h1Period.overUnder) && h1Period.overUnder.length > 0) {
     t = calibrateHalvesFractionFromOU(solved.lh, solved.la, h1Period.overUnder);
   }
 
+  // Use adaptive grid sizes: full match grid scales with solved lambdas;
+  // half-time grids scale with their (smaller) lambda fractions.
   return {
-    ft: { lh: solved.lh, la: solved.la, rho: solved.rho, grid: buildScoreGrid(solved.lh, solved.la, solved.rho) },
-    h1: { lh: solved.lh * t, la: solved.la * t, rho: 0, grid: buildScoreGrid(solved.lh * t, solved.la * t, 0) },
-    h2: { lh: solved.lh * (1-t), la: solved.la * (1-t), rho: 0, grid: buildScoreGrid(solved.lh * (1-t), solved.la * (1-t), 0) },
-    splitFraction: t
+    ft: { lh: solved.lh, la: solved.la, rho: solved.rho,
+          grid: buildScoreGrid(solved.lh, solved.la, solved.rho) },
+    h1: { lh: solved.lh * t, la: solved.la * t, rho: 0,
+          grid: buildScoreGrid(solved.lh * t, solved.la * t, 0) },
+    h2: { lh: solved.lh * (1-t), la: solved.la * (1-t), rho: 0,
+          grid: buildScoreGrid(solved.lh * (1-t), solved.la * (1-t), 0) },
+    splitFraction: t,
   };
 }
