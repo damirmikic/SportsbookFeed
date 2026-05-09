@@ -225,6 +225,7 @@ body {
   align-items: center;
   gap: 0.75rem;
   transition: background 0.2s;
+  -webkit-user-select: none;
   user-select: none;
 }
 
@@ -384,6 +385,7 @@ body {
   width: 100%;
   height: 100%;
   background: rgba(0, 0, 0, 0.5);
+  -webkit-backdrop-filter: blur(4px);
   backdrop-filter: blur(4px);
   z-index: 100;
   opacity: 0;
@@ -403,6 +405,7 @@ body {
   width: 90vw;
   height: 100%;
   background: rgba(30, 41, 59, 0.95); /* Slate 800 with alpha */
+  -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
   border-left: 1px solid var(--border-color);
   box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5);
@@ -1310,6 +1313,39 @@ body {
   color: #0f172a;
 }
 
+/* ── Trader chip ── */
+.trader-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  padding: 0.35rem 0.75rem 0.35rem 0.5rem;
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.trader-chip:hover {
+  border-color: var(--accent-color);
+  background: var(--surface-color-hover);
+}
+
+.trader-chip-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.trader-chip svg {
+  opacity: 0.5;
+}
+
 /* ═══════════════════════════════════════════════════════════
    ADMIN VIEW  wrapper
 ════════════════════════════════════════════════════════════ */
@@ -1873,6 +1909,7 @@ body {
   align-items: center;
   gap: 0.5rem;
   cursor: pointer;
+  -webkit-user-select: none;
   user-select: none;
 }
 
@@ -2519,7 +2556,7 @@ body {
 /* Market Active toggle in bar */
 .mkt-active-wrap {
   display: flex; align-items: center; gap: 6px;
-  cursor: pointer; user-select: none; margin-left: 6px;
+  cursor: pointer; -webkit-user-select: none; user-select: none; margin-left: 6px;
   flex-shrink: 0;
 }
 .mkt-active-wrap input[type="checkbox"] { display: none; }
@@ -2565,7 +2602,7 @@ body {
   display: inline-block; margin-top: 5px;
   font-size: 10px; font-weight: 700; letter-spacing: 0.4px;
   color: var(--accent-color); opacity: 0.75;
-  cursor: pointer; user-select: none;
+  cursor: pointer; -webkit-user-select: none; user-select: none;
   transition: opacity 0.15s;
 }
 .mkt-margin-suggest:hover { opacity: 1; text-decoration: underline; }

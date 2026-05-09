@@ -1,5 +1,5 @@
-import { fetchLeagues } from './api.js';
-import { state } from './state.js';
+import { fetchLeagues, fetchSharedState, fetchTraderState } from './api.js';
+import { state, hydrateSharedState, hydrateTraderState } from './state.js';
 import { renderLeagues, closeDrawer, loadOdds, filterAndRenderBoard } from './ui.js';
 import { renderAdminPanel } from './admin.js';
 import { renderTemplatesSection } from './templates-admin.js';
@@ -61,6 +61,29 @@ function switchView(view) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  // Guard: redirect to login if no operator is signed in
+  if (!localStorage.getItem('currentTraderId')) {
+    window.location.replace('login.html');
+    return;
+  }
+
+  // Show active operator chip in header
+  const traderName  = localStorage.getItem('currentTraderName')  || '?';
+  const traderColor = localStorage.getItem('currentTraderColor') || '#3b82f6';
+  const chip = document.getElementById('trader-chip');
+  if (chip) {
+    chip.querySelector('.trader-chip-dot').style.background = traderColor;
+    chip.querySelector('.trader-chip-name').textContent = traderName;
+    chip.addEventListener('click', () => {
+      if (confirm(`Sign out as ${traderName}?`)) {
+        localStorage.removeItem('currentTraderId');
+        localStorage.removeItem('currentTraderName');
+        localStorage.removeItem('currentTraderColor');
+        window.location.replace('login.html');
+      }
+    });
+  }
+
   const leagueSearchInput = document.getElementById('league-search');
   const closeDrawerBtn    = document.getElementById('close-drawer');
   const drawerOverlay     = document.getElementById('drawer-overlay');
@@ -86,6 +109,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.querySelectorAll('.admin-section-btn').forEach(btn =>
     btn.addEventListener('click', () => showAdminSection(btn.dataset.section))
   );
+
+  // Hydrate from Turso in parallel — failures are non-fatal (localStorage remains source of truth)
+  const traderId = localStorage.getItem('currentTraderId');
+  await Promise.allSettled([
+    fetchSharedState().then(hydrateSharedState).catch(e => console.warn('Shared state hydration failed:', e)),
+    fetchTraderState(traderId).then(hydrateTraderState).catch(e => console.warn('Trader state hydration failed:', e)),
+  ]);
 
   const leaguesContainer = document.getElementById('leagues-container');
   try {

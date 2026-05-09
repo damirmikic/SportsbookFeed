@@ -16,9 +16,14 @@
         <p>Trading Terminal</p>
       </div>
       <nav class="view-nav">
-        <button class="view-nav-btn active" data-view="trading">Trading</button>
-        <button class="view-nav-btn" data-view="admin">Admin</button>
+        <button type="button" class="view-nav-btn active" data-view="trading">Trading</button>
+        <button type="button" class="view-nav-btn" data-view="admin">Admin</button>
       </nav>
+      <button type="button" id="trader-chip" class="trader-chip" title="Click to sign out">
+        <span class="trader-chip-dot"></span>
+        <span class="trader-chip-name">Operator</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
       <div class="status-indicator">
         <span id="last-refresh"></span>
         <span class="pulse"></span> Live
@@ -55,8 +60,8 @@
 
       <!-- Admin section sub-nav -->
       <nav class="admin-section-nav">
-        <button class="admin-section-btn active" data-section="tournaments">Tournaments Prematch</button>
-        <button class="admin-section-btn" data-section="templates">My Templates</button>
+        <button type="button" class="admin-section-btn active" data-section="tournaments">Tournaments Prematch</button>
+        <button type="button" class="admin-section-btn" data-section="templates">My Templates</button>
       </nav>
 
       <!-- Tournaments panel -->
@@ -76,9 +81,9 @@
           <p id="drawer-match-time">Kick-off Time</p>
         </div>
         <div class="drawer-actions">
-          <button id="suspend-event-btn" class="suspend-btn open" title="Suspend entire event">🔓</button>
-          <button id="trading-mode-btn" class="mode-btn auto" title="Edit any price to enter MANUAL mode">● AUTO</button>
-          <button id="close-drawer" class="close-btn">&times;</button>
+          <button type="button" id="suspend-event-btn" class="suspend-btn open" title="Suspend entire event">🔓</button>
+          <button type="button" id="trading-mode-btn" class="mode-btn auto" title="Edit any price to enter MANUAL mode">● AUTO</button>
+          <button type="button" id="close-drawer" class="close-btn">&times;</button>
         </div>
       </div>
       <div id="drawer-content" class="scrollable"></div>

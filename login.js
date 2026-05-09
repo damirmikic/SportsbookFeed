@@ -1,0 +1,354 @@
+// login.js — Operator login / signup logic
+// Handles: select operator → PIN entry → verify → redirect to app
+//          create operator → name + color + PIN → save → redirect to app
+
+// ── API helpers ────────────────────────────────────────────────────────────────
+
+const IS_LOCAL = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+
+// When Netlify Functions aren't available locally, fall back to a mock store in
+// localStorage so the page works without a deployed backend during development.
+const USE_MOCK = IS_LOCAL;
+
+async function apiFetch(path, opts = {}) {
+  const res = await fetch(path, {
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+// ── Mock backend (localStorage) used in local dev without Netlify Functions ──
+
+function mockGetTraders() {
+  return JSON.parse(localStorage.getItem('_mock_traders') || '[]');
+}
+
+function mockSaveTraders(traders) {
+  localStorage.setItem('_mock_traders', JSON.stringify(traders));
+}
+
+async function sha256(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function fetchTraders() {
+  if (USE_MOCK) return mockGetTraders();
+  return apiFetch('/api/traders');
+}
+
+async function createTrader(name, color, pin) {
+  if (USE_MOCK) {
+    const traders = mockGetTraders();
+    if (traders.find(t => t.name.toLowerCase() === name.toLowerCase())) {
+      throw new Error('An operator with this name already exists.');
+    }
+    const trader = {
+      id:         crypto.randomUUID(),
+      name,
+      color,
+      pin_hash:   await sha256(pin),
+      created_at: new Date().toISOString(),
+      active:     1,
+    };
+    mockSaveTraders([...traders, trader]);
+    return { id: trader.id, name: trader.name, color: trader.color };
+  }
+  return apiFetch('/api/traders', {
+    method: 'POST',
+    body: JSON.stringify({ name, color, pin }),
+  });
+}
+
+async function verifyPin(id, pin) {
+  if (USE_MOCK) {
+    const traders = mockGetTraders();
+    const t = traders.find(tr => tr.id === id);
+    if (!t) return false;
+    const hash = await sha256(pin);
+    return hash === t.pin_hash;
+  }
+  const res = await apiFetch('/api/traders?verify=1', {
+    method: 'POST',
+    body: JSON.stringify({ id, pin }),
+  });
+  return res.ok === true;
+}
+
+// ── State ──────────────────────────────────────────────────────────────────────
+
+let operators   = [];  // full list loaded from backend
+let selectedOp  = null; // operator the user clicked
+let pinBuffer   = '';   // digits entered on the numpad
+
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+
+const card       = document.getElementById('login-card');
+const screens    = {
+  select: document.getElementById('screen-select'),
+  pin:    document.getElementById('screen-pin'),
+  create: document.getElementById('screen-create'),
+};
+
+// select screen
+const operatorList = document.getElementById('operator-list');
+const btnGoCreate  = document.getElementById('btn-go-create');
+
+// pin screen
+const pinBack    = document.getElementById('pin-back');
+const pinName    = document.getElementById('pin-name');
+const pinAvatar  = document.getElementById('pin-avatar');
+const pinDots    = document.querySelectorAll('.pin-dot');
+const pinError   = document.getElementById('pin-error');
+const numpadKeys = document.querySelectorAll('.numpad-key[data-digit]');
+const numpadClear   = document.getElementById('numpad-clear');
+const numpadConfirm = document.getElementById('numpad-confirm');
+
+// create screen
+const createBack        = document.getElementById('create-back');
+const createForm        = document.getElementById('create-form');
+const createAvatar      = document.getElementById('create-avatar');
+const swatches          = document.querySelectorAll('.swatch');
+const createName        = document.getElementById('create-name');
+const createPin         = document.getElementById('create-pin');
+const createPinConfirm  = document.getElementById('create-pin-confirm');
+const createError       = document.getElementById('create-error');
+const createSubmit      = document.getElementById('create-submit');
+const createBtnLabel    = document.getElementById('create-btn-label');
+const createSpinner     = document.getElementById('create-spinner');
+const pinToggleCreate   = document.getElementById('pin-toggle-create');
+const pinToggleConfirm  = document.getElementById('pin-toggle-confirm');
+
+// ── Screen navigation ─────────────────────────────────────────────────────────
+
+function showScreen(name) {
+  Object.values(screens).forEach(s => s.classList.remove('active'));
+  screens[name].classList.add('active');
+  // Reset PIN state when leaving
+  if (name !== 'pin') { pinBuffer = ''; renderPinDots(); }
+  if (name !== 'create') clearCreateErrors();
+  if (name === 'pin') pinError.classList.add('hidden');
+}
+
+// ── Operator list ─────────────────────────────────────────────────────────────
+
+function getInitial(name) {
+  return name.trim().charAt(0).toUpperCase();
+}
+
+function renderOperatorList(list) {
+  if (list.length === 0) {
+    operatorList.innerHTML = `<div class="empty-operators">No operators yet.<br>Create the first profile to get started.</div>`;
+    return;
+  }
+  operatorList.innerHTML = '';
+  list.forEach(op => {
+    const card = document.createElement('button');
+    card.className = 'operator-card';
+    card.innerHTML = `
+      <div class="operator-avatar" style="background:${op.color}">${getInitial(op.name)}</div>
+      <div class="operator-info">
+        <div class="operator-name">${op.name}</div>
+        <div class="operator-meta">PIN required</div>
+      </div>
+      <span class="operator-arrow">›</span>
+    `;
+    card.addEventListener('click', () => openPinScreen(op));
+    operatorList.appendChild(card);
+  });
+}
+
+async function loadOperators() {
+  try {
+    operators = await fetchTraders();
+    renderOperatorList(operators);
+  } catch (e) {
+    operatorList.innerHTML = `<div class="empty-operators" style="color:#f87171">Failed to load operators.<br>${e.message}</div>`;
+  }
+}
+
+// ── PIN screen ────────────────────────────────────────────────────────────────
+
+function openPinScreen(op) {
+  selectedOp = op;
+  pinName.textContent = op.name;
+  pinAvatar.textContent = getInitial(op.name);
+  pinAvatar.style.background = op.color;
+  pinBuffer = '';
+  renderPinDots();
+  pinError.classList.add('hidden');
+  showScreen('pin');
+}
+
+function renderPinDots() {
+  pinDots.forEach((dot, i) => {
+    dot.classList.toggle('filled', i < pinBuffer.length);
+    dot.classList.remove('error');
+  });
+}
+
+function shakePin() {
+  pinDots.forEach(d => {
+    d.classList.remove('filled');
+    d.classList.add('error');
+  });
+  setTimeout(() => { pinBuffer = ''; renderPinDots(); }, 600);
+}
+
+async function submitPin() {
+  if (pinBuffer.length < 4) return;
+  numpadConfirm.disabled = true;
+
+  try {
+    const ok = await verifyPin(selectedOp.id, pinBuffer);
+    if (ok) {
+      localStorage.setItem('currentTraderId',   selectedOp.id);
+      localStorage.setItem('currentTraderName',  selectedOp.name);
+      localStorage.setItem('currentTraderColor', selectedOp.color);
+      window.location.replace('index.html');
+    } else {
+      pinError.classList.remove('hidden');
+      shakePin();
+      numpadConfirm.disabled = false;
+    }
+  } catch (e) {
+    pinError.textContent = e.message || 'Verification failed.';
+    pinError.classList.remove('hidden');
+    shakePin();
+    numpadConfirm.disabled = false;
+  }
+}
+
+// Numpad events
+numpadKeys.forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (pinBuffer.length >= 6) return;
+    pinBuffer += btn.dataset.digit;
+    renderPinDots();
+    pinError.classList.add('hidden');
+    if (pinBuffer.length === 6) submitPin();
+  });
+});
+
+numpadClear.addEventListener('click', () => {
+  pinBuffer = pinBuffer.slice(0, -1);
+  renderPinDots();
+});
+
+numpadConfirm.addEventListener('click', submitPin);
+
+// Keyboard support on PIN screen
+document.addEventListener('keydown', e => {
+  if (!screens.pin.classList.contains('active')) return;
+  if (e.key >= '0' && e.key <= '9') {
+    if (pinBuffer.length < 6) { pinBuffer += e.key; renderPinDots(); }
+    if (pinBuffer.length === 6) submitPin();
+  }
+  if (e.key === 'Backspace') { pinBuffer = pinBuffer.slice(0, -1); renderPinDots(); }
+  if (e.key === 'Enter') submitPin();
+});
+
+pinBack.addEventListener('click', () => showScreen('select'));
+
+// ── Create screen ─────────────────────────────────────────────────────────────
+
+let selectedColor = '#3b82f6';
+
+swatches.forEach(sw => {
+  sw.addEventListener('click', () => {
+    swatches.forEach(s => s.classList.remove('active'));
+    sw.classList.add('active');
+    selectedColor = sw.dataset.color;
+    createAvatar.style.background = selectedColor;
+  });
+});
+
+createName.addEventListener('input', () => {
+  const val = createName.value.trim();
+  createAvatar.textContent = val ? val.charAt(0).toUpperCase() : 'A';
+  createName.classList.remove('invalid');
+});
+
+function makePinToggle(inputEl, toggleBtn) {
+  toggleBtn.addEventListener('click', () => {
+    const isText = inputEl.type === 'text';
+    inputEl.type = isText ? 'password' : 'text';
+  });
+}
+makePinToggle(createPin, pinToggleCreate);
+makePinToggle(createPinConfirm, pinToggleConfirm);
+
+function clearCreateErrors() {
+  createError.classList.add('hidden');
+  createError.textContent = '';
+  [createName, createPin, createPinConfirm].forEach(i => i.classList.remove('invalid'));
+}
+
+function showCreateError(msg, ...fields) {
+  createError.textContent = msg;
+  createError.classList.remove('hidden');
+  fields.forEach(f => f.classList.add('invalid'));
+}
+
+function setCreating(loading) {
+  createSubmit.disabled = loading;
+  createBtnLabel.textContent = loading ? 'Creating…' : 'Create Profile';
+  createSpinner.classList.toggle('hidden', !loading);
+}
+
+createForm.addEventListener('submit', async e => {
+  e.preventDefault();
+  clearCreateErrors();
+
+  const name = createName.value.trim();
+  const pin  = createPin.value.trim();
+  const pin2 = createPinConfirm.value.trim();
+
+  if (!name) { showCreateError('Display name is required.', createName); return; }
+  if (name.length < 2) { showCreateError('Name must be at least 2 characters.', createName); return; }
+
+  if (!pin) { showCreateError('PIN is required.', createPin); return; }
+  if (!/^\d{4,6}$/.test(pin)) { showCreateError('PIN must be 4–6 digits.', createPin); return; }
+  if (pin !== pin2) { showCreateError('PINs do not match.', createPin, createPinConfirm); return; }
+
+  setCreating(true);
+  try {
+    const trader = await createTrader(name, selectedColor, pin);
+    localStorage.setItem('currentTraderId',   trader.id);
+    localStorage.setItem('currentTraderName',  trader.name);
+    localStorage.setItem('currentTraderColor', trader.color);
+    window.location.replace('index.html');
+  } catch (err) {
+    showCreateError(err.message || 'Failed to create operator.');
+    setCreating(false);
+  }
+});
+
+btnGoCreate.addEventListener('click', () => {
+  createName.value = '';
+  createPin.value = '';
+  createPinConfirm.value = '';
+  createAvatar.textContent = 'A';
+  createAvatar.style.background = '#3b82f6';
+  swatches.forEach(s => s.classList.toggle('active', s.dataset.color === '#3b82f6'));
+  selectedColor = '#3b82f6';
+  clearCreateErrors();
+  showScreen('create');
+});
+
+createBack.addEventListener('click', () => showScreen('select'));
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+// If operator is already logged in, skip login page
+const existingId = localStorage.getItem('currentTraderId');
+if (existingId) {
+  window.location.replace('index.html');
+} else {
+  loadOperators();
+}

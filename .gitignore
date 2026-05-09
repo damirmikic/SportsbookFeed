@@ -17,3 +17,11 @@ pnpm-debug.log*
 
 # OS files
 .DS_Store
+
+# Environment secrets (Turso credentials)
+.env
+.env.local
+.env.*.local
+
+# Local Netlify folder
+.netlify

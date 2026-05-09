@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sportsbook Trading Terminal — Sign In</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📈</text></svg>">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="login.css">
+</head>
+<body>
+
+  <!-- Background grid decoration -->
+  <div class="bg-grid" aria-hidden="true"></div>
+
+  <div class="login-root">
+
+    <!-- ── Brand ── -->
+    <div class="brand">
+      <div class="brand-icon">📈</div>
+      <h1 class="brand-title">Sportsbook Feed</h1>
+      <p class="brand-sub">Trading Terminal</p>
+    </div>
+
+    <!-- ══ CARD ══ -->
+    <div class="card" id="login-card">
+
+      <!-- ── Screen: Select Operator ── -->
+      <div class="screen active" id="screen-select">
+        <div class="screen-header">
+          <h2>Select Operator</h2>
+          <p>Choose your trading profile to continue</p>
+        </div>
+
+        <!-- Operator list (populated by JS) -->
+        <div class="operator-list" id="operator-list">
+          <div class="loading-row">
+            <div class="mini-spinner"></div>
+            <span>Loading operators…</span>
+          </div>
+        </div>
+
+        <div class="divider"><span>or</span></div>
+
+        <button class="btn-outline" id="btn-go-create">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Create new operator
+        </button>
+      </div>
+
+      <!-- ── Screen: Enter PIN ── -->
+      <div class="screen" id="screen-pin">
+        <button class="back-btn" id="pin-back">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          Back
+        </button>
+
+        <div class="screen-header">
+          <div class="operator-avatar-lg" id="pin-avatar"></div>
+          <h2 id="pin-name">Operator Name</h2>
+          <p>Enter your PIN to continue</p>
+        </div>
+
+        <div class="pin-row" id="pin-dots">
+          <span class="pin-dot" data-idx="0"></span>
+          <span class="pin-dot" data-idx="1"></span>
+          <span class="pin-dot" data-idx="2"></span>
+          <span class="pin-dot" data-idx="3"></span>
+          <span class="pin-dot" data-idx="4"></span>
+          <span class="pin-dot" data-idx="5"></span>
+        </div>
+
+        <div class="numpad">
+          <button class="numpad-key" data-digit="1">1</button>
+          <button class="numpad-key" data-digit="2">2</button>
+          <button class="numpad-key" data-digit="3">3</button>
+          <button class="numpad-key" data-digit="4">4</button>
+          <button class="numpad-key" data-digit="5">5</button>
+          <button class="numpad-key" data-digit="6">6</button>
+          <button class="numpad-key" data-digit="7">7</button>
+          <button class="numpad-key" data-digit="8">8</button>
+          <button class="numpad-key" data-digit="9">9</button>
+          <button class="numpad-key numpad-clear" id="numpad-clear">⌫</button>
+          <button class="numpad-key" data-digit="0">0</button>
+          <button class="numpad-key numpad-confirm" id="numpad-confirm">✓</button>
+        </div>
+
+        <p class="pin-error hidden" id="pin-error">Incorrect PIN. Please try again.</p>
+      </div>
+
+      <!-- ── Screen: Create Operator ── -->
+      <div class="screen" id="screen-create">
+        <button class="back-btn" id="create-back">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          Back
+        </button>
+
+        <div class="screen-header">
+          <h2>New Operator</h2>
+          <p>Create your trading profile</p>
+        </div>
+
+        <form class="create-form" id="create-form" autocomplete="off">
+
+          <!-- Color pick + name preview -->
+          <div class="avatar-preview-row">
+            <div class="operator-avatar-lg" id="create-avatar" style="background:#3b82f6">A</div>
+            <div class="color-swatches">
+              <button type="button" class="swatch active" data-color="#3b82f6" style="background:#3b82f6" title="Blue"></button>
+              <button type="button" class="swatch" data-color="#10b981" style="background:#10b981" title="Emerald"></button>
+              <button type="button" class="swatch" data-color="#f59e0b" style="background:#f59e0b" title="Amber"></button>
+              <button type="button" class="swatch" data-color="#ef4444" style="background:#ef4444" title="Red"></button>
+              <button type="button" class="swatch" data-color="#8b5cf6" style="background:#8b5cf6" title="Violet"></button>
+              <button type="button" class="swatch" data-color="#ec4899" style="background:#ec4899" title="Pink"></button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="create-name">Display Name</label>
+            <input
+              type="text"
+              id="create-name"
+              placeholder="e.g. Alice"
+              maxlength="32"
+              autocomplete="off"
+              spellcheck="false"
+            >
+            <span class="field-hint">Shown to all operators on the desk</span>
+          </div>
+
+          <div class="field">
+            <label for="create-pin">PIN <span class="field-optional">(4–6 digits)</span></label>
+            <div class="pin-input-wrap">
+              <input
+                type="password"
+                id="create-pin"
+                placeholder="••••"
+                maxlength="6"
+                inputmode="numeric"
+                pattern="[0-9]*"
+                autocomplete="new-password"
+              >
+              <button type="button" class="pin-toggle" id="pin-toggle-create" aria-label="Show PIN">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="create-pin-confirm">Confirm PIN</label>
+            <div class="pin-input-wrap">
+              <input
+                type="password"
+                id="create-pin-confirm"
+                placeholder="••••"
+                maxlength="6"
+                inputmode="numeric"
+                pattern="[0-9]*"
+                autocomplete="new-password"
+              >
+              <button type="button" class="pin-toggle" id="pin-toggle-confirm" aria-label="Show PIN">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <p class="form-error hidden" id="create-error"></p>
+
+          <button type="submit" class="btn-primary" id="create-submit">
+            <span id="create-btn-label">Create Profile</span>
+            <div class="btn-spinner hidden" id="create-spinner"></div>
+          </button>
+
+        </form>
+      </div>
+
+    </div>
+    <!-- /card -->
+
+    <p class="footer-note">Internal trading desk tool · Sportsbook Feed v1.0</p>
+
+  </div>
+
+  <script type="module" src="login.js"></script>
+</body>
+</html>
