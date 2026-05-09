@@ -12,7 +12,7 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
     'BOOKINGS': [],
     'TEAM PROPS': [],
     'SPECIALS': [],
-    'PLAYER MARKETS': []
+    'PLAYER PROPS': []
   };
 
   // --- Main Markets ---
@@ -228,6 +228,44 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
       const cat = market.id === 'cs' || market.id === 'btts' ? 'GOALS' : 'MATCH ODDS';
       groups[cat].push({ id: market.id, name: market.name, rows });
     });
+
+    if (lambdaData.h1 && lambdaData.h2) {
+      const h1 = lambdaData.h1.grid;
+      const h2 = lambdaData.h2.grid;
+      let pH1home = 0, pH2home = 0, pH1away = 0, pH2away = 0;
+      h1.forEach(({ home, away, prob }) => { if (home > 0) pH1home += prob; if (away > 0) pH1away += prob; });
+      h2.forEach(({ home, away, prob }) => { if (home > 0) pH2home += prob; if (away > 0) pH2away += prob; });
+      const pHomeBoth = pH1home * pH2home;
+      const pAwayBoth = pH1away * pH2away;
+      groups['TEAM PROPS'].push({
+        id: 'home_score_both_halves',
+        name: `${homeTeam} To Score In Both Halves`,
+        rows: [
+          { label: 'Yes', value: null, shinFair: null, modelFair: (1 / pHomeBoth).toFixed(3), prob: pHomeBoth },
+          { label: 'No',  value: null, shinFair: null, modelFair: (1 / (1 - pHomeBoth)).toFixed(3), prob: 1 - pHomeBoth }
+        ]
+      });
+      groups['TEAM PROPS'].push({
+        id: 'away_score_both_halves',
+        name: `${awayTeam} To Score In Both Halves`,
+        rows: [
+          { label: 'Yes', value: null, shinFair: null, modelFair: (1 / pAwayBoth).toFixed(3), prob: pAwayBoth },
+          { label: 'No',  value: null, shinFair: null, modelFair: (1 / (1 - pAwayBoth)).toFixed(3), prob: 1 - pAwayBoth }
+        ]
+      });
+
+      const pH1over = h1.reduce((s, { home, away, prob }) => home + away >= 2 ? s + prob : s, 0);
+      const pH2over = h2.reduce((s, { home, away, prob }) => home + away >= 2 ? s + prob : s, 0);
+      const pBothOver = pH1over * pH2over;
+      groups['GOALS'].push({
+        id: 'both_halves_over15',
+        name: 'Both Halves Over 1.5',
+        rows: [
+          { label: 'Yes', value: null, shinFair: null, modelFair: (1 / pBothOver).toFixed(3), prob: pBothOver },
+          { label: 'No',  value: null, shinFair: null, modelFair: (1 / (1 - pBothOver)).toFixed(3), prob: 1 - pBothOver }
+        ]
+      });
+    }
   }
 
   // --- Additional Pinnacle Markets ---
@@ -237,6 +275,8 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
 
       category.events.forEach(mkt => {
         if (['Both Teams To Score?', 'Draw No Bet', 'Double Chance', 'Correct Score'].includes(mkt.name)) return;
+        if (mkt.name.toLowerCase().includes('to score in both halves')) return;
+        if (mkt.name.toLowerCase().includes('both halves over')) return;
         if (!mkt.contestants || mkt.contestants.length === 0) return;
 
         const allPrices = mkt.contestants.map(c => parseFloat(c.p)).filter(p => !isNaN(p) && p > 1);
@@ -264,6 +304,13 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
         } else if (n.includes('handicap') || n.includes('asian handicap') || n.includes('3-way handicap')) {
           catName = 'HANDICAP';
         } else if (
+          category.code === 'player-props' ||
+          n.includes('goalscorer') || n.includes('anytime scorer') ||
+          n.includes('first scorer') || n.includes('last scorer') ||
+          n.includes('player to score')
+        ) {
+          catName = 'PLAYER PROPS';
+        } else if (
           n.includes('total goals') || n.includes('exact goals') || n.includes('goals range') ||
           n.includes('goals odd/even') || n.includes('odd/even') ||
           n.includes('either team to score') || n.includes('both teams to score') ||
@@ -277,8 +324,6 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
           (n.includes('to score') && !n.includes('player') && !n.includes('anytime'))
         ) {
           catName = 'TEAM PROPS';
-        } else if (category.code === 'player-props' || n.includes('anytime scorer') || n.includes('player to score')) {
-          catName = 'PLAYER MARKETS';
         } else if (
           n.includes('half time') || n.includes('ht/ft') || n.includes('halftime/fulltime') ||
           n.includes('half-time/full-time') || n.includes('winning margin') ||
@@ -287,7 +332,6 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
           catName = 'SPECIALS';
         } else {
           if (category.code === 'halves') catName = 'HALVES';
-          else if (category.code === 'player-props') catName = 'PLAYER MARKETS';
           else catName = 'SPECIALS';
         }
 
@@ -312,6 +356,38 @@ function getModelPriceForSpecial(marketName, selectionLabel, lambdaData, homeTea
   let grid = lambdaData.ft.grid;
   if (n.includes('1st half')) grid = lambdaData.h1.grid;
   else if (n.includes('2nd half')) grid = lambdaData.h2.grid;
+
+  if (n.includes('to score in both halves')) {
+    if (!lambdaData.h1 || !lambdaData.h2) return null;
+    const isHomeMarket = n.includes('home') || (homeTeam && n.includes(homeTeam.toLowerCase()));
+    const isAwayMarket = n.includes('away') || (awayTeam && n.includes(awayTeam.toLowerCase()));
+    const isYes = label.includes('yes');
+    let pH1 = 0, pH2 = 0;
+    lambdaData.h1.grid.forEach(({ home, away, prob: p }) => {
+      if (isHomeMarket && !isAwayMarket && home > 0) pH1 += p;
+      else if (isAwayMarket && !isHomeMarket && away > 0) pH1 += p;
+    });
+    lambdaData.h2.grid.forEach(({ home, away, prob: p }) => {
+      if (isHomeMarket && !isAwayMarket && home > 0) pH2 += p;
+      else if (isAwayMarket && !isHomeMarket && away > 0) pH2 += p;
+    });
+    const pBoth = pH1 * pH2;
+    const pTarget = isYes ? pBoth : 1 - pBoth;
+    return pTarget > 0 ? (1 / pTarget).toFixed(3) : null;
+  }
+
+  if (n.includes('both halves over')) {
+    if (!lambdaData.h1 || !lambdaData.h2) return null;
+    const lineMatch = n.match(/both halves over\s+([0-9.]+)/);
+    const line = lineMatch ? parseFloat(lineMatch[1]) : 1.5;
+    const threshold = Math.ceil(line);
+    const isYes = label.includes('yes');
+    const pH1o = lambdaData.h1.grid.reduce((s, { home, away, prob: p }) => home + away >= threshold ? s + p : s, 0);
+    const pH2o = lambdaData.h2.grid.reduce((s, { home, away, prob: p }) => home + away >= threshold ? s + p : s, 0);
+    const pBoth = pH1o * pH2o;
+    const pTarget = isYes ? pBoth : 1 - pBoth;
+    return pTarget > 0 ? (1 / pTarget).toFixed(3) : null;
+  }
 
   if ((n.includes('both teams to score') || n.includes('btts')) && n.includes('total goals')) {
     const isYes  = label.includes('yes');
@@ -368,7 +444,9 @@ function getModelPriceForSpecial(marketName, selectionLabel, lambdaData, homeTea
     const htRes = getRes(parts[0]);
     const ftRes = getRes(parts[1]);
     if (htRes === null || ftRes === null) return null;
-    let prob = 0;
+
+    // Joint probability from independent half-grids
+    let probJoint = 0;
     h1Grid.forEach(s1 => {
       const s1Res = s1.home > s1.away ? 1 : (s1.home === s1.away ? 0 : 2);
       if (s1Res !== htRes) return;
@@ -376,9 +454,30 @@ function getModelPriceForSpecial(marketName, selectionLabel, lambdaData, homeTea
         const fHome = s1.home + s2.home;
         const fAway = s1.away + s2.away;
         const fRes  = fHome > fAway ? 1 : (fHome === fAway ? 0 : 2);
-        if (fRes === ftRes) prob += s1.prob * s2.prob;
+        if (fRes === ftRes) probJoint += s1.prob * s2.prob;
       });
     });
+
+    // HT marginal from h1Grid
+    let pHT = 0;
+    h1Grid.forEach(({ home, away, prob: p }) => {
+      const res = home > away ? 1 : (home === away ? 0 : 2);
+      if (res === htRes) pHT += p;
+    });
+
+    // FT marginal from solved FT grid (calibrated to market prices)
+    let pFT = 0;
+    lambdaData.ft.grid.forEach(({ home, away, prob: p }) => {
+      const res = home > away ? 1 : (home === away ? 0 : 2);
+      if (res === ftRes) pFT += p;
+    });
+
+    // The independent Poisson model overestimates HT→FT result stickiness: small
+    // half-λ values make score leads unrealistically hard to overturn (P(0-0 H2) is
+    // very large). Shrink toward the product of marginals to correct this bias.
+    const HTFT_ALPHA = 0.65;
+    const prob = HTFT_ALPHA * probJoint + (1 - HTFT_ALPHA) * pHT * pFT;
+
     return prob > 0 ? (1 / prob).toFixed(3) : null;
   }
 
