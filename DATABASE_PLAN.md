@@ -55,6 +55,8 @@ CREATE TABLE IF NOT EXISTS traders (
   name       TEXT NOT NULL UNIQUE,      -- Display name e.g. "Alice"
   color      TEXT NOT NULL DEFAULT '#3b82f6', -- UI accent color
   pin_hash   TEXT,                      -- SHA-256 hex of 4–6 digit PIN
+  failed_attempts INTEGER NOT NULL DEFAULT 0, -- consecutive failed PIN checks
+  locked_until    TEXT,                 -- ISO timestamp; lock clears after expiry
   created_at TEXT DEFAULT (datetime('now')),
   active     INTEGER DEFAULT 1          -- soft delete
 );
@@ -209,7 +211,7 @@ All functions are in `netlify/functions/`. They share a Turso client via `db.js`
 |--------|-------|------|--------|
 | `GET` | — | — | List active traders `[{ id, name, color }]` |
 | `POST` | — | `{ name, color, pin }` | Create trader → SHA-256 hash PIN |
-| `POST` | `?verify=1` | `{ id, pin }` | Verify PIN → `{ ok: true/false }` |
+| `POST` | `?verify=1` | `{ id, pin }` | Verify PIN → `{ ok: true/false }`; locks for 5 minutes after 5 failures |
 | `PUT` | `?id=` | `{ name?, color?, pin? }` | Update trader |
 
 ### `shared-state.js` — `/api/shared-state`

@@ -1,4 +1,5 @@
 import { pushSharedState, pushTraderState } from './api.js';
+import { clearTraderSession, getValidTraderSession, setTraderSession } from './auth-session.js';
 
 const SHARED_ENTITY_KEYS = {
   templates: 'templates',
@@ -38,7 +39,7 @@ function replaceArray(target, source) {
   target.splice(0, target.length, ...(source || []));
 }
 
-const currentTraderProfile = readJson('currentTraderProfile', null);
+const currentTraderProfile = getValidTraderSession();
 
 export const state = {
   activeEvents: [],
@@ -51,7 +52,7 @@ export const state = {
   activeCategory: 'MAIN MARKETS',
   activeMarketId: null,
   expandedGroups: readJson('expandedGroups', []),
-  currentTraderId: localStorage.getItem('currentTraderId') || null,
+  currentTraderId: currentTraderProfile?.id || null,
   currentTraderProfile,
 };
 
@@ -128,9 +129,11 @@ function persistTraderEntity(entity, value) {
 
 export function setCurrentTrader(trader) {
   state.currentTraderId = trader?.id || null;
-  if (state.currentTraderId) localStorage.setItem('currentTraderId', state.currentTraderId);
-  else localStorage.removeItem('currentTraderId');
-  persistTraderProfile(trader ? { id: trader.id, name: trader.name, color: trader.color } : null);
+  if (trader) persistTraderProfile(setTraderSession(trader));
+  else {
+    clearTraderSession();
+    persistTraderProfile(null);
+  }
 }
 
 export function getCurrentTrader() {

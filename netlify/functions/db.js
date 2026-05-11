@@ -24,6 +24,8 @@ const SCHEMA = `
     name       TEXT NOT NULL UNIQUE,
     color      TEXT NOT NULL DEFAULT '#3b82f6',
     pin_hash   TEXT,
+    failed_attempts INTEGER NOT NULL DEFAULT 0,
+    locked_until    TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     active     INTEGER DEFAULT 1
   );
@@ -103,6 +105,15 @@ async function initSchema(db) {
     .filter(s => s.length > 0);
   for (const sql of statements) {
     await db.execute(sql);
+  }
+
+  const traderColumns = await db.execute('PRAGMA table_info(traders)');
+  const columnNames = new Set(traderColumns.rows.map(row => row.name));
+  if (!columnNames.has('failed_attempts')) {
+    await db.execute('ALTER TABLE traders ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!columnNames.has('locked_until')) {
+    await db.execute('ALTER TABLE traders ADD COLUMN locked_until TEXT');
   }
 }
 

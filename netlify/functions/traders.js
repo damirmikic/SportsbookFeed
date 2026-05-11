@@ -1,6 +1,9 @@
 const crypto = require('crypto');
 const { getClient, initSchema, ok, err } = require('./db');
 
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCK_DURATION_MS = 5 * 60 * 1000;
+
 function cors(statusCode = 200) {
   return {
     statusCode,
@@ -30,6 +33,18 @@ function isValidPin(pin) {
   return /^\d{4,6}$/.test(String(pin || ''));
 }
 
+function parseLockedUntil(value) {
+  if (!value) return 0;
+  const timestamp = Date.parse(String(value));
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function lockMessage(lockedUntil) {
+  const seconds = Math.max(1, Math.ceil((lockedUntil - Date.now()) / 1000));
+  const minutes = Math.ceil(seconds / 60);
+  return `Too many failed attempts. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`;
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return cors();
 
@@ -52,11 +67,39 @@ exports.handler = async (event) => {
         const { id, pin } = body;
         if (!id || !isValidPin(pin)) return err('Valid trader id and 4-6 digit PIN are required', 400);
         const result = await db.execute({
-          sql: 'SELECT pin_hash FROM traders WHERE id = ? AND active = 1',
+          sql: 'SELECT pin_hash, failed_attempts, locked_until FROM traders WHERE id = ? AND active = 1',
           args: [String(id)],
         });
         const row = result.rows[0];
-        return ok({ ok: !!row && row.pin_hash === hashPin(pin) });
+        if (!row) return ok({ ok: false });
+
+        const lockedUntil = parseLockedUntil(row.locked_until);
+        if (lockedUntil > Date.now()) {
+          return err(lockMessage(lockedUntil), 423);
+        }
+        const baseFailedAttempts = lockedUntil ? 0 : Number(row.failed_attempts || 0);
+
+        if (row.pin_hash === hashPin(pin)) {
+          await db.execute({
+            sql: 'UPDATE traders SET failed_attempts = 0, locked_until = NULL WHERE id = ? AND active = 1',
+            args: [String(id)],
+          });
+          return ok({ ok: true });
+        }
+
+        const failedAttempts = baseFailedAttempts + 1;
+        const nextLockedUntil = failedAttempts >= MAX_FAILED_ATTEMPTS
+          ? new Date(Date.now() + LOCK_DURATION_MS).toISOString()
+          : null;
+        await db.execute({
+          sql: 'UPDATE traders SET failed_attempts = ?, locked_until = ? WHERE id = ? AND active = 1',
+          args: [failedAttempts, nextLockedUntil, String(id)],
+        });
+
+        if (nextLockedUntil) {
+          return err(lockMessage(parseLockedUntil(nextLockedUntil)), 423);
+        }
+        return ok({ ok: false });
       }
 
       const { name, color, pin } = body;
@@ -71,7 +114,7 @@ exports.handler = async (event) => {
       };
 
       await db.execute({
-        sql: 'INSERT INTO traders (id, name, color, pin_hash) VALUES (?, ?, ?, ?)',
+        sql: 'INSERT INTO traders (id, name, color, pin_hash, failed_attempts, locked_until) VALUES (?, ?, ?, ?, 0, NULL)',
         args: [trader.id, trader.name, trader.color, trader.pinHash],
       });
 
@@ -98,6 +141,8 @@ exports.handler = async (event) => {
         if (!isValidPin(body.pin)) return err('PIN must be 4-6 digits', 400);
         fields.push('pin_hash = ?');
         args.push(hashPin(body.pin));
+        fields.push('failed_attempts = 0');
+        fields.push('locked_until = NULL');
       }
       if (!fields.length) return err('No valid fields to update', 400);
 

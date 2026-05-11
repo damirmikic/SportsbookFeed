@@ -3,8 +3,20 @@ import { state, hydrateSharedState, hydrateTraderState } from './state.js';
 import { renderLeagues, closeDrawer, loadOdds, filterAndRenderBoard } from './ui.js';
 import { renderAdminPanel } from './admin.js';
 import { renderTemplatesSection, openTemplateById } from './templates-admin.js';
+import { clearTraderSession, getSessionExpiresAt, getValidTraderSession } from './auth-session.js';
 
 let refreshInterval = null;
+let sessionExpiryTimer = null;
+
+function scheduleSessionExpiry(session) {
+  if (sessionExpiryTimer) clearTimeout(sessionExpiryTimer);
+
+  const delay = getSessionExpiresAt(session) - Date.now();
+  sessionExpiryTimer = setTimeout(() => {
+    clearTraderSession();
+    window.location.replace('login.html');
+  }, Math.max(0, delay));
+}
 
 function startPolling(leagueCode) {
   if (refreshInterval) clearInterval(refreshInterval);
@@ -61,24 +73,24 @@ function switchView(view) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-  // Guard: redirect to login if no operator is signed in
-  if (!localStorage.getItem('currentTraderId')) {
+  // Guard: redirect to login if no operator is signed in or the session expired.
+  const traderSession = getValidTraderSession();
+  if (!traderSession) {
     window.location.replace('login.html');
     return;
   }
+  scheduleSessionExpiry(traderSession);
 
   // Show active operator chip in header
-  const traderName  = localStorage.getItem('currentTraderName')  || '?';
-  const traderColor = localStorage.getItem('currentTraderColor') || '#3b82f6';
+  const traderName = traderSession.name;
+  const traderColor = traderSession.color;
   const chip = document.getElementById('trader-chip');
   if (chip) {
     chip.querySelector('.trader-chip-dot').style.background = traderColor;
     chip.querySelector('.trader-chip-name').textContent = traderName;
     chip.addEventListener('click', () => {
       if (confirm(`Sign out as ${traderName}?`)) {
-        localStorage.removeItem('currentTraderId');
-        localStorage.removeItem('currentTraderName');
-        localStorage.removeItem('currentTraderColor');
+        clearTraderSession();
         window.location.replace('login.html');
       }
     });
@@ -118,7 +130,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // Hydrate from Turso in parallel — failures are non-fatal (localStorage remains source of truth)
-  const traderId = localStorage.getItem('currentTraderId');
+  const traderId = traderSession.id;
   await Promise.allSettled([
     fetchSharedState().then(hydrateSharedState).catch(e => console.warn('Shared state hydration failed:', e)),
     fetchTraderState(traderId).then(hydrateTraderState).catch(e => console.warn('Trader state hydration failed:', e)),

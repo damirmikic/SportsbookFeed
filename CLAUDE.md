@@ -73,7 +73,7 @@ solver.worker.js                ← Web Worker: off-thread lambda solver
 **Startup hydration:**
 ```
 DOMContentLoaded
-  → guard: no currentTraderId → redirect login.html
+  → guard: no valid trader session / expired TTL → redirect login.html
   → Promise.allSettled([fetchSharedState(), fetchTraderState(traderId)])
       → hydrateSharedState() / hydrateTraderState()  ← writes back to localStorage
   → fetchLeagues() → renderLeagues()
@@ -225,6 +225,8 @@ Four files; `db.js` is a shared helper, the other three are HTTP endpoints. All 
 All POST writes use `db.batch(statements, 'write')` — full replace (DELETE + INSERT), not partial upsert.
 
 **Local mock**: `login.js` sets `USE_MOCK = IS_LOCAL` — on `localhost`/`127.0.0.1` auth uses `localStorage._mock_traders` instead of the functions. All other API calls (odds, state sync) always hit the real endpoints.
+
+**Session TTL**: `auth-session.js` stores `currentTraderLoggedInAt` with the browser session and expires sessions after 8 hours by default. For local/runtime overrides, set `localStorage.sessionTtlMs` or set `localStorage.sessionTtlMode = "end-of-day"`.
 
 ---
 

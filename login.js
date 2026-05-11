@@ -2,6 +2,8 @@
 // Handles: select operator → PIN entry → verify → redirect to app
 //          create operator → name + color + PIN → save → redirect to app
 
+import { getValidTraderSession, setTraderSession } from './auth-session.js';
+
 // ── API helpers ────────────────────────────────────────────────────────────────
 
 const IS_LOCAL = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
@@ -9,6 +11,9 @@ const IS_LOCAL = location.hostname === 'localhost' || location.hostname === '127
 // When Netlify Functions aren't available locally, fall back to a mock store in
 // localStorage so the page works without a deployed backend during development.
 const USE_MOCK = IS_LOCAL;
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCK_DURATION_MS = 5 * 60 * 1000;
+const DEFAULT_PIN_ERROR = 'Incorrect PIN. Please try again.';
 
 async function apiFetch(path, opts = {}) {
   const res = await fetch(path, {
@@ -70,8 +75,30 @@ async function verifyPin(id, pin) {
     const traders = mockGetTraders();
     const t = traders.find(tr => tr.id === id);
     if (!t) return false;
+    const lockedUntil = Date.parse(t.locked_until || '');
+    if (!Number.isNaN(lockedUntil) && lockedUntil > Date.now()) {
+      const minutes = Math.ceil((lockedUntil - Date.now()) / 60000);
+      throw new Error(`Too many failed attempts. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`);
+    }
+    if (!Number.isNaN(lockedUntil)) {
+      t.failed_attempts = 0;
+      t.locked_until = null;
+    }
     const hash = await sha256(pin);
-    return hash === t.pin_hash;
+    if (hash === t.pin_hash) {
+      t.failed_attempts = 0;
+      t.locked_until = null;
+      mockSaveTraders(traders);
+      return true;
+    }
+    t.failed_attempts = Number(t.failed_attempts || 0) + 1;
+    if (t.failed_attempts >= MAX_FAILED_ATTEMPTS) {
+      t.locked_until = new Date(Date.now() + LOCK_DURATION_MS).toISOString();
+      mockSaveTraders(traders);
+      throw new Error('Too many failed attempts. Try again in 5 minutes.');
+    }
+    mockSaveTraders(traders);
+    return false;
   }
   const res = await apiFetch('/api/traders?verify=1', {
     method: 'POST',
@@ -207,11 +234,10 @@ async function submitPin() {
   try {
     const ok = await verifyPin(selectedOp.id, pinBuffer);
     if (ok) {
-      localStorage.setItem('currentTraderId',   selectedOp.id);
-      localStorage.setItem('currentTraderName',  selectedOp.name);
-      localStorage.setItem('currentTraderColor', selectedOp.color);
+      setTraderSession(selectedOp);
       window.location.replace('index.html');
     } else {
+      pinError.textContent = DEFAULT_PIN_ERROR;
       pinError.classList.remove('hidden');
       shakePin();
       numpadConfirm.disabled = false;
@@ -319,9 +345,7 @@ createForm.addEventListener('submit', async e => {
   setCreating(true);
   try {
     const trader = await createTrader(name, selectedColor, pin);
-    localStorage.setItem('currentTraderId',   trader.id);
-    localStorage.setItem('currentTraderName',  trader.name);
-    localStorage.setItem('currentTraderColor', trader.color);
+    setTraderSession(trader);
     window.location.replace('index.html');
   } catch (err) {
     showCreateError(err.message || 'Failed to create operator.');
@@ -346,8 +370,7 @@ createBack.addEventListener('click', () => showScreen('select'));
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 // If operator is already logged in, skip login page
-const existingId = localStorage.getItem('currentTraderId');
-if (existingId) {
+if (getValidTraderSession()) {
   window.location.replace('index.html');
 } else {
   loadOperators();
