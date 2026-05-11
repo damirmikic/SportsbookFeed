@@ -1,5 +1,5 @@
 import { state, snapshotOdds, getOverride, getAllOverrideMeta, getTradingMode, isSuspended, hasAnySuspension, clearOverride, clearOverrideMetaSelection, hasAnyOverrideForEvent, setTradingMode, clearOverriddenLambdas, getLeagueSetting } from './state.js';
-import { fetchOdds } from './api.js';
+import { fetchOdds, pushOddsHistory } from './api.js';
 import { evaluateOverrides, resolveTemplate, getMarketConfig, resolveActiveKey } from './pricing.js';
 import { openDrawer, updateModeButton, renderDrawerMarkets } from './ui-drawer.js';
 import { getTeamNames } from './utils.js';
@@ -71,6 +71,12 @@ function hasSignificantMove(rawVal, prevVal, threshold) {
   return Number.isFinite(current) && Math.abs(current - prevVal) > threshold;
 }
 
+function persistOddsHistory(data) {
+  pushOddsHistory(data).catch(error => {
+    console.warn('Odds history snapshot failed:', error);
+  });
+}
+
 export async function loadOdds(leagueCode, silent = false) {
   const oddsContainer = document.getElementById('odds-container');
   if (!silent) {
@@ -79,6 +85,7 @@ export async function loadOdds(leagueCode, silent = false) {
   try {
     state.previousOdds = snapshotOdds();
     const data = await fetchOdds(leagueCode);
+    persistOddsHistory(data);
     renderOdds(data, { alertMoves: true });
     processOverrideExpiries(evaluateOverrides(state.activeEvents));
     if (state.drawerEventId) {

@@ -33,6 +33,7 @@ App Startup
 |------|-------|--------|
 | Trader profiles | Global | `traders` |
 | Audit history | Global | `audit_log` |
+| Raw odds history | Global | `odds_history` |
 | Templates | Global (shared) | `templates` |
 | League settings | Global (shared) | `league_settings` |
 | Match-level template overrides | Global (shared) | `match_templates` |
@@ -75,6 +76,19 @@ CREATE TABLE IF NOT EXISTS audit_log (
   before_json TEXT,
   after_json  TEXT,
   ts          TEXT DEFAULT (datetime('now'))
+);
+```
+
+### `odds_history`
+Rolling 24-hour raw Pinnacle line snapshots from each poll.
+
+```sql
+CREATE TABLE IF NOT EXISTS odds_history (
+  event_id TEXT NOT NULL,
+  period   TEXT NOT NULL,
+  market   TEXT NOT NULL,
+  prices   TEXT NOT NULL,
+  ts       TEXT DEFAULT (datetime('now'))
 );
 ```
 
@@ -235,6 +249,13 @@ All functions are in `netlify/functions/`. They share a Turso client via `db.js`
 | Method | Query | Body | Action |
 |--------|-------|------|--------|
 | `GET` | `?limit=100` | — | Return recent audit rows with trader, entity, action, before/after, timestamp |
+
+### `odds-history.js` — `/api/odds-history`
+
+| Method | Query | Body | Action |
+|--------|-------|------|--------|
+| `POST` | — | Raw league odds payload | Extract market snapshots, insert rows, prune data older than 24h |
+| `GET` | `?eventId=` | — | Return last 24h of snapshots for one event |
 
 ### `shared-state.js` — `/api/shared-state`
 

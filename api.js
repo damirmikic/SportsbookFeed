@@ -91,3 +91,14 @@ export async function pushTraderState(traderId, entity, data) {
 export async function fetchAuditLog(limit = 100) {
   return await jsonRequest(`/api/audit-log?limit=${encodeURIComponent(limit)}`);
 }
+
+export async function pushOddsHistory(data) {
+  return await jsonRequest('/api/odds-history', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function fetchOddsHistory(eventId) {
+  return await jsonRequest(`/api/odds-history?eventId=${encodeURIComponent(eventId)}`);
+}

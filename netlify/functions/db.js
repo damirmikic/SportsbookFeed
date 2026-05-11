@@ -105,6 +105,20 @@ const SCHEMA = `
     after_json  TEXT,
     ts          TEXT DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS odds_history (
+    event_id TEXT NOT NULL,
+    period   TEXT NOT NULL,
+    market   TEXT NOT NULL,
+    prices   TEXT NOT NULL,
+    ts       TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_odds_history_event_ts
+    ON odds_history (event_id, ts);
+
+  CREATE INDEX IF NOT EXISTS idx_odds_history_ts
+    ON odds_history (ts);
 `;
 
 async function initSchema(db) {

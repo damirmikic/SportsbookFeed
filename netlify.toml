@@ -41,3 +41,8 @@
   from   = "/api/audit-log"
   to     = "/.netlify/functions/audit-log"
   status = 200
+
+[[redirects]]
+  from   = "/api/odds-history"
+  to     = "/.netlify/functions/odds-history"
+  status = 200
