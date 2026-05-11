@@ -486,6 +486,7 @@ export function renderOdds(data, options = {}) {
     events = data.events || data.matches || (Array.isArray(data) ? data : []);
   }
   state.activeEvents = events;
+  document.dispatchEvent(new CustomEvent('odds:loaded', { detail: { count: events.length } }));
 
   const matchTerm = (document.getElementById('league-search')?.value || '').toLowerCase().trim();
   renderEventTable(matchTerm ? events.filter(ev => eventMatchesSearch(ev, matchTerm)) : events, options);

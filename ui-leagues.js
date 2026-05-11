@@ -93,7 +93,7 @@ export function createLeagueElement(name, code, isFav) {
     document.querySelectorAll('.league-item').forEach(i => i.classList.remove('active'));
     el.classList.add('active');
     document.getElementById('current-league').textContent = `– ${name}`;
-    document.dispatchEvent(new CustomEvent('league:selected', { detail: { code } }));
+    document.dispatchEvent(new CustomEvent('league:selected', { detail: { code, name } }));
     await loadOdds(code);
   });
 

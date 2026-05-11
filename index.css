@@ -440,6 +440,18 @@ body {
   .leagues-panel {
     max-height: 200px;
   }
+  .admin-overview-head,
+  .admin-alert {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .admin-metric-grid,
+  .admin-trader-list {
+    grid-template-columns: 1fr;
+  }
+  .admin-alert span {
+    white-space: normal;
+  }
 }
 
 /* Side Drawer */
@@ -2107,6 +2119,185 @@ body {
 .admin-section-btn.active {
   color: var(--accent-color);
   border-bottom-color: var(--accent-color);
+}
+
+.admin-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.admin-overview-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.admin-overview-head h2 {
+  font-size: 1.05rem;
+  font-weight: 800;
+  margin-bottom: 0.25rem;
+}
+
+.admin-overview-head p {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+
+.admin-sync-card {
+  min-width: 210px;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  background: rgba(16, 185, 129, 0.1);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 0.9rem;
+}
+
+.admin-sync-card.stale {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.admin-sync-card span,
+.admin-sync-card small {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.admin-sync-card strong {
+  display: block;
+  margin: 0.2rem 0;
+  font-size: 1rem;
+}
+
+.admin-sync-card small {
+  color: inherit;
+  opacity: 0.75;
+  text-transform: none;
+}
+
+.admin-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.admin-metric {
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 0.85rem;
+}
+
+.admin-metric span {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-bottom: 0.35rem;
+}
+
+.admin-metric strong {
+  display: block;
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+.admin-alert {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  border-radius: var(--radius-sm);
+  padding: 0.8rem 0.95rem;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.admin-alert.critical {
+  border-color: rgba(239, 68, 68, 0.55);
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.admin-alert strong {
+  font-size: 0.88rem;
+}
+
+.admin-alert span {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.admin-presence {
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 0.85rem;
+}
+
+.admin-presence-head,
+.admin-trader-row {
+  display: flex;
+  align-items: center;
+}
+
+.admin-presence-head {
+  justify-content: space-between;
+  margin-bottom: 0.7rem;
+}
+
+.admin-presence-head h3 {
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.admin-presence-head span,
+.admin-trader-empty {
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+}
+
+.admin-trader-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.admin-trader-row {
+  min-width: 0;
+  gap: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.65rem;
+  background: var(--bg-color);
+}
+
+.admin-trader-row strong {
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.admin-trader-row span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+}
+
+.admin-trader-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  flex: 0 0 auto;
 }
 
 .audit-header {

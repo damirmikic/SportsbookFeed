@@ -38,6 +38,11 @@
   status = 200
 
 [[redirects]]
+  from   = "/api/trader-presence"
+  to     = "/.netlify/functions/trader-presence"
+  status = 200
+
+[[redirects]]
   from   = "/api/audit-log"
   to     = "/.netlify/functions/audit-log"
   status = 200

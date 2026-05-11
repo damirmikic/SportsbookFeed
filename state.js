@@ -44,13 +44,17 @@ const currentTraderProfile = getValidTraderSession();
 export const state = {
   activeEvents: [],
   allLeagues: [],
+  activeTraders: [],
   favorites: readJson('favoriteLeagues', []),
   currentLeagueCode: null,
+  currentLeagueName: null,
   previousOdds: {},
   drawerEventId: null,
   detailedOdds: {},
   activeCategory: 'MAIN MARKETS',
   activeMarketId: null,
+  sharedSyncLastPushedAt: null,
+  sharedSyncStatus: 'unknown',
   expandedGroups: readJson('expandedGroups', []),
   currentTraderId: currentTraderProfile?.id || null,
   currentTraderProfile,
@@ -65,8 +69,9 @@ const SYNC_DEBOUNCE_MS = 400;
 const SYNC_BACKOFF_MS = [2000, 4000, 8000];
 const DETAILED_ODDS_TTL_MS = 60 * 1000;
 
-function emitSyncStatus(status) {
-  window.dispatchEvent(new CustomEvent('sync:status', { detail: { status } }));
+function emitSyncStatus(status, extra = {}) {
+  state.sharedSyncStatus = status;
+  window.dispatchEvent(new CustomEvent('sync:status', { detail: { status, ...extra } }));
 }
 
 function persistTraderProfile(profile) {
@@ -125,7 +130,10 @@ async function flushPendingWrite(entity) {
 
   try {
     if (entity in SHARED_ENTITY_KEYS) {
-      await pushSharedState(entity, payload, state.currentTraderId);
+      const result = await pushSharedState(entity, payload, state.currentTraderId);
+      if (result?.lastSharedPushAt) {
+        state.sharedSyncLastPushedAt = result.lastSharedPushAt;
+      }
     } else {
       await pushTraderState(state.currentTraderId, entity, payload);
     }
@@ -133,7 +141,7 @@ async function flushPendingWrite(entity) {
     const latest = pendingWrites.get(entity);
     if (latest?.version === version) {
       pendingWrites.delete(entity);
-      if (!hasPendingWrites()) emitSyncStatus('saved');
+      if (!hasPendingWrites()) emitSyncStatus('saved', { lastSharedPushAt: state.sharedSyncLastPushedAt });
       return;
     }
 
@@ -226,6 +234,11 @@ export function hydrateSharedState(sharedState = {}) {
       });
       replaceObject(_suspensions, normalized);
       writeJson('suspensions', _suspensions);
+    }
+    if (sharedState.syncMeta?.lastSharedPushAt) {
+      state.sharedSyncLastPushedAt = sharedState.syncMeta.lastSharedPushAt;
+      state.sharedSyncStatus = 'saved';
+      emitSyncStatus('saved', { lastSharedPushAt: state.sharedSyncLastPushedAt });
     }
   });
 }
@@ -427,6 +440,8 @@ export function hasAnySuspension(eventId) {
   return Object.keys(_suspensions).some(k => k.startsWith(`${eventId}|`));
 }
 
+export function getAllSuspensions() { return _suspensions; }
+
 export const TIMELINE_NODES = [
   { id: 'INST', label: 'INST' }, { id: '240D', label: '240D' }, { id: '120D', label: '120D' },
   { id: '60D', label: '60D' }, { id: '30D', label: '30D' }, { id: '15D', label: '15D' },
@@ -542,6 +557,8 @@ const _leagueSettings = readJson('leagueSettings', {});
 export function getLeagueSetting(code) {
   return _leagueSettings[String(code)] || { template: null, activation: 'off', alertFactor: 1 };
 }
+
+export function getAllLeagueSettings() { return _leagueSettings; }
 
 export function setLeagueSetting(code, updates) {
   const current = _leagueSettings[String(code)] || { template: null, activation: 'off', alertFactor: 1 };

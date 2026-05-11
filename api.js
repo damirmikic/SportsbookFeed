@@ -88,6 +88,17 @@ export async function pushTraderState(traderId, entity, data) {
   });
 }
 
+export async function fetchActiveTraders() {
+  return await jsonRequest('/api/trader-presence');
+}
+
+export async function pushTraderPresence(traderId, leagueCode = null, leagueName = null) {
+  return await jsonRequest('/api/trader-presence', {
+    method: 'POST',
+    body: JSON.stringify({ traderId, leagueCode, leagueName }),
+  });
+}
+
 export async function fetchAuditLog(limit = 100) {
   return await jsonRequest(`/api/audit-log?limit=${encodeURIComponent(limit)}`);
 }

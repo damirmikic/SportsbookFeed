@@ -1,5 +1,17 @@
 import { state } from './state.js';
-import { getTemplates, getLeagueSetting, setLeagueSetting, isLeagueSuspended, setLeagueSuspension } from './state.js';
+import {
+  getTemplates,
+  getLeagueSetting,
+  setLeagueSetting,
+  isLeagueSuspended,
+  setLeagueSuspension,
+  isSuspended,
+  hasAnySuspension,
+  getTradingMode,
+  hasAnyOverrideForEvent,
+} from './state.js';
+import { fetchActiveTraders } from './api.js';
+import { resolveTemplate } from './pricing.js';
 
 // ── Filter state ──────────────────────────────────────────
 const filters = { category: '', tournament: '', template: '', unassigned: false };
@@ -17,6 +29,148 @@ function getLeagueName(league) {
 
 function getCode(league) {
   return league.code || league.leagueCode || league.id;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function getEventLeagueCode(event) {
+  return event.leagueCode || event.league_code || event.league?.code || state.currentLeagueCode;
+}
+
+function getEventStart(event) {
+  const raw = event.starts || event.startTime || event.time || event.start;
+  if (!raw) return null;
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function isEventLive(event, now = Date.now()) {
+  if (event.live === true || event.isLive === true) return true;
+  const status = String(event.status || event.gameStatus || event.state || '').toLowerCase();
+  if (['live', 'inplay', 'in-play', 'in progress', 'running'].includes(status)) return true;
+  const start = getEventStart(event);
+  return !!start && start.getTime() <= now && status && !['final', 'finished', 'ended', 'closed'].includes(status);
+}
+
+function isTodayEvent(event) {
+  const start = getEventStart(event);
+  if (!start) return isEventLive(event);
+  const today = new Date();
+  return start.getFullYear() === today.getFullYear()
+    && start.getMonth() === today.getMonth()
+    && start.getDate() === today.getDate();
+}
+
+function formatRelativeTime(iso) {
+  if (!iso) return 'No Turso push recorded';
+  const timestamp = Date.parse(iso);
+  if (!Number.isFinite(timestamp)) return 'Unknown';
+  const diffMs = Date.now() - timestamp;
+  if (diffMs < 60 * 1000) return 'Just now';
+  const minutes = Math.floor(diffMs / (60 * 1000));
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+function computeAdminSummary() {
+  const loadedEvents = state.activeEvents || [];
+  const events = loadedEvents.filter(isTodayEvent);
+  const now = Date.now();
+  const inTwoHours = now + 2 * 60 * 60 * 1000;
+  const unpricedSoon = [];
+
+  const summary = events.reduce((acc, event) => {
+    const leagueCode = getEventLeagueCode(event);
+    const hasTemplate = !!resolveTemplate(event.id, leagueCode).template;
+    const start = getEventStart(event);
+
+    if (isEventLive(event, now)) acc.live += 1;
+    if (hasTemplate) acc.priced += 1;
+    if (isSuspended(event.id, 'event') || hasAnySuspension(event.id)) acc.suspended += 1;
+    if (getTradingMode(event.id) === 'manual' || hasAnyOverrideForEvent(event.id)) acc.manual += 1;
+    if (!hasTemplate && start && start.getTime() >= now && start.getTime() <= inTwoHours) {
+      unpricedSoon.push(event);
+    }
+    return acc;
+  }, { live: 0, priced: 0, suspended: 0, manual: 0 });
+
+  return { ...summary, total: events.length, loadedTotal: loadedEvents.length, unpricedSoon };
+}
+
+function summaryHTML() {
+  const summary = computeAdminSummary();
+  const syncAt = state.sharedSyncLastPushedAt;
+  const syncAgeMs = syncAt ? Date.now() - Date.parse(syncAt) : Infinity;
+  const isSyncStale = !syncAt || syncAgeMs > 5 * 60 * 1000 || state.sharedSyncStatus === 'retrying';
+  const scope = state.currentLeagueName || state.currentLeagueCode || 'selected league';
+
+  return `
+    <section class="admin-overview">
+      <div class="admin-overview-head">
+        <div>
+          <h2>Today's Activity</h2>
+          <p>${summary.loadedTotal ? `Today in loaded scope: ${escapeHtml(scope)}` : 'Select a league to populate event activity.'}</p>
+        </div>
+        <div class="admin-sync-card ${isSyncStale ? 'stale' : 'fresh'}">
+          <span>Sync status</span>
+          <strong>${formatRelativeTime(syncAt)}</strong>
+          <small>${isSyncStale ? 'Shared state may be stale' : 'Shared state current'}</small>
+        </div>
+      </div>
+      <div class="admin-metric-grid">
+        <div class="admin-metric"><span>Live now</span><strong>${summary.live}</strong></div>
+        <div class="admin-metric"><span>Priced</span><strong>${summary.priced}</strong></div>
+        <div class="admin-metric"><span>Suspended</span><strong>${summary.suspended}</strong></div>
+        <div class="admin-metric"><span>Manual overrides</span><strong>${summary.manual}</strong></div>
+      </div>
+      <div class="admin-alert ${summary.unpricedSoon.length ? 'critical' : 'clear'}">
+        <strong>${summary.unpricedSoon.length} events start in the next 2 hours with no template assigned</strong>
+        <span>${summary.unpricedSoon.length ? 'Critical pricing gap' : 'No immediate unpriced-event gap in the loaded scope'}</span>
+      </div>
+      <div class="admin-presence">
+        <div class="admin-presence-head">
+          <h3>Active traders</h3>
+          <span id="admin-presence-updated">Refreshing…</span>
+        </div>
+        <div id="admin-active-traders" class="admin-trader-list">
+          ${activeTradersHTML(state.activeTraders)}
+        </div>
+      </div>
+    </section>`;
+}
+
+function activeTradersHTML(traders) {
+  if (!traders?.length) return '<div class="admin-trader-empty">No active traders in the last 3 minutes.</div>';
+  return traders.map((trader) => `
+    <div class="admin-trader-row">
+      <span class="admin-trader-dot" style="background:${escapeHtml(trader.color || '#64748b')}"></span>
+      <strong>${escapeHtml(trader.name || 'Operator')}</strong>
+      <span>${escapeHtml(trader.league_name || trader.leagueName || trader.league_code || trader.leagueCode || 'No league selected')}</span>
+    </div>
+  `).join('');
+}
+
+async function refreshActiveTraders() {
+  try {
+    state.activeTraders = await fetchActiveTraders();
+    const list = document.getElementById('admin-active-traders');
+    const updated = document.getElementById('admin-presence-updated');
+    if (list) list.innerHTML = activeTradersHTML(state.activeTraders);
+    if (updated) updated.textContent = `Updated ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  } catch (error) {
+    console.warn('Failed to refresh active traders:', error);
+    const updated = document.getElementById('admin-presence-updated');
+    if (updated) updated.textContent = 'Unavailable';
+  }
 }
 
 function filteredLeagues() {
@@ -164,11 +318,13 @@ export function renderAdminPanel() {
   const leagues   = filteredLeagues();
 
   panel.innerHTML =
+    summaryHTML() +
     filterBarHTML(countries, templates) +
     chipsBarHTML(templates) +
     tableHTML(leagues, templates);
 
   wirePanel(panel, templates);
+  refreshActiveTraders();
 }
 
 // ── Event wiring ──────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { fetchLeagues, fetchSharedState, fetchTraderState } from './api.js';
+import { fetchLeagues, fetchSharedState, fetchTraderState, pushTraderPresence } from './api.js';
 import { state, hydrateSharedState, hydrateTraderState } from './state.js';
 import { renderLeagues, closeDrawer, loadOdds, filterAndRenderBoard } from './ui.js';
 import { renderAdminPanel } from './admin.js';
@@ -8,6 +8,7 @@ import { clearTraderSession, getSessionExpiresAt, getValidTraderSession } from '
 
 let refreshInterval = null;
 let sessionExpiryTimer = null;
+let presenceInterval = null;
 
 function scheduleSessionExpiry(session) {
   if (sessionExpiryTimer) clearTimeout(sessionExpiryTimer);
@@ -39,6 +40,23 @@ function updateSyncStatus(status) {
   };
   el.textContent = labels[status] || 'Saved';
   el.className = `sync-status ${status || 'saved'}`;
+}
+
+function refreshAdminOverviewIfVisible() {
+  const adminView = document.getElementById('admin-view');
+  const tournamentsActive = document.querySelector('.admin-section-btn.active')?.dataset.section === 'tournaments';
+  if (adminView && !adminView.classList.contains('hidden') && tournamentsActive) {
+    renderAdminPanel();
+  }
+}
+
+async function updateTraderPresence() {
+  if (!state.currentTraderId) return;
+  try {
+    await pushTraderPresence(state.currentTraderId, state.currentLeagueCode, state.currentLeagueName);
+  } catch (error) {
+    console.warn('Trader presence update failed:', error);
+  }
 }
 
 function startPolling(leagueCode) {
@@ -140,7 +158,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.addEventListener('league:selected', (e) => {
     state.currentLeagueCode = e.detail.code;
+    state.currentLeagueName = e.detail.name || e.detail.code;
     startPolling(e.detail.code);
+    updateTraderPresence();
   });
 
   // Top-level nav (Trading / Admin)
@@ -160,10 +180,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     openTemplateById(e.detail.id);
   });
 
-  window.addEventListener('sync:status', e => updateSyncStatus(e.detail?.status));
+  document.addEventListener('odds:loaded', refreshAdminOverviewIfVisible);
+
+  window.addEventListener('sync:status', e => {
+    updateSyncStatus(e.detail?.status);
+    refreshAdminOverviewIfVisible();
+  });
 
   // Hydrate from Turso in parallel — failures are non-fatal (localStorage remains source of truth)
   const traderId = traderSession.id;
+  updateTraderPresence();
+  presenceInterval = setInterval(updateTraderPresence, 60000);
   const syncResults = await Promise.allSettled([
     fetchSharedState().then(hydrateSharedState),
     fetchTraderState(traderId).then(hydrateTraderState),

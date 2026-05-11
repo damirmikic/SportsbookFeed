@@ -29,6 +29,35 @@ function rowMap(rows, keyField, valueField = 'data', parser = JSON.parse) {
   return out;
 }
 
+function latestTimestamp(...values) {
+  const times = values
+    .filter(Boolean)
+    .map((value) => {
+      const text = String(value);
+      return Date.parse(/[zZ]|[+-]\d\d:?\d\d$/.test(text) ? text : `${text}Z`);
+    })
+    .filter((value) => Number.isFinite(value));
+  if (!times.length) return null;
+  return new Date(Math.max(...times)).toISOString();
+}
+
+async function readSyncMeta(db) {
+  const [templates, leagues, matches, suspensions] = await Promise.all([
+    db.execute('SELECT MAX(updated_at) AS ts FROM templates'),
+    db.execute('SELECT MAX(updated_at) AS ts FROM league_settings'),
+    db.execute('SELECT MAX(updated_at) AS ts FROM match_templates'),
+    db.execute('SELECT MAX(set_at) AS ts FROM suspensions'),
+  ]);
+  return {
+    lastSharedPushAt: latestTimestamp(
+      templates.rows[0]?.ts,
+      leagues.rows[0]?.ts,
+      matches.rows[0]?.ts,
+      suspensions.rows[0]?.ts
+    ),
+  };
+}
+
 async function replaceRows(db, statements) {
   await db.batch(statements, 'write');
 }
@@ -85,7 +114,9 @@ exports.handler = async (event) => {
         suspensions[row.key] = { status: row.status, set_by: row.set_by, set_at: row.set_at };
       });
 
-      return ok({ templates, leagueSettings, matchTemplates, suspensions });
+      const syncMeta = await readSyncMeta(db);
+
+      return ok({ templates, leagueSettings, matchTemplates, suspensions, syncMeta });
     }
 
     if (event.httpMethod === 'POST') {
@@ -110,7 +141,7 @@ exports.handler = async (event) => {
         });
         await replaceRows(db, statements);
         await writeAuditLog(db, { traderId, entity, action: 'replace', before, after: templates });
-        return ok({ ok: true });
+        return ok({ ok: true, ...(await readSyncMeta(db)) });
       }
 
       if (entity === 'league-settings') {
@@ -125,7 +156,7 @@ exports.handler = async (event) => {
         });
         await replaceRows(db, statements);
         await writeAuditLog(db, { traderId, entity, action: 'replace', before, after: body || {} });
-        return ok({ ok: true });
+        return ok({ ok: true, ...(await readSyncMeta(db)) });
       }
 
       if (entity === 'match-templates') {
@@ -141,7 +172,7 @@ exports.handler = async (event) => {
         });
         await replaceRows(db, statements);
         await writeAuditLog(db, { traderId, entity, action: 'replace', before, after: body || {} });
-        return ok({ ok: true });
+        return ok({ ok: true, ...(await readSyncMeta(db)) });
       }
 
       if (entity === 'suspensions') {
@@ -157,7 +188,7 @@ exports.handler = async (event) => {
         });
         await replaceRows(db, statements);
         await writeAuditLog(db, { traderId, entity, action: 'replace', before, after: body || {} });
-        return ok({ ok: true });
+        return ok({ ok: true, ...(await readSyncMeta(db)) });
       }
 
       return err('Unsupported shared-state entity', 400);

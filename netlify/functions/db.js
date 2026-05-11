@@ -98,6 +98,14 @@ const SCHEMA = `
     expanded_groups TEXT DEFAULT '[]'
   );
 
+  CREATE TABLE IF NOT EXISTS trader_presence (
+    trader_id   TEXT PRIMARY KEY,
+    league_code TEXT,
+    league_name TEXT,
+    last_seen   TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (trader_id) REFERENCES traders(id)
+  );
+
   CREATE TABLE IF NOT EXISTS audit_log (
     id          TEXT PRIMARY KEY,
     trader_id   TEXT,
@@ -121,6 +129,9 @@ const SCHEMA = `
 
   CREATE INDEX IF NOT EXISTS idx_odds_history_ts
     ON odds_history (ts);
+
+  CREATE INDEX IF NOT EXISTS idx_trader_presence_last_seen
+    ON trader_presence (last_seen);
 `;
 
 async function initSchema(db) {
