@@ -639,6 +639,54 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
     }
   }
 
+  // --- Corners (dedicated detailedAll.corners periods) ---
+  if (detailedAll.corners?.periods) {
+    const cp  = detailedAll.corners.periods;
+    const c0  = cp['0'] || Object.values(cp).find(p => p.num === 0 || p.periodNumber === 0) || Object.values(cp)[0];
+    const c1  = cp['1'] || Object.values(cp).find(p => p.num === 1 || p.periodNumber === 1);
+    const fmt = s => { const n = parseFloat(s); return (n === 0 || isNaN(n)) ? '0' : (n > 0 ? `+${n}` : `${n}`); };
+
+    const addCornerOU = (period, id, name) => {
+      if (!period?.overUnder?.length) return;
+      const rows = [];
+      [...period.overUnder].sort((a, b) => parseFloat(a.points) - parseFloat(b.points)).forEach(ou => {
+        const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
+        rows.push({ label: `Over ${ou.points}`,  value: ou.overOdds,  shinFair: shin[0], modelFair: null });
+        rows.push({ label: `Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: null });
+      });
+      groups['CORNERS'].push({ id, name, rows });
+    };
+
+    const addCornerHdp = (period, id, name) => {
+      if (!period?.handicap?.length) return;
+      const rows = [];
+      [...period.handicap].sort((a, b) => parseFloat(a.homeSpread) - parseFloat(b.homeSpread)).forEach(h => {
+        const shin = calculateShinNoVig([h.homeOdds, h.awayOdds]);
+        rows.push({ label: `Home ${fmt(h.homeSpread)}`, value: h.homeOdds, shinFair: shin[0], modelFair: null });
+        rows.push({ label: `Away ${fmt(h.awaySpread)}`, value: h.awayOdds, shinFair: shin[1], modelFair: null });
+      });
+      groups['CORNERS'].push({ id, name, rows });
+    };
+
+    const addCornerTeamTotal = (lines, id, name) => {
+      if (!lines?.length) return;
+      const rows = [];
+      [...lines].sort((a, b) => parseFloat(a.points) - parseFloat(b.points)).forEach(ou => {
+        const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
+        rows.push({ label: `Over ${ou.points}`,  value: ou.overOdds,  shinFair: shin[0], modelFair: null });
+        rows.push({ label: `Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: null });
+      });
+      groups['CORNERS'].push({ id, name, rows });
+    };
+
+    addCornerOU(c0,  'corner_ou',       'Corner Total (All Lines)');
+    addCornerHdp(c0, 'corner_hdp',      'Corner Handicap');
+    addCornerTeamTotal(c0?.teamTotals?.homeLines, 'corner_tt_home', `${homeTeam} Corners`);
+    addCornerTeamTotal(c0?.teamTotals?.awayLines, 'corner_tt_away', `${awayTeam} Corners`);
+    addCornerOU(c1,  'h1_corner_ou',    '1st Half Corner Total');
+    addCornerHdp(c1, 'h1_corner_hdp',   '1st Half Corner Handicap');
+  }
+
   // --- Additional Pinnacle Markets ---
   if (detailedAll.specials && Array.isArray(detailedAll.specials)) {
     detailedAll.specials.forEach(category => {
@@ -646,6 +694,7 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
 
       category.events.forEach(mkt => {
         if (['Both Teams To Score?', 'Draw No Bet', 'Double Chance', 'Correct Score'].includes(mkt.name)) return;
+        if (mkt.name.toLowerCase().includes('corner')) return;
         if (mkt.name.toLowerCase().includes('to score in both halves')) return;
         if (mkt.name.toLowerCase().includes('both halves over')) return;
         if (mkt.name.toLowerCase().includes('both halves under')) return;
@@ -671,8 +720,6 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
           catName = '2ND HALF';
         } else if (n.includes('1st half') || n.includes('first half')) {
           catName = '1ST HALF';
-        } else if (n.includes('corner')) {
-          catName = 'CORNERS';
         } else if (n.includes('booking') || n.includes('yellow card') || n.includes('red card') || n.includes('card')) {
           catName = 'BOOKINGS';
         } else if ((/^(home|away|[a-z ]+) goals/i.test(mkt.name) && !n.includes('total goals')) || n.includes('team total')) {
