@@ -1,6 +1,7 @@
 import {
   getTemplates, addTemplate, updateTemplate, deleteTemplate,
   MARKET_DEFS, TIMELINE_NODES, getDiscoveredMarkets, setDiscoveredMarkets,
+  getDetailedOdds, isDetailedOddsFresh, setDetailedOdds,
 } from './state.js';
 import { state } from './state.js';
 import { fetchEventOdds } from './api.js';
@@ -778,11 +779,11 @@ async function loadMarketsFromFeed(backdrop) {
   btn.textContent = 'Discovering…';
 
   try {
-    // Fetch detailed odds if not already in cache
-    let detailed = state.detailedOdds[event.id];
-    if (!detailed) {
+    // Fetch detailed odds if not cached or older than the drawer cache TTL.
+    let detailed = getDetailedOdds(event.id);
+    if (!isDetailedOddsFresh(event.id)) {
       detailed = await fetchEventOdds(event.id);
-      state.detailedOdds[event.id] = detailed;
+      setDetailedOdds(event.id, detailed);
     }
 
     const { home, away } = getTeamNames(event);

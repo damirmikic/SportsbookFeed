@@ -71,6 +71,33 @@ body {
   border: 1px solid var(--border-color);
 }
 
+.sync-status {
+  min-width: 112px;
+  text-align: center;
+  color: var(--text-secondary);
+  background: var(--surface-color);
+  padding: 0.5rem 0.8rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.sync-status.saving {
+  color: #bfdbfe;
+  border-color: rgba(59, 130, 246, 0.4);
+}
+
+.sync-status.saved {
+  color: #a7f3d0;
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.sync-status.retrying {
+  color: #fde68a;
+  border-color: rgba(245, 158, 11, 0.45);
+}
+
 .sync-failure-banner {
   display: flex;
   align-items: center;

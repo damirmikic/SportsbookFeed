@@ -58,6 +58,16 @@ export const state = {
 
 let isHydrating = false;
 const syncTimers = new Map();
+const pendingWrites = new Map();
+let syncVersion = 0;
+
+const SYNC_DEBOUNCE_MS = 400;
+const SYNC_BACKOFF_MS = [2000, 4000, 8000];
+const DETAILED_ODDS_TTL_MS = 60 * 1000;
+
+function emitSyncStatus(status) {
+  window.dispatchEvent(new CustomEvent('sync:status', { detail: { status } }));
+}
 
 function persistTraderProfile(profile) {
   state.currentTraderProfile = profile || null;
@@ -96,24 +106,79 @@ function cloneEntityData(entity) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function hasPendingWrites() {
+  return pendingWrites.size > 0;
+}
+
+function syncStatusForWrite(entry) {
+  return entry.attempt > 0 ? 'retrying' : 'saving';
+}
+
+async function flushPendingWrite(entity) {
+  const entry = pendingWrites.get(entity);
+  if (!entry || entry.inFlight) return;
+
+  entry.inFlight = true;
+  const payload = entry.data;
+  const version = entry.version;
+  emitSyncStatus(syncStatusForWrite(entry));
+
+  try {
+    if (entity in SHARED_ENTITY_KEYS) {
+      await pushSharedState(entity, payload, state.currentTraderId);
+    } else {
+      await pushTraderState(state.currentTraderId, entity, payload);
+    }
+
+    const latest = pendingWrites.get(entity);
+    if (latest?.version === version) {
+      pendingWrites.delete(entity);
+      if (!hasPendingWrites()) emitSyncStatus('saved');
+      return;
+    }
+
+    if (latest) {
+      latest.inFlight = false;
+      latest.attempt = 0;
+      flushPendingWrite(entity);
+    }
+  } catch (error) {
+    console.warn(`Background sync failed for ${entity}:`, error);
+    const latest = pendingWrites.get(entity);
+    if (!latest) return;
+
+    latest.inFlight = false;
+    latest.attempt += 1;
+    const delay = SYNC_BACKOFF_MS[Math.min(latest.attempt - 1, SYNC_BACKOFF_MS.length - 1)];
+    clearTimeout(latest.timer);
+    latest.timer = setTimeout(() => flushPendingWrite(entity), delay);
+    emitSyncStatus('retrying');
+  }
+}
+
 function scheduleSync(entity) {
   if (isHydrating) return;
   const isTraderEntity = Object.prototype.hasOwnProperty.call(TRADER_ENTITY_KEYS, entity);
   if (isTraderEntity && !state.currentTraderId) return;
 
-  clearTimeout(syncTimers.get(entity));
-  const timer = setTimeout(async () => {
-    try {
-      const payload = cloneEntityData(entity);
-      if (entity in SHARED_ENTITY_KEYS) {
-        await pushSharedState(entity, payload, state.currentTraderId);
-      } else {
-        await pushTraderState(state.currentTraderId, entity, payload);
-      }
-    } catch (error) {
-      console.warn(`Background sync failed for ${entity}:`, error);
-    }
-  }, 400);
+  const payload = cloneEntityData(entity);
+  if (payload == null) return;
+
+  const existing = pendingWrites.get(entity);
+  if (existing?.timer) clearTimeout(existing.timer);
+
+  const entry = {
+    data: payload,
+    attempt: 0,
+    timer: null,
+    inFlight: !!existing?.inFlight,
+    version: ++syncVersion,
+  };
+  pendingWrites.set(entity, entry);
+  emitSyncStatus('saving');
+
+  const timer = setTimeout(() => flushPendingWrite(entity), SYNC_DEBOUNCE_MS);
+  entry.timer = timer;
   syncTimers.set(entity, timer);
 }
 
@@ -232,6 +297,27 @@ const _overrideMeta = readJson('overrideMeta', {});
 const _overriddenLambdas = readJson('overriddenLambdas', {});
 
 export function getOverride(key) { return _overrides[key] || null; }
+
+export function getDetailedOdds(eventId) {
+  const cached = state.detailedOdds[eventId];
+  if (!cached) return null;
+
+  if (cached.data && typeof cached.fetchedAt === 'number') {
+    return cached.data;
+  }
+  return cached;
+}
+
+export function isDetailedOddsFresh(eventId, now = Date.now()) {
+  const cached = state.detailedOdds[eventId];
+  return !!cached?.data
+    && typeof cached.fetchedAt === 'number'
+    && now - cached.fetchedAt < DETAILED_ODDS_TTL_MS;
+}
+
+export function setDetailedOdds(eventId, data, fetchedAt = Date.now()) {
+  state.detailedOdds[eventId] = { data, fetchedAt };
+}
 
 export function setOverride(key, val) {
   const price = parseFloat(val);

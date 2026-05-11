@@ -1,4 +1,4 @@
-import { state, getTradingMode, clearAllOverridesForEvent, setTradingMode, isSuspended, setSuspension, getLeagueSetting, getTemplates, setMatchTemplate, getOverriddenLambdas } from './state.js';
+import { state, getTradingMode, clearAllOverridesForEvent, setTradingMode, isSuspended, setSuspension, getLeagueSetting, getTemplates, setMatchTemplate, getOverriddenLambdas, getDetailedOdds, isDetailedOddsFresh, setDetailedOdds } from './state.js';
 import { fetchEventOdds } from './api.js';
 import { resolveTemplate } from './pricing.js';
 import { calculateTeamLambdasAsync } from './math.js';
@@ -142,11 +142,13 @@ export async function openDrawer(eventId) {
   document.getElementById('drawer-match-time').textContent = eventTime
     ? new Date(eventTime).toLocaleString() : 'N/A';
 
-  try {
-    const data = await fetchEventOdds(eventId);
-    state.detailedOdds[eventId] = data;
-  } catch (e) {
-    console.error('Failed to fetch detailed odds', e);
+  if (!isDetailedOddsFresh(eventId)) {
+    try {
+      const data = await fetchEventOdds(eventId);
+      setDetailedOdds(eventId, data);
+    } catch (e) {
+      console.error('Failed to fetch detailed odds', e);
+    }
   }
 
   renderDrawerMarkets(event);
@@ -202,7 +204,7 @@ export async function renderDrawerMarkets(event) {
     drawerContent.appendChild(createLambdaSection(effectiveLambdaData, homeTeam, awayTeam));
   }
 
-  const detailedAll    = state.detailedOdds[event.id] || {};
+  const detailedAll    = getDetailedOdds(event.id) || {};
   const groupedMarkets = groupMarketsByCategory(event, matchPeriod, h1Period, effectiveLambdaData, detailedAll, homeTeam, awayTeam);
   const { template: activeTplMarkets } = resolveTemplate(event.id, state.currentLeagueCode);
 

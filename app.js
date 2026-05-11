@@ -27,6 +27,19 @@ function showSyncFailureBanner() {
   dismiss?.addEventListener('click', () => banner.classList.add('hidden'), { once: true });
 }
 
+function updateSyncStatus(status) {
+  const el = document.getElementById('sync-status');
+  if (!el) return;
+
+  const labels = {
+    saving: 'Saving…',
+    saved: 'Saved',
+    retrying: 'Sync error — retrying',
+  };
+  el.textContent = labels[status] || 'Saved';
+  el.className = `sync-status ${status || 'saved'}`;
+}
+
 function startPolling(leagueCode) {
   if (refreshInterval) clearInterval(refreshInterval);
   refreshInterval = setInterval(async () => {
@@ -137,6 +150,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     showAdminSection('templates');
     openTemplateById(e.detail.id);
   });
+
+  window.addEventListener('sync:status', e => updateSyncStatus(e.detail?.status));
 
   // Hydrate from Turso in parallel — failures are non-fatal (localStorage remains source of truth)
   const traderId = traderSession.id;
