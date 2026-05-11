@@ -393,6 +393,7 @@ export function renderMarketTable(market) {
       input.className   = 'table-override-input';
       input.step        = '0.01';
       input.min         = '1.01';
+      input.max         = '999.99';
       input.value       = ovValue;
       const offerForPh  = computeOffer(row);
       input.placeholder = (offerForPh && offerForPh > 1) ? offerForPh.toFixed(2) : '-';

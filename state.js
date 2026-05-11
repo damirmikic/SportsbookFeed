@@ -234,8 +234,15 @@ const _overriddenLambdas = readJson('overriddenLambdas', {});
 export function getOverride(key) { return _overrides[key] || null; }
 
 export function setOverride(key, val) {
-  _overrides[key] = parseFloat(val).toFixed(3);
+  const price = parseFloat(val);
+  if (!Number.isFinite(price) || price <= 1.0 || price >= 1000) {
+    console.warn('Rejected invalid override value:', val);
+    return false;
+  }
+
+  _overrides[key] = price.toFixed(3);
   persistTraderEntity('overrides', _overrides);
+  return true;
 }
 
 export function clearOverride(key) {

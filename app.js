@@ -18,6 +18,15 @@ function scheduleSessionExpiry(session) {
   }, Math.max(0, delay));
 }
 
+function showSyncFailureBanner() {
+  const banner = document.getElementById('sync-failure-banner');
+  const dismiss = document.getElementById('sync-failure-dismiss');
+  if (!banner) return;
+
+  banner.classList.remove('hidden');
+  dismiss?.addEventListener('click', () => banner.classList.add('hidden'), { once: true });
+}
+
 function startPolling(leagueCode) {
   if (refreshInterval) clearInterval(refreshInterval);
   refreshInterval = setInterval(async () => {
@@ -131,10 +140,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Hydrate from Turso in parallel — failures are non-fatal (localStorage remains source of truth)
   const traderId = traderSession.id;
-  await Promise.allSettled([
-    fetchSharedState().then(hydrateSharedState).catch(e => console.warn('Shared state hydration failed:', e)),
-    fetchTraderState(traderId).then(hydrateTraderState).catch(e => console.warn('Trader state hydration failed:', e)),
+  const syncResults = await Promise.allSettled([
+    fetchSharedState().then(hydrateSharedState),
+    fetchTraderState(traderId).then(hydrateTraderState),
   ]);
+  const failedSyncs = syncResults.filter(result => result.status === 'rejected');
+  if (failedSyncs.length) {
+    failedSyncs.forEach(result => console.warn('State hydration failed:', result.reason));
+    showSyncFailureBanner();
+  }
 
   const leaguesContainer = document.getElementById('leagues-container');
   try {
