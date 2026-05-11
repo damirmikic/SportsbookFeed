@@ -878,6 +878,14 @@ body {
 
 /* ── Market suspension ─────────────────────────────────── */
 
+/* Market name cell in comparison table — flex row with name + suspend button */
+.market-name-th {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
 /* Per-market suspend button */
 .suspend-market-btn {
   background: none;
@@ -908,6 +916,10 @@ body {
   background: rgba(239,68,68,0.12);
   color: #f87171;
   border-color: rgba(239,68,68,0.3);
+}
+.suspend-market-btn:disabled {
+  cursor: default;
+  pointer-events: none;
 }
 
 /* Event-level suspend button (drawer header) */
@@ -983,6 +995,58 @@ body {
   font-size: 0.65rem;
   margin-left: 0.35rem;
   vertical-align: middle;
+}
+
+/* Suspended state for the comparison table (market-level) */
+.market-table-suspended .comparison-table tbody {
+  opacity: 0.35;
+  pointer-events: none;
+  filter: grayscale(0.5);
+}
+.market-table-suspended .market-name-th span {
+  color: #ef4444;
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+/* Selection-level label cell — flex to hold lock icon + text inline */
+.selection-label-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+/* Per-selection suspend toggle */
+.suspend-sel-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.7rem;
+  padding: 0;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: opacity 0.15s, transform 0.15s;
+}
+.suspend-sel-btn.open {
+  opacity: 0.25;
+}
+.suspend-sel-btn.open:hover {
+  opacity: 0.8;
+  transform: scale(1.15);
+}
+.suspend-sel-btn.suspended {
+  opacity: 1;
+  filter: none;
+}
+
+/* Suspended selection row */
+.selection-suspended td {
+  opacity: 0.4;
+  text-decoration: line-through;
+}
+.selection-suspended .selection-label-cell .suspend-sel-btn {
+  opacity: 1;
+  text-decoration: none;
 }
 
 /* ── Margin editor input ───────────────────────────────── */

@@ -1,4 +1,4 @@
-import { state, getOverride, setOverride, getOverrideMeta, setOverrideWithMeta, updateOverrideAlertState, setTradingMode, getOverriddenLambdas, setOverriddenLambdas, isSuspended, setSuspension, clearOverride, clearOverrideMetaSelection, hasAnyOverrideForEvent, clearOverriddenLambdas } from './state.js';
+import { state, getOverride, setOverride, getOverrideMeta, setOverrideWithMeta, updateOverrideAlertState, setTradingMode, getOverriddenLambdas, setOverriddenLambdas, isSuspended, isSelectionSuspended, setSuspension, clearOverride, clearOverrideMetaSelection, hasAnyOverrideForEvent, clearOverriddenLambdas } from './state.js';
 import { resolveTemplate, getMarketConfig, resolveActiveKey } from './pricing.js';
 import { calculateShinNoVig, solveLambdasAsync, applyMarginAndLadder } from './math.js';
 import { calcMargin, marginBadgeHTML } from './ui-helpers.js';
@@ -190,6 +190,7 @@ function makeEditable(chip, priceSpan, key, currentVal, rows = [], marketId = ''
 
 export function renderMarketTable(market) {
   const isOverridable = market.id === 'ml' || market.id === 'ou';
+  const marketSuspended = isSuspended(state.drawerEventId, market.id);
 
   const wrapper = document.createElement('div');
   wrapper.className = 'comparison-table-wrapper';
@@ -268,13 +269,23 @@ export function renderMarketTable(market) {
     return (!isNaN(api) && api > 1) ? api : null;
   };
 
+  const hasAnyOffer = market.rows.some(row => { const o = computeOffer(row); return o !== null && o > 1; });
+  const effectivelySuspended = marketSuspended || !hasAnyOffer;
+  if (effectivelySuspended) wrapper.classList.add('market-table-suspended');
+
   const table = document.createElement('table');
   table.className = 'comparison-table';
 
   const thead = document.createElement('thead');
   thead.innerHTML = `
     <tr>
-      <th>${market.name}</th>
+      <th class="market-name-th">
+        <span>${market.name}</span>
+        <button class="suspend-market-btn ${effectivelySuspended ? 'suspended' : 'open'}"
+          ${!hasAnyOffer ? 'disabled title="No offer configured — assign a template to enable this market"' : `title="${marketSuspended ? 'Market suspended — click to publish' : 'Suspend this market'}"`}>
+          ${effectivelySuspended ? '🔒 SUSPENDED' : '🔓 PUBLISHED'}
+        </button>
+      </th>
       <th class="offer-header" style="text-align: right;">Offer</th>
       <th style="text-align: right;">Shin (Fair)</th>
       <th style="text-align: right;">Model (Fair)</th>
@@ -284,11 +295,22 @@ export function renderMarketTable(market) {
       ${isOverridable ? '<th style="text-align: right; width: 130px;">Override</th>' : ''}
     </tr>
   `;
+  if (hasAnyOffer) {
+    thead.querySelector('.suspend-market-btn').addEventListener('click', e => {
+      e.stopPropagation();
+      const nowSusp = isSuspended(state.drawerEventId, market.id);
+      setSuspension(state.drawerEventId, market.id, nowSusp ? 'open' : 'suspended');
+      const ev = state.activeEvents.find(ev2 => ev2.id.toString() === state.drawerEventId?.toString());
+      if (ev) renderDrawerMarkets(ev);
+    });
+  }
   table.appendChild(thead);
 
   const tbody = document.createElement('tbody');
   market.rows.forEach(row => {
+    const selSusp = isSelectionSuspended(state.drawerEventId, market.id, row.label);
     const tr = document.createElement('tr');
+    if (selSusp) tr.classList.add('selection-suspended');
 
     const fmtPrice = v => {
       const n = parseFloat(v);
@@ -313,7 +335,21 @@ export function renderMarketTable(market) {
     };
 
     const tdLabel = document.createElement('td');
-    tdLabel.textContent = row.label;
+    tdLabel.className = 'selection-label-cell';
+
+    const suspSelBtn = document.createElement('button');
+    suspSelBtn.className = `suspend-sel-btn ${selSusp ? 'suspended' : 'open'}`;
+    suspSelBtn.textContent = selSusp ? '🔒' : '🔓';
+    suspSelBtn.title = selSusp ? 'Selection suspended — click to publish' : 'Suspend this selection';
+    suspSelBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      const nowSusp = isSelectionSuspended(state.drawerEventId, market.id, row.label);
+      setSuspension(state.drawerEventId, `${market.id}|${row.label}`, nowSusp ? 'open' : 'suspended');
+      const ev = state.activeEvents.find(ev2 => ev2.id.toString() === state.drawerEventId?.toString());
+      if (ev) renderDrawerMarkets(ev);
+    });
+    tdLabel.appendChild(suspSelBtn);
+    tdLabel.appendChild(document.createTextNode(row.label));
 
     const offerOdds    = computeOffer(row);
     const offerDisplay = offerOdds && offerOdds > 1 ? offerOdds.toFixed(2) : '-';

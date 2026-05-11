@@ -7,14 +7,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Running the App
 
 **Local dev (full stack — Netlify Functions + Turso):**
-```powershell
+```bash
 netlify dev
 # Opens at http://localhost:8888
 # login.html first, then index.html
 ```
 
 **Frontend only (no functions, mock auth):**
-```powershell
+```bash
 npx serve .
 # Opens at http://localhost:3000
 # login.js uses localStorage mock when hostname is localhost/127.0.0.1
@@ -23,7 +23,7 @@ npx serve .
 **No build step.** All JS is ES modules served directly. No bundler, no transpilation.
 
 **Install dependencies** (only needed for Netlify Functions — `@libsql/client`):
-```powershell
+```bash
 npm install
 ```
 
@@ -51,7 +51,7 @@ app.js                          ← bootstrap, polling, view switching
 
 pricing.js                      ← template resolution + override expiry/alert evaluation
 math.js                         ← Shin no-vig, Dixon-Coles model, Asian odds, ladder rounding
-markets.js                      ← market builders from score grid (BTTS, CS, DNB, HTFT, etc.)
+markets.js                      ← core market builders from score grid (BTTS, DC, DNB, CS)
 utils.js                        ← getTeamNames() helper
 solver.worker.js                ← Web Worker: off-thread lambda solver
 ```
@@ -104,7 +104,7 @@ All mutable state lives in `state.js`. The `state` object holds transient runtim
 
 **Hydration guard**: `isHydrating = true` during `hydrateSharedState()` / `hydrateTraderState()` — prevents `scheduleSync()` from firing during startup population.
 
-**Template versioning**: `TEMPLATE_VERSION` constant in `state.js`. If the stored version doesn't match, defaults are reset. Bump this constant when changing `DEFAULT_TEMPLATES` or `MARKET_DEFS`.
+**Template versioning**: `TEMPLATE_VERSION` constant in `state.js` (currently `4`). If the stored version doesn't match, `_templates` resets to `DEFAULT_TEMPLATES`. **Bump this constant whenever `DEFAULT_TEMPLATES` or `MARKET_DEFS` change.**
 
 ---
 
@@ -115,7 +115,7 @@ All mutable state lives in `state.js`. The `state` object holds transient runtim
 2. League default: `leagueSettings[leagueCode].template`
 3. `null` — no pricing applied, raw Pinnacle odds shown
 
-**Timeline nodes** (`TIMELINE_NODES` in `state.js`): 26 nodes from `INST` (infinity, always active) down to `15m`. `resolveActiveKey(template, marketId, kickoffTime)` walks nodes from most recent to oldest and returns the first one with a non-null margin configured. This is the active margin for that market right now.
+**Timeline nodes** (`TIMELINE_NODES` in `state.js`): 26 nodes from `INST` (infinity, always active) down to `15m`. `resolveActiveKey(marketConfig, eventStartTime)` walks nodes from nearest to farthest and returns the first one whose threshold the current time satisfies and that has a key configured in `marketConfig.timeline`. Returns `null` when no timeline keys are set (caller falls back to base margin).
 
 **Override expiry / value-bet alerts** (`evaluateOverrides()` in `pricing.js`): called during each `renderOdds()` cycle. Compares current Shin fair against the stored `shinFairAtTime` in `_overrideMeta`. If drift exceeds `alertFactor × leagueSetting.alertFactor`, sets `alertState = 'VALUE_BET'` or `'STALE'`.
 
@@ -152,7 +152,7 @@ Always **floors** (never rounds up) to preserve bookmaker edge.
 **MarketConfig** (one entry per `MARKET_DEFS` id):
 ```js
 {
-  id: string,           // e.g. '1x2', 'asian_hcp', 'ou25'
+  id: string,           // see MARKET_DEFS IDs below
   enabled: boolean,
   margin: number,       // base margin %, overridden per-node by timeline
   maxBet: number,
@@ -164,7 +164,10 @@ Always **floors** (never rounds up) to preserve bookmaker edge.
 }
 ```
 
-`MARKET_DEFS` in `state.js` is the canonical list of all market types with their defaults (`defaultMargin`, `defaultMaxBet`, `defaultEnabled`). The `DRAWER_TO_TPL_ID` map in `ui-drawer.js` translates drawer market IDs (e.g. `'ml'`) to their template IDs (e.g. `'1x2'`).
+**`MARKET_DEFS` IDs** (canonical list in `state.js`):
+`1x2`, `dc`, `dnb`, `asian_hcp`, `asian_tot`, `ou15`, `ou25`, `ou35`, `btts`, `btts_ou`, `cs`, `exact_goals`, `win_nil`, `htft`
+
+The `DRAWER_TO_TPL_ID` map in `ui-drawer.js` translates drawer market IDs (e.g. `'ml'`) to template IDs (e.g. `'1x2'`).
 
 ---
 
@@ -173,13 +176,16 @@ Always **floors** (never rounds up) to preserve bookmaker edge.
 `calculateTeamLambdasAsync()` (in `math.js`, called from `ui-drawer.js`) resolves λ values and returns:
 ```js
 {
-  ft: { lambdaH, lambdaA, rho, grid: [{home, away, prob}] },  // full-time 10×10 score grid
-  h1: { lambdaH, lambdaA, rho, grid },                        // 1st half grid (half-λ)
-  h2: { lambdaH, lambdaA, rho, grid },                        // 2nd half grid (half-λ)
+  ft: { lh, la, rho, grid: [{home, away, prob}] },  // full-time score grid
+  h1: { lh, la, rho: 0, grid },                     // 1st half grid (λ × splitFraction)
+  h2: { lh, la, rho: 0, grid },                     // 2nd half grid (λ × (1−splitFraction))
+  splitFraction: number,                             // H1 share of total λ (calibrated from H1 OU, default 0.45)
 }
 ```
 
-`grid` is a flat array of `{ home: int, away: int, prob: float }` score-probability entries (scores 0–9 each). `h1`/`h2` are only present when the solver converges on both halves. All market builders in `markets.js` and `ui-market-groups.js` consume this structure.
+`grid` is a flat array of `{ home: int, away: int, prob: float }` entries. Grid size is **adaptive**: `max(8, ceil(λ + 4√λ + 1))` — not a fixed 10×10. H1/H2 grids use `rho = 0`. `buildAllMarkets()` in `markets.js` and inline builders in `ui-market-groups.js` both consume this structure.
+
+**Solver** (`math.js`): `solveLambdas()` uses a warm-start (analytical λ estimate from 1x2 + OU) followed by Adam gradient descent (≤300 iterations, tol 1e-11) against a joint 1x2 + OU + Asian HCP loss. The async variant `solveLambdasAsync()` dispatches to `solver.worker.js`.
 
 ---
 
@@ -203,11 +209,13 @@ Always **floors** (never rounds up) to preserve bookmaker edge.
 
 Each market in a category is a **market row object**: `{ id, name, rows: [{ label, value (API price), shinFair, modelFair, isApiOnly }] }`. `isApiOnly: true` means the row came from Pinnacle specials and has no independently computed Shin (Shin is still computed from the API price if ≥2 rows exist).
 
+`markets.js` exports `buildBTTS`, `buildDoubleChance`, `buildDrawNoBet`, `buildCorrectScore`, and `buildAllMarkets` — each accepts a score grid and returns `{ id, name, cols, selections[] }`. More complex markets (HTFT, exact goals, win nil, team totals, etc.) are built inline inside `groupMarketsByCategory()`.
+
 ---
 
 ## Netlify Functions (`netlify/functions/`)
 
-Three functions, all use CommonJS (`require`), all call `initSchema(db)` on every cold start (idempotent `CREATE TABLE IF NOT EXISTS`).
+Four files; `db.js` is a shared helper, the other three are HTTP endpoints. All use CommonJS (`require`) and call `initSchema(db)` on every cold start (idempotent `CREATE TABLE IF NOT EXISTS`).
 
 - **`db.js`**: shared Turso client singleton (`@libsql/client/http` — no native binaries), schema SQL, `ok(body)`/`err(msg, status)` response helpers
 - **`traders.js`**: `GET /api/traders`, `POST /api/traders`, `POST /api/traders?verify=1`, `PUT /api/traders?id=`
@@ -236,5 +244,5 @@ TURSO_AUTH_TOKEN=<token>
 - **Override key format**: `"eventId|marketId|label"` for price overrides, `"eventId|marketId"` for meta and suspensions
 - **Trading mode**: `'auto'` is the default and is not stored (only `'manual'` entries exist in `_tradingModes`)
 - **Suspension status**: `'suspended'` is stored; `'open'` deletes the key (open is the implicit default)
-- **Markets module** (`markets.js`): exports individual market builders (`buildBTTS`, `buildCS`, `buildHTFT`, etc.) that accept a Dixon-Coles score grid and return `{ id, name, cols, selections[] }` objects — consumed by `ui-drawer.js`
-- **Dixon-Coles grid**: 10×10 score probability matrix, computed in `math.js`, scaled by `dixonColesTau()` for low-score correlation. H1/H2 grids use half-λ values
+- **Dixon-Coles grid**: adaptive-size score probability matrix, computed in `math.js`, scaled by `dixonColesTau()` for low-score correlation. H1/H2 grids use half-λ values and `rho = 0`
+- **Pinnacle odds field names**: the API returns both `moneyLine` and `moneyline`, `homePrice`/`home`, `drawPrice`/`draw`, `awayPrice`/`away` — always coalesce both forms when reading

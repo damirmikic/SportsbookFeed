@@ -275,6 +275,12 @@ export function isSuspended(eventId, marketId = 'event') {
   return _suspensions[`${eventId}|${marketId}`] === 'suspended';
 }
 
+export function isSelectionSuspended(eventId, marketId, label) {
+  if (_suspensions[`${eventId}|event`] === 'suspended') return true;
+  if (_suspensions[`${eventId}|${marketId}`] === 'suspended') return true;
+  return _suspensions[`${eventId}|${marketId}|${label}`] === 'suspended';
+}
+
 export function setSuspension(eventId, marketId, status) {
   const key = `${eventId}|${marketId}`;
   if (status === 'open') delete _suspensions[key];
