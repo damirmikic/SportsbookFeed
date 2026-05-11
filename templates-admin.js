@@ -2,10 +2,13 @@ import {
   getTemplates, addTemplate, updateTemplate, deleteTemplate,
   MARKET_DEFS, TIMELINE_NODES, getDiscoveredMarkets, setDiscoveredMarkets,
   getDetailedOdds, isDetailedOddsFresh, setDetailedOdds,
+  getAllLeagueSettings, getCurrentTrader,
 } from './state.js';
 import { state } from './state.js';
 import { fetchEventOdds } from './api.js';
 import { getTeamNames } from './utils.js';
+import { calculateShinNoVig, applyMarginAndLadder } from './math.js';
+import { resolveActiveKey } from './pricing.js';
 
 // ── Filter state ──────────────────────────────────────────
 const tplFilters = { type: '', activeOnly: true };
@@ -37,6 +40,31 @@ function getActiveMarketDefs() {
   const disc = getDiscoveredMarkets();
   if (disc?.markets?.length) return disc.markets;
   return MARKET_DEFS.map(d => ({ id: d.id, group: d.group, name: d.name }));
+}
+
+// ── Feature helpers ───────────────────────────────────────
+
+function leagueCount(tplId) {
+  return Object.values(getAllLeagueSettings()).filter(s => s.template === tplId).length;
+}
+
+function relativeTime(isoStr) {
+  if (!isoStr) return null;
+  const diff = Date.now() - new Date(isoStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 2) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(isoStr).toLocaleDateString();
+}
+
+function getMatchPeriodFromEvent(event) {
+  if (event.periods && !Array.isArray(event.periods)) return event.periods['0'];
+  const arr = Array.isArray(event.periods) ? event.periods : Object.values(event.periods || {});
+  return arr.find(p => p.num === 0 || p.periodNumber === 0) || arr[0];
 }
 
 // Default config values for a market def (margin, maxBet, enabled).
@@ -204,8 +232,9 @@ function filterBarHTML() {
         </label>
       </div>
       <div class="tpl-filters-right">
-        <button class="tpl-ladders-btn" id="tpl-my-ladders">MY LADDERS</button>
-        <button class="tpl-create-btn"  id="tpl-create-new">CREATE NEW</button>
+        <button class="tpl-ladders-btn"  id="tpl-my-ladders">MY LADDERS</button>
+        <button class="tpl-compare-btn"  id="tpl-compare">COMPARE</button>
+        <button class="tpl-create-btn"   id="tpl-create-new">CREATE NEW</button>
       </div>
     </div>`;
 }
@@ -223,15 +252,20 @@ function chipsBarHTML() {
 
 // ── Template listing table ────────────────────────────────
 function templateRowHTML(tpl) {
-  const enabled = enabledCount(tpl);
-  const total   = (tpl.markets || []).length;
-  const created = tpl.createdAt ? new Date(tpl.createdAt).toLocaleDateString() : '—';
+  const enabled  = enabledCount(tpl);
+  const total    = (tpl.markets || []).length;
+  const created  = tpl.createdAt ? new Date(tpl.createdAt).toLocaleDateString() : '—';
+  const leagues  = leagueCount(tpl.id);
+  const locked   = tpl.locked ?? false;
+  const updRel   = relativeTime(tpl.updatedAt);
+  const updBy    = tpl.updatedBy ? ` by ${tpl.updatedBy}` : '';
   return `
-    <tr class="tpl-row" data-id="${tpl.id}">
+    <tr class="tpl-row${locked ? ' tpl-row-locked' : ''}" data-id="${tpl.id}">
       <td class="tpl-td-name">
         <div class="tpl-name-display">
           <span class="tpl-name-text">${tpl.name}</span>
-          <button class="tpl-rename-btn" data-id="${tpl.id}" title="Rename">✏</button>
+          ${locked ? '<span class="tpl-lock-icon" title="Locked">🔒</span>' : ''}
+          ${!locked ? `<button class="tpl-rename-btn" data-id="${tpl.id}" title="Rename">✏</button>` : ''}
         </div>
         <div class="tpl-rename-wrap hidden">
           <input class="tpl-rename-input" type="text" value="${tpl.name}" data-id="${tpl.id}" maxlength="60">
@@ -246,6 +280,11 @@ function templateRowHTML(tpl) {
         <span class="tpl-markets-total">/ ${total}</span>
         <span class="tpl-markets-label">markets</span>
       </td>
+      <td class="tpl-td-leagues">
+        ${leagues > 0
+          ? `<span class="tpl-league-badge tpl-league-has">${leagues} league${leagues !== 1 ? 's' : ''}</span>`
+          : `<span class="tpl-league-none">—</span>`}
+      </td>
       <td>
         <label class="tpl-status-toggle">
           <input type="checkbox" class="tpl-status-cb" data-id="${tpl.id}" ${tpl.active ? 'checked' : ''}>
@@ -253,10 +292,19 @@ function templateRowHTML(tpl) {
           <span class="tpl-status-label">${tpl.active ? 'Active' : 'Inactive'}</span>
         </label>
       </td>
-      <td class="tpl-td-date">${created}</td>
+      <td class="tpl-td-date">
+        ${created}
+        ${updRel ? `<div class="tpl-history">${updRel}${updBy}</div>` : ''}
+      </td>
       <td class="tpl-td-actions">
-        <button class="tpl-edit-btn"   data-id="${tpl.id}">Edit</button>
-        <button class="tpl-delete-btn" data-id="${tpl.id}">Delete</button>
+        <button class="tpl-lock-btn ${locked ? 'tpl-locked' : ''}" data-id="${tpl.id}"
+          title="${locked ? 'Unlock template' : 'Lock template'}">${locked ? '🔓' : '🔒'}</button>
+        <button class="tpl-edit-btn" data-id="${tpl.id}"
+          ${locked ? 'disabled title="Unlock template before editing"' : ''}>Edit</button>
+        <button class="tpl-clone-btn"   data-id="${tpl.id}" title="Clone template">Clone</button>
+        <button class="tpl-preview-btn" data-id="${tpl.id}" title="Preview pricing against a live event">Preview</button>
+        <button class="tpl-delete-btn"  data-id="${tpl.id}"
+          ${locked ? 'disabled title="Unlock template before deleting"' : ''}>Delete</button>
       </td>
     </tr>`;
 }
@@ -268,13 +316,13 @@ function tableHTML(templates) {
         <thead>
           <tr>
             <th>Name</th><th>Sport</th><th>Type</th>
-            <th>Markets</th><th>Status</th><th>Created</th><th>Actions</th>
+            <th>Markets</th><th>Leagues</th><th>Status</th><th>Updated</th><th>Actions</th>
           </tr>
         </thead>
         <tbody>
           ${templates.length
             ? templates.map(templateRowHTML).join('')
-            : '<tr><td colspan="7" class="admin-empty">No templates match the current filters.</td></tr>'}
+            : '<tr><td colspan="8" class="admin-empty">No templates match the current filters.</td></tr>'}
         </tbody>
       </table>
     </div>`;
@@ -516,6 +564,261 @@ function formModalHTML(tpl) {
         </div>
       </div>
     </div>`;
+}
+
+// ── Compare modal ─────────────────────────────────────────
+let _cmpSelected = new Set();
+
+function openCompareModal() {
+  const templates = getTemplates().filter(t => t.active);
+  if (templates.length < 2) {
+    showTplToast('Need at least 2 active templates to compare.');
+    return;
+  }
+  _cmpSelected = new Set(templates.slice(0, Math.min(3, templates.length)).map(t => t.id));
+  document.getElementById('tpl-cmp-backdrop')?.remove();
+  document.body.insertAdjacentHTML('beforeend', compareModalHTML(templates));
+  const backdrop = document.getElementById('tpl-cmp-backdrop');
+  requestAnimationFrame(() => backdrop.classList.add('visible'));
+  wireCompareModal(backdrop, templates);
+}
+
+function compareModalHTML(templates) {
+  return `
+    <div class="tpl-modal-backdrop" id="tpl-cmp-backdrop">
+      <div class="tpl-modal tpl-cmp-modal" role="dialog" aria-modal="true">
+        <div class="tpl-modal-header">
+          <h3>Compare Templates</h3>
+          <button class="tpl-modal-close" id="tpl-cmp-close">&times;</button>
+        </div>
+        <div class="tpl-cmp-picker">
+          ${templates.map(t => `
+            <label class="tpl-cmp-check">
+              <input type="checkbox" class="tpl-cmp-cb" data-id="${t.id}" ${_cmpSelected.has(t.id) ? 'checked' : ''}>
+              ${t.name}
+            </label>`).join('')}
+        </div>
+        <div class="tpl-modal-body" id="tpl-cmp-body">
+          ${compareTableHTML(templates.filter(t => _cmpSelected.has(t.id)))}
+        </div>
+      </div>
+    </div>`;
+}
+
+function compareTableHTML(selected) {
+  if (!selected.length) return '<p class="tpl-cmp-empty">Select templates above to compare.</p>';
+  return `
+    <div class="tpl-cmp-table-wrap">
+      <table class="tpl-cmp-tbl">
+        <thead>
+          <tr>
+            <th class="tpl-cmp-th-mkt">Market</th>
+            ${selected.map(t => `<th class="tpl-cmp-th-tpl">${t.name}</th>`).join('')}
+          </tr>
+        </thead>
+        <tbody>
+          ${MARKET_DEFS.map(def => {
+            const configs = selected.map(t => (t.markets || []).find(m => m.id === def.id));
+            const anyOn = configs.some(c => c?.enabled);
+            return `
+              <tr class="tpl-cmp-row${anyOn ? '' : ' tpl-cmp-row-off'}">
+                <td class="tpl-cmp-td-mkt">${def.name}</td>
+                ${configs.map(c => {
+                  if (!c) return `<td class="tpl-cmp-na">—</td>`;
+                  if (!c.enabled) return `<td class="tpl-cmp-disabled"><span class="tpl-cmp-off">Off</span></td>`;
+                  return `<td class="tpl-cmp-on">
+                    <span class="tpl-cmp-margin">${c.margin}%</span>
+                    <span class="tpl-cmp-sep">·</span>
+                    <span class="tpl-cmp-maxbet">£${c.maxBet.toLocaleString()}</span>
+                    <span class="tpl-cmp-sep">·</span>
+                    <span class="tpl-cmp-ladder">${c.ladder === 'us' ? 'US' : 'EU'}</span>
+                  </td>`;
+                }).join('')}
+              </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function wireCompareModal(backdrop, templates) {
+  const close = () => {
+    backdrop.classList.remove('visible');
+    backdrop.addEventListener('transitionend', () => backdrop.remove(), { once: true });
+  };
+  backdrop.querySelector('#tpl-cmp-close').addEventListener('click', close);
+  backdrop.addEventListener('click', e => { if (e.target === backdrop) close(); });
+  backdrop.querySelectorAll('.tpl-cmp-cb').forEach(cb =>
+    cb.addEventListener('change', () => {
+      if (cb.checked) _cmpSelected.add(cb.dataset.id);
+      else _cmpSelected.delete(cb.dataset.id);
+      const body = backdrop.querySelector('#tpl-cmp-body');
+      if (body) body.innerHTML = compareTableHTML(templates.filter(t => _cmpSelected.has(t.id)));
+    })
+  );
+}
+
+// ── Preview modal ─────────────────────────────────────────
+function openPreviewModal(tpl) {
+  document.getElementById('tpl-prev-backdrop')?.remove();
+  document.body.insertAdjacentHTML('beforeend', previewModalHTML(tpl));
+  const backdrop = document.getElementById('tpl-prev-backdrop');
+  requestAnimationFrame(() => backdrop.classList.add('visible'));
+  wirePreviewModal(backdrop, tpl);
+}
+
+function previewModalHTML(tpl) {
+  const events    = state.activeEvents || [];
+  const hasEvents = events.length > 0;
+  return `
+    <div class="tpl-modal-backdrop" id="tpl-prev-backdrop">
+      <div class="tpl-modal tpl-prev-modal" role="dialog" aria-modal="true">
+        <div class="tpl-modal-header">
+          <h3>Preview: ${tpl.name}</h3>
+          <button class="tpl-modal-close" id="tpl-prev-close">&times;</button>
+        </div>
+        <div class="tpl-modal-body">
+          <div class="tpl-prev-event-row">
+            <label class="tpl-label">Live event</label>
+            ${hasEvents
+              ? `<select class="tpl-select tpl-prev-event-sel" id="tpl-prev-event-sel">
+                   ${events.map(e => {
+                     const { home, away } = getTeamNames(e);
+                     return `<option value="${e.id}">${home} vs ${away}</option>`;
+                   }).join('')}
+                 </select>`
+              : `<span class="tpl-prev-no-events">No events loaded — open a league in the Trading view first</span>`}
+          </div>
+          <div id="tpl-prev-table-wrap" class="tpl-prev-table-wrap">
+            ${hasEvents ? computePreviewHTML(tpl, events[0]) : ''}
+          </div>
+        </div>
+        <div class="tpl-modal-footer">
+          <button class="tpl-cancel-btn" id="tpl-prev-ok">Close</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function computePreviewHTML(tpl, event) {
+  if (!event) return '<p class="tpl-prev-empty">No event selected.</p>';
+  const matchPeriod = getMatchPeriodFromEvent(event);
+  if (!matchPeriod) return '<p class="tpl-prev-empty">No odds data for this event.</p>';
+
+  const eventStart = event.starts || event.startTime;
+  const rows = [];
+
+  const ml = matchPeriod.moneyLine || matchPeriod.moneyline;
+  if (ml) {
+    const conf = (tpl.markets || []).find(m => m.id === '1x2');
+    if (conf?.enabled) {
+      const tl     = eventStart ? resolveActiveKey(conf, eventStart) : null;
+      const margin = tl ? tl.key : conf.margin;
+      const shin   = calculateShinNoVig([ml.homePrice || ml.home, ml.drawPrice || ml.draw, ml.awayPrice || ml.away]);
+      const { home, away } = getTeamNames(event);
+      rows.push({ name: '1x2', margin, selections: [
+        { label: home,   fair: shin[0], offer: applyMarginAndLadder(shin[0], margin, conf.ladder) },
+        { label: 'Draw', fair: shin[1], offer: applyMarginAndLadder(shin[1], margin, conf.ladder) },
+        { label: away,   fair: shin[2], offer: applyMarginAndLadder(shin[2], margin, conf.ladder) },
+      ]});
+    }
+  }
+
+  if (Array.isArray(matchPeriod.overUnder)) {
+    const ou25 = matchPeriod.overUnder.find(ou => parseFloat(ou.points) === 2.5);
+    if (ou25) {
+      const conf = (tpl.markets || []).find(m => m.id === 'ou25');
+      if (conf?.enabled) {
+        const tl     = eventStart ? resolveActiveKey(conf, eventStart) : null;
+        const margin = tl ? tl.key : conf.margin;
+        const shin   = calculateShinNoVig([ou25.overOdds || ou25.over, ou25.underOdds || ou25.under]);
+        rows.push({ name: 'Over/Under 2.5', margin, selections: [
+          { label: 'Over 2.5',  fair: shin[0], offer: applyMarginAndLadder(shin[0], margin, conf.ladder) },
+          { label: 'Under 2.5', fair: shin[1], offer: applyMarginAndLadder(shin[1], margin, conf.ladder) },
+        ]});
+      }
+    }
+
+    const ou15 = matchPeriod.overUnder.find(ou => parseFloat(ou.points) === 1.5);
+    if (ou15) {
+      const conf = (tpl.markets || []).find(m => m.id === 'ou15');
+      if (conf?.enabled) {
+        const tl     = eventStart ? resolveActiveKey(conf, eventStart) : null;
+        const margin = tl ? tl.key : conf.margin;
+        const shin   = calculateShinNoVig([ou15.overOdds || ou15.over, ou15.underOdds || ou15.under]);
+        rows.push({ name: 'Over/Under 1.5', margin, selections: [
+          { label: 'Over 1.5',  fair: shin[0], offer: applyMarginAndLadder(shin[0], margin, conf.ladder) },
+          { label: 'Under 1.5', fair: shin[1], offer: applyMarginAndLadder(shin[1], margin, conf.ladder) },
+        ]});
+      }
+    }
+
+    const ou35 = matchPeriod.overUnder.find(ou => parseFloat(ou.points) === 3.5);
+    if (ou35) {
+      const conf = (tpl.markets || []).find(m => m.id === 'ou35');
+      if (conf?.enabled) {
+        const tl     = eventStart ? resolveActiveKey(conf, eventStart) : null;
+        const margin = tl ? tl.key : conf.margin;
+        const shin   = calculateShinNoVig([ou35.overOdds || ou35.over, ou35.underOdds || ou35.under]);
+        rows.push({ name: 'Over/Under 3.5', margin, selections: [
+          { label: 'Over 3.5',  fair: shin[0], offer: applyMarginAndLadder(shin[0], margin, conf.ladder) },
+          { label: 'Under 3.5', fair: shin[1], offer: applyMarginAndLadder(shin[1], margin, conf.ladder) },
+        ]});
+      }
+    }
+  }
+
+  if (Array.isArray(matchPeriod.handicap) && matchPeriod.handicap.length) {
+    const conf = (tpl.markets || []).find(m => m.id === 'asian_hcp');
+    if (conf?.enabled) {
+      const line   = matchPeriod.handicap.find(h => parseFloat(h.hdp) === 0) || matchPeriod.handicap[Math.floor(matchPeriod.handicap.length / 2)];
+      if (line) {
+        const tl     = eventStart ? resolveActiveKey(conf, eventStart) : null;
+        const margin = tl ? tl.key : conf.margin;
+        const shin   = calculateShinNoVig([line.homePrice || line.home, line.awayPrice || line.away]);
+        const { home, away } = getTeamNames(event);
+        const hdp    = parseFloat(line.hdp || 0);
+        rows.push({ name: `Asian HCP (${hdp >= 0 ? '+' : ''}${hdp})`, margin, selections: [
+          { label: home, fair: shin[0], offer: applyMarginAndLadder(shin[0], margin, conf.ladder) },
+          { label: away, fair: shin[1], offer: applyMarginAndLadder(shin[1], margin, conf.ladder) },
+        ]});
+      }
+    }
+  }
+
+  if (!rows.length) return '<p class="tpl-prev-empty">No enabled markets with live API data for this event. Enable 1x2, OU, or Asian HCP in the template.</p>';
+
+  return `
+    <table class="tpl-prev-tbl">
+      <thead>
+        <tr><th>Market</th><th>Selection</th><th>Shin Fair</th><th>Margin</th><th>Offered</th></tr>
+      </thead>
+      <tbody>
+        ${rows.map(row => row.selections.map((sel, i) => `
+          <tr class="${i === 0 ? 'tpl-prev-first-row' : ''}">
+            ${i === 0 ? `<td class="tpl-prev-mkt" rowspan="${row.selections.length}">${row.name}<br><span class="tpl-prev-margin-lbl">${row.margin}% margin</span></td>` : ''}
+            <td class="tpl-prev-sel">${sel.label}</td>
+            <td class="tpl-prev-fair">${sel.fair ? sel.fair.toFixed(3) : '—'}</td>
+            <td class="tpl-prev-margin-cell">${row.margin}%</td>
+            <td class="tpl-prev-offer${sel.offer ? '' : ' tpl-prev-na'}">${sel.offer ? sel.offer.toFixed(2) : '—'}</td>
+          </tr>`).join('')).join('')}
+      </tbody>
+    </table>`;
+}
+
+function wirePreviewModal(backdrop, tpl) {
+  const close = () => {
+    backdrop.classList.remove('visible');
+    backdrop.addEventListener('transitionend', () => backdrop.remove(), { once: true });
+  };
+  backdrop.querySelector('#tpl-prev-close').addEventListener('click', close);
+  backdrop.querySelector('#tpl-prev-ok').addEventListener('click', close);
+  backdrop.addEventListener('click', e => { if (e.target === backdrop) close(); });
+  backdrop.querySelector('#tpl-prev-event-sel')?.addEventListener('change', e => {
+    const event = state.activeEvents.find(ev => String(ev.id) === e.target.value);
+    const wrap  = backdrop.querySelector('#tpl-prev-table-wrap');
+    if (wrap) wrap.innerHTML = computePreviewHTML(tpl, event);
+  });
 }
 
 // ── Main render ───────────────────────────────────────────
@@ -837,6 +1140,7 @@ function wireSectionEvents(panel) {
 
   panel.querySelector('#tpl-create-new').addEventListener('click', () => openForm(null));
   panel.querySelector('#tpl-my-ladders').addEventListener('click', () => showTplToast('Price Ladders configuration coming soon.'));
+  panel.querySelector('#tpl-compare').addEventListener('click', () => openCompareModal());
 
   // Inline rename
   panel.querySelectorAll('.tpl-rename-btn').forEach(btn => btn.addEventListener('click', () => enterRenameMode(btn.closest('td'))));
@@ -861,15 +1165,55 @@ function wireSectionEvents(panel) {
   panel.querySelectorAll('.tpl-edit-btn').forEach(btn =>
     btn.addEventListener('click', () => {
       const tpl = getTemplates().find(t => t.id === btn.dataset.id);
-      if (tpl) openForm(tpl);
+      if (tpl && !tpl.locked) openForm(tpl);
+    })
+  );
+
+  panel.querySelectorAll('.tpl-lock-btn').forEach(btn =>
+    btn.addEventListener('click', () => {
+      const tpl = getTemplates().find(t => t.id === btn.dataset.id);
+      if (!tpl) return;
+      updateTemplate(tpl.id, { locked: !tpl.locked });
+      renderTemplatesSection();
+      showTplToast(tpl.locked ? `"${tpl.name}" unlocked.` : `"${tpl.name}" locked.`);
+    })
+  );
+
+  panel.querySelectorAll('.tpl-clone-btn').forEach(btn =>
+    btn.addEventListener('click', () => {
+      const tpl = getTemplates().find(t => t.id === btn.dataset.id);
+      if (!tpl) return;
+      const newName = prompt(`Clone "${tpl.name}" — enter a name for the copy:`, `${tpl.name} (copy)`);
+      if (!newName?.trim()) return;
+      const clone = {
+        ...JSON.parse(JSON.stringify(tpl)),
+        id: uid(),
+        name: newName.trim(),
+        locked: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        updatedBy: null,
+      };
+      addTemplate(clone);
+      renderTemplatesSection();
+      showTplToast(`Cloned as "${clone.name}".`);
+    })
+  );
+
+  panel.querySelectorAll('.tpl-preview-btn').forEach(btn =>
+    btn.addEventListener('click', () => {
+      const tpl = getTemplates().find(t => t.id === btn.dataset.id);
+      if (tpl) openPreviewModal(tpl);
     })
   );
 
   panel.querySelectorAll('.tpl-delete-btn').forEach(btn =>
     btn.addEventListener('click', () => {
       const tpl = getTemplates().find(t => t.id === btn.dataset.id);
-      if (!tpl) return;
-      if (!confirm(`Delete template "${tpl.name}"? This cannot be undone.`)) return;
+      if (!tpl || tpl.locked) return;
+      const leagues = leagueCount(tpl.id);
+      const warn = leagues > 0 ? `\n\nWarning: this template is active on ${leagues} league${leagues !== 1 ? 's' : ''}. Deleting it will remove pricing for those leagues.` : '';
+      if (!confirm(`Delete template "${tpl.name}"? This cannot be undone.${warn}`)) return;
       deleteTemplate(btn.dataset.id);
       renderTemplatesSection();
     })
@@ -914,11 +1258,14 @@ function wireFormEvents(backdrop, editingTpl) {
       markets,
     };
 
+    const trader    = getCurrentTrader();
+    const updatedBy = trader?.name || trader?.username || trader?.email || null;
+
     if (editingTpl) {
-      updateTemplate(editingTpl.id, data);
+      updateTemplate(editingTpl.id, { ...data, updatedBy });
       showTplToast(`Template "${name}" updated.`);
     } else {
-      addTemplate({ ...data, id: uid(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+      addTemplate({ ...data, id: uid(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), updatedBy });
       showTplToast(`Template "${name}" created.`);
     }
 
