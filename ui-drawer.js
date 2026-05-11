@@ -40,7 +40,7 @@ function marketHasOffer(market, activeTpl) {
 
 // ── Drawer header controls ────────────────────────────────────────────────────
 
-function updateSuspendButton(eventId) {
+export function updateSuspendButton(eventId) {
   const btn = document.getElementById('suspend-event-btn');
   if (!btn) return;
   const suspended = isSuspended(eventId, 'event');

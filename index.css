@@ -747,6 +747,24 @@ body {
   background-color: rgba(255, 255, 255, 0.05) !important;
 }
 
+.market-table tbody tr.keyboard-focused-row td {
+  background-color: rgba(16, 185, 129, 0.10) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(16, 185, 129, 0.24),
+    inset 0 -1px 0 rgba(16, 185, 129, 0.24);
+}
+
+.market-table tbody tr.keyboard-focused-row td:first-child {
+  box-shadow:
+    inset 3px 0 0 var(--accent-color),
+    inset 0 1px 0 rgba(16, 185, 129, 0.24),
+    inset 0 -1px 0 rgba(16, 185, 129, 0.24);
+}
+
+.market-table tbody tr:focus {
+  outline: none;
+}
+
 @media (max-width: 600px) {
   .side-drawer {
     width: 100%;
@@ -782,6 +800,102 @@ body {
 
 .market-table tbody tr.move-alert-row td {
   animation: moveAlertRow 5s ease-out forwards;
+}
+
+/* ── Keyboard shortcut overlay ─────────────────────────── */
+.shortcut-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(2, 6, 23, 0.68);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+}
+
+.shortcut-overlay.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.shortcut-panel {
+  width: min(420px, 100%);
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
+}
+
+.shortcut-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.shortcut-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.shortcut-close {
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-color);
+  color: var(--text-secondary);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.shortcut-close:hover {
+  color: var(--text-primary);
+  border-color: var(--accent-color);
+}
+
+.shortcut-list {
+  display: grid;
+  gap: 0.5rem;
+  padding: 1rem 1.1rem 1.1rem;
+}
+
+.shortcut-list div {
+  display: grid;
+  grid-template-columns: 4rem 3rem 1fr;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 2.25rem;
+  color: var(--text-secondary);
+}
+
+.shortcut-list .single-key span {
+  grid-column: 3;
+}
+
+.shortcut-list kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.45rem;
+  min-height: 1.75rem;
+  padding: 0 0.45rem;
+  border: 1px solid var(--border-color);
+  border-bottom-color: rgba(255, 255, 255, 0.28);
+  border-radius: var(--radius-sm);
+  background: var(--bg-color);
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-family: inherit;
+  font-weight: 700;
 }
 
 /* ── Refresh timestamp badge ───────────────────────────── */

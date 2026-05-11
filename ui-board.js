@@ -1,12 +1,15 @@
-import { state, snapshotOdds, getOverride, getAllOverrideMeta, getTradingMode, isSuspended, hasAnySuspension, clearOverride, clearOverrideMetaSelection, hasAnyOverrideForEvent, setTradingMode, clearOverriddenLambdas, getLeagueSetting } from './state.js';
+import { state, snapshotOdds, getOverride, getAllOverrideMeta, getTradingMode, isSuspended, hasAnySuspension, clearOverride, clearOverrideMetaSelection, hasAnyOverrideForEvent, setTradingMode, clearOverriddenLambdas, clearAllOverridesForEvent, setSuspension, getLeagueSetting } from './state.js';
 import { fetchOdds, pushOddsHistory } from './api.js';
 import { evaluateOverrides, resolveTemplate, getMarketConfig, resolveActiveKey } from './pricing.js';
-import { openDrawer, updateModeButton, renderDrawerMarkets } from './ui-drawer.js';
+import { openDrawer, updateModeButton, updateSuspendButton, renderDrawerMarkets } from './ui-drawer.js';
 import { getTeamNames } from './utils.js';
 import { calculateShinNoVig, applyMarginAndLadder } from './math.js';
 import { openOddsHistory } from './odds-history-ui.js';
 
 // ── Override expiry processing ────────────────────────────────────────────────
+
+let focusedEventId = null;
+let shortcutsInstalled = false;
 
 function processOverrideExpiries(expiries) {
   if (!expiries.length) return;
@@ -83,6 +86,165 @@ function escapeAttr(value) {
 function persistOddsHistory(data) {
   pushOddsHistory(data).catch(error => {
     console.warn('Odds history snapshot failed:', error);
+  });
+}
+
+function visibleEventRows() {
+  return Array.from(document.querySelectorAll('#odds-container tr[data-event-id]'));
+}
+
+function setFocusedEventRow(eventId, { scroll = true, focus = true } = {}) {
+  const rows = visibleEventRows();
+  if (!rows.length) {
+    focusedEventId = null;
+    return;
+  }
+
+  const row = rows.find(r => r.dataset.eventId === String(eventId)) || rows[0];
+  focusedEventId = row.dataset.eventId;
+  rows.forEach(r => {
+    const active = r === row;
+    r.classList.toggle('keyboard-focused-row', active);
+    r.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  if (focus && !isTypingTarget(document.activeElement)) {
+    try {
+      row.focus({ preventScroll: true });
+    } catch {
+      row.focus();
+    }
+  }
+  if (scroll) row.scrollIntoView({ block: 'nearest' });
+}
+
+function moveFocusedEventRow(delta) {
+  const rows = visibleEventRows();
+  if (!rows.length) return;
+  const currentIndex = Math.max(0, rows.findIndex(r => r.dataset.eventId === String(focusedEventId)));
+  const nextIndex = Math.min(rows.length - 1, Math.max(0, currentIndex + delta));
+  setFocusedEventRow(rows[nextIndex].dataset.eventId);
+}
+
+function focusedEvent() {
+  return state.activeEvents.find(e => String(e.id) === String(focusedEventId));
+}
+
+function rerenderBoardPreservingFocus() {
+  const current = focusedEventId;
+  filterAndRenderBoard();
+  if (current) setFocusedEventRow(current, { scroll: false });
+}
+
+function openFocusedDrawer() {
+  if (focusedEventId) openDrawer(focusedEventId);
+}
+
+function toggleFocusedSuspension() {
+  if (!focusedEventId) return;
+  const suspended = isSuspended(focusedEventId, 'event');
+  setSuspension(focusedEventId, 'event', suspended ? 'open' : 'suspended');
+  rerenderBoardPreservingFocus();
+  if (state.drawerEventId?.toString() === String(focusedEventId)) {
+    const ev = focusedEvent();
+    if (ev) renderDrawerMarkets(ev);
+    updateSuspendButton(focusedEventId);
+  }
+}
+
+function toggleFocusedManualMode() {
+  if (!focusedEventId) return;
+  const isManual = getTradingMode(focusedEventId) === 'manual';
+  if (isManual) {
+    clearAllOverridesForEvent(focusedEventId);
+    setTradingMode(focusedEventId, 'auto');
+  } else {
+    setTradingMode(focusedEventId, 'manual');
+  }
+  rerenderBoardPreservingFocus();
+  if (state.drawerEventId?.toString() === String(focusedEventId)) {
+    updateModeButton(focusedEventId);
+    const ev = focusedEvent();
+    if (ev) renderDrawerMarkets(ev);
+  }
+}
+
+function isTypingTarget(target) {
+  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName) || target?.isContentEditable;
+}
+
+function isModalOpen() {
+  return !!document.querySelector('.tpl-modal-backdrop.visible, .odds-history-backdrop.visible, .shortcut-overlay.visible');
+}
+
+function ensureShortcutOverlay() {
+  let overlay = document.getElementById('shortcut-overlay');
+  if (overlay) return overlay;
+
+  overlay = document.createElement('div');
+  overlay.id = 'shortcut-overlay';
+  overlay.className = 'shortcut-overlay';
+  overlay.innerHTML = `
+    <div class="shortcut-panel" role="dialog" aria-modal="true" aria-labelledby="shortcut-title">
+      <div class="shortcut-header">
+        <h3 id="shortcut-title">Keyboard Shortcuts</h3>
+        <button type="button" class="shortcut-close" aria-label="Close shortcuts">&times;</button>
+      </div>
+      <div class="shortcut-list">
+        <div class="double-key"><kbd>↑</kbd><kbd>←</kbd><span>Previous event row</span></div>
+        <div class="double-key"><kbd>↓</kbd><kbd>→</kbd><span>Next event row</span></div>
+        <div class="single-key"><kbd>Space</kbd><span>Open selected event drawer</span></div>
+        <div class="single-key"><kbd>S</kbd><span>Suspend / publish selected event</span></div>
+        <div class="single-key"><kbd>M</kbd><span>Toggle selected event manual / auto</span></div>
+        <div class="single-key"><kbd>?</kbd><span>Show this overlay</span></div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) overlay.classList.remove('visible');
+  });
+  overlay.querySelector('.shortcut-close').addEventListener('click', () => overlay.classList.remove('visible'));
+  return overlay;
+}
+
+function toggleShortcutOverlay(show = true) {
+  ensureShortcutOverlay().classList.toggle('visible', show);
+}
+
+function installKeyboardShortcuts() {
+  if (shortcutsInstalled) return;
+  shortcutsInstalled = true;
+  document.addEventListener('keydown', e => {
+    if (isTypingTarget(e.target)) return;
+
+    if (e.key === 'Escape') {
+      document.getElementById('shortcut-overlay')?.classList.remove('visible');
+      return;
+    }
+
+    if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
+      e.preventDefault();
+      toggleShortcutOverlay(true);
+      return;
+    }
+
+    if (isModalOpen()) return;
+
+    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      moveFocusedEventRow(1);
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+      e.preventDefault();
+      moveFocusedEventRow(-1);
+    } else if (e.key === ' ') {
+      e.preventDefault();
+      openFocusedDrawer();
+    } else if (e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      toggleFocusedSuspension();
+    } else if (e.key.toLowerCase() === 'm') {
+      e.preventDefault();
+      toggleFocusedManualMode();
+    }
   });
 }
 
@@ -269,7 +431,7 @@ function renderEventTable(eventsToRender, { alertMoves = false } = {}) {
     const rowClass  = [isManual ? 'manual-row' : '', evtSuspended ? 'event-suspended' : '', hasMoveAlert ? 'move-alert-row' : ''].filter(Boolean).join(' ');
     const matchName = `${homeTeam} vs ${awayTeam}`;
 
-    html += `<tr data-event-id="${event.id}" data-match-name="${escapeAttr(matchName)}" class="${rowClass}">
+    html += `<tr data-event-id="${event.id}" data-match-name="${escapeAttr(matchName)}" class="${rowClass}" tabindex="0">
       <td>
         <div class="match-time">${time}${manualBadge}${suspBadge}</div>
         <div class="match-teams">${homeTeam} vs ${awayTeam}</div>
@@ -285,9 +447,14 @@ function renderEventTable(eventsToRender, { alertMoves = false } = {}) {
   html += `</tbody></table>`;
   oddsContainer.innerHTML = html;
   if (alertMoves && oddsContainer.querySelector('.move-alert-row')) playMoveAlertSound();
+  installKeyboardShortcuts();
 
   oddsContainer.querySelectorAll('tr[data-event-id]').forEach(tr => {
-    tr.addEventListener('click', () => openDrawer(tr.getAttribute('data-event-id')));
+    tr.addEventListener('click', () => {
+      setFocusedEventRow(tr.getAttribute('data-event-id'), { scroll: false });
+      openDrawer(tr.getAttribute('data-event-id'));
+    });
+    tr.addEventListener('focus', () => setFocusedEventRow(tr.getAttribute('data-event-id'), { scroll: false, focus: false }));
   });
   oddsContainer.querySelectorAll('.odds-btn[data-history-market]').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -304,6 +471,11 @@ function renderEventTable(eventsToRender, { alertMoves = false } = {}) {
       });
     });
   });
+  const rows = visibleEventRows();
+  if (rows.length) {
+    const nextFocus = rows.find(r => r.dataset.eventId === String(focusedEventId))?.dataset.eventId || rows[0].dataset.eventId;
+    setFocusedEventRow(nextFocus, { scroll: false, focus: false });
+  }
 }
 
 export function renderOdds(data, options = {}) {
