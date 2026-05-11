@@ -36,3 +36,8 @@
   from   = "/api/trader-state"
   to     = "/.netlify/functions/trader-state"
   status = 200
+
+[[redirects]]
+  from   = "/api/audit-log"
+  to     = "/.netlify/functions/audit-log"
+  status = 200

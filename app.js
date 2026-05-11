@@ -3,6 +3,7 @@ import { state, hydrateSharedState, hydrateTraderState } from './state.js';
 import { renderLeagues, closeDrawer, loadOdds, filterAndRenderBoard } from './ui.js';
 import { renderAdminPanel } from './admin.js';
 import { renderTemplatesSection, openTemplateById } from './templates-admin.js';
+import { renderAuditPanel } from './audit-admin.js';
 import { clearTraderSession, getSessionExpiresAt, getValidTraderSession } from './auth-session.js';
 
 let refreshInterval = null;
@@ -64,12 +65,20 @@ function showAdminSection(section) {
   );
   const adminPanel    = document.getElementById('admin-panel');
   const templatesPanel = document.getElementById('templates-panel');
+  const auditPanel = document.getElementById('audit-panel');
   if (section === 'templates') {
     adminPanel.classList.add('hidden');
     templatesPanel.classList.remove('hidden');
+    auditPanel.classList.add('hidden');
     renderTemplatesSection();
+  } else if (section === 'audit') {
+    adminPanel.classList.add('hidden');
+    templatesPanel.classList.add('hidden');
+    auditPanel.classList.remove('hidden');
+    renderAuditPanel();
   } else {
     templatesPanel.classList.add('hidden');
+    auditPanel.classList.add('hidden');
     adminPanel.classList.remove('hidden');
     renderAdminPanel();
   }

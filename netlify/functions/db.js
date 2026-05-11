@@ -1,6 +1,7 @@
 // Shared Turso client and schema initialisation for all Netlify Functions.
 // Uses the HTTP transport — no native binaries, works in Netlify serverless.
 
+const crypto = require('crypto');
 const { createClient } = require('@libsql/client/http');
 
 let _client = null;
@@ -94,6 +95,16 @@ const SCHEMA = `
     trader_id       TEXT PRIMARY KEY,
     expanded_groups TEXT DEFAULT '[]'
   );
+
+  CREATE TABLE IF NOT EXISTS audit_log (
+    id          TEXT PRIMARY KEY,
+    trader_id   TEXT,
+    entity      TEXT NOT NULL,
+    action      TEXT NOT NULL,
+    before_json TEXT,
+    after_json  TEXT,
+    ts          TEXT DEFAULT (datetime('now'))
+  );
 `;
 
 async function initSchema(db) {
@@ -117,6 +128,25 @@ async function initSchema(db) {
   }
 }
 
+function stableJson(value) {
+  return value == null ? null : JSON.stringify(value);
+}
+
+async function writeAuditLog(db, { traderId = null, entity, action, before = null, after = null }) {
+  await db.execute({
+    sql: `INSERT INTO audit_log (id, trader_id, entity, action, before_json, after_json, ts)
+          VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
+    args: [
+      crypto.randomUUID(),
+      traderId ? String(traderId) : null,
+      String(entity),
+      String(action),
+      stableJson(before),
+      stableJson(after),
+    ],
+  });
+}
+
 function ok(body, status = 200) {
   return {
     statusCode: status,
@@ -133,4 +163,4 @@ function err(message, status = 400) {
   };
 }
 
-module.exports = { getClient, initSchema, ok, err };
+module.exports = { getClient, initSchema, ok, err, writeAuditLog };

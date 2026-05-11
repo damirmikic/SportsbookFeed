@@ -244,6 +244,7 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
           shinFair: null,
           modelFair: s.price,
           prob: s.prob,
+          reason: s.reason,
           isApiOnly: false
         };
       });

@@ -282,11 +282,16 @@ export function snapshotOdds() {
     }
     if (!matchPeriod) return;
     const ml = matchPeriod.moneyLine || matchPeriod.moneyline;
-    if (!ml) return;
+    const ou25 = Array.isArray(matchPeriod.overUnder)
+      ? matchPeriod.overUnder.find(ou => parseFloat(ou.points) === 2.5)
+      : null;
+    if (!ml && !ou25) return;
     snap[event.id] = {
-      home: parseFloat(ml.homePrice || ml.home) || null,
-      draw: parseFloat(ml.drawPrice || ml.draw) || null,
-      away: parseFloat(ml.awayPrice || ml.away) || null,
+      home: ml ? parseFloat(ml.homePrice || ml.home) || null : null,
+      draw: ml ? parseFloat(ml.drawPrice || ml.draw) || null : null,
+      away: ml ? parseFloat(ml.awayPrice || ml.away) || null : null,
+      over25: ou25 ? parseFloat(ou25.overOdds || ou25.over) || null : null,
+      under25: ou25 ? parseFloat(ou25.underOdds || ou25.under) || null : null,
     };
   });
   return snap;

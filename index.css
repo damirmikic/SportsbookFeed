@@ -644,6 +644,17 @@ body {
   border-bottom: 2px solid #334155;
 }
 
+.model-fallback-notice {
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: var(--radius-sm);
+  color: #fde68a;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
 .lambda-title {
   font-size: 0.85rem;
   color: #94a3b8;
@@ -748,6 +759,10 @@ body {
   0%   { background: rgba(239,68,68,0.35); }
   100% { background: transparent; }
 }
+@keyframes moveAlertRow {
+  0%, 70% { background: rgba(245, 158, 11, 0.22); box-shadow: inset 3px 0 0 #f59e0b; }
+  100%   { background: transparent; box-shadow: inset 3px 0 0 transparent; }
+}
 
 .odds-btn.price-up {
   color: #4ade80;
@@ -759,6 +774,10 @@ body {
   color: #f87171;
   border-color: #f87171;
   animation: flashDown 1.8s ease-out forwards;
+}
+
+.market-table tbody tr.move-alert-row td {
+  animation: moveAlertRow 5s ease-out forwards;
 }
 
 /* ── Refresh timestamp badge ───────────────────────────── */
@@ -1933,6 +1952,33 @@ body {
 .admin-section-btn.active {
   color: var(--accent-color);
   border-bottom-color: var(--accent-color);
+}
+
+.audit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.audit-header h2 {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.audit-tbl td {
+  vertical-align: top;
+}
+
+.audit-tbl code {
+  display: block;
+  max-width: 280px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #cbd5e1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.76rem;
 }
 
 /* ═══════════════════════════════════════════════════════════

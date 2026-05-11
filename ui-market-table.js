@@ -312,13 +312,14 @@ export function renderMarketTable(market) {
     const tr = document.createElement('tr');
     if (selSusp) tr.classList.add('selection-suspended');
 
-    const fmtPrice = v => {
+    const fmtPrice = (v, reason = null) => {
+      if (reason === 'zero_action') return 'N/A';
       const n = parseFloat(v);
       return (!isNaN(n) && n > 1) ? n.toFixed(2) : '-';
     };
 
     const shinVal  = fmtPrice(row.shinFair);
-    const modelVal = fmtPrice(row.modelFair);
+    const modelVal = fmtPrice(row.modelFair, row.reason);
     const pinVal   = fmtPrice(row.value);
 
     const overrideKey     = `${state.drawerEventId}|${market.id}|${row.label}`;
@@ -362,7 +363,7 @@ export function renderMarketTable(market) {
     tdShin.textContent = shinVal;
 
     const tdModel = document.createElement('td');
-    tdModel.className   = `${modelVal !== '-' ? 'price-cell' : 'empty-cell'} ${getEdgeClass(modelVal, shinVal)}`;
+    tdModel.className   = `${modelVal !== '-' && modelVal !== 'N/A' ? 'price-cell' : 'empty-cell'} ${getEdgeClass(modelVal, shinVal)}`;
     tdModel.textContent = modelVal;
 
     const tdPin = document.createElement('td');
@@ -432,7 +433,11 @@ export function renderMarketTable(market) {
         });
         updateOverrideAlertState(state.drawerEventId, market.id, hasVB ? 'VALUE_BET' : 'CLEAN', maxGap);
 
-        await solveLambdasFromOverrides(state.drawerEventId, market.id, market.rows, drawerEvent);
+        try {
+          await solveLambdasFromOverrides(state.drawerEventId, market.id, market.rows, drawerEvent);
+        } catch (error) {
+          console.warn('Model solve failed after override:', error);
+        }
         setTradingMode(state.drawerEventId, 'manual');
         updateModeButton(state.drawerEventId);
         const ev = state.activeEvents.find(e => e.id.toString() === state.drawerEventId?.toString());

@@ -32,6 +32,7 @@ App Startup
 | Data | Scope | Tables |
 |------|-------|--------|
 | Trader profiles | Global | `traders` |
+| Audit history | Global | `audit_log` |
 | Templates | Global (shared) | `templates` |
 | League settings | Global (shared) | `league_settings` |
 | Match-level template overrides | Global (shared) | `match_templates` |
@@ -59,6 +60,21 @@ CREATE TABLE IF NOT EXISTS traders (
   locked_until    TEXT,                 -- ISO timestamp; lock clears after expiry
   created_at TEXT DEFAULT (datetime('now')),
   active     INTEGER DEFAULT 1          -- soft delete
+);
+```
+
+### `audit_log`
+Append-only record of durable POST writes.
+
+```sql
+CREATE TABLE IF NOT EXISTS audit_log (
+  id          TEXT PRIMARY KEY,
+  trader_id   TEXT,
+  entity      TEXT NOT NULL,
+  action      TEXT NOT NULL,
+  before_json TEXT,
+  after_json  TEXT,
+  ts          TEXT DEFAULT (datetime('now'))
 );
 ```
 
@@ -213,6 +229,12 @@ All functions are in `netlify/functions/`. They share a Turso client via `db.js`
 | `POST` | — | `{ name, color, pin }` | Create trader → SHA-256 hash PIN |
 | `POST` | `?verify=1` | `{ id, pin }` | Verify PIN → `{ ok: true/false }`; locks for 5 minutes after 5 failures |
 | `PUT` | `?id=` | `{ name?, color?, pin? }` | Update trader |
+
+### `audit-log.js` — `/api/audit-log`
+
+| Method | Query | Body | Action |
+|--------|-------|------|--------|
+| `GET` | `?limit=100` | — | Return recent audit rows with trader, entity, action, before/after, timestamp |
 
 ### `shared-state.js` — `/api/shared-state`
 

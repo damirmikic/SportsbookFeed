@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { getClient, initSchema, ok, err } = require('./db');
+const { getClient, initSchema, ok, err, writeAuditLog } = require('./db');
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_DURATION_MS = 5 * 60 * 1000;
@@ -71,10 +71,31 @@ exports.handler = async (event) => {
           args: [String(id)],
         });
         const row = result.rows[0];
-        if (!row) return ok({ ok: false });
+        if (!row) {
+          await writeAuditLog(db, {
+            traderId: String(id),
+            entity: 'traders',
+            action: 'verify_missing',
+            before: null,
+            after: { ok: false },
+          });
+          return ok({ ok: false });
+        }
+
+        const before = {
+          failed_attempts: Number(row.failed_attempts || 0),
+          locked_until: row.locked_until || null,
+        };
 
         const lockedUntil = parseLockedUntil(row.locked_until);
         if (lockedUntil > Date.now()) {
+          await writeAuditLog(db, {
+            traderId: String(id),
+            entity: 'traders',
+            action: 'verify_locked',
+            before,
+            after: before,
+          });
           return err(lockMessage(lockedUntil), 423);
         }
         const baseFailedAttempts = lockedUntil ? 0 : Number(row.failed_attempts || 0);
@@ -83,6 +104,13 @@ exports.handler = async (event) => {
           await db.execute({
             sql: 'UPDATE traders SET failed_attempts = 0, locked_until = NULL WHERE id = ? AND active = 1',
             args: [String(id)],
+          });
+          await writeAuditLog(db, {
+            traderId: String(id),
+            entity: 'traders',
+            action: 'verify_success',
+            before,
+            after: { failed_attempts: 0, locked_until: null },
           });
           return ok({ ok: true });
         }
@@ -94,6 +122,14 @@ exports.handler = async (event) => {
         await db.execute({
           sql: 'UPDATE traders SET failed_attempts = ?, locked_until = ? WHERE id = ? AND active = 1',
           args: [failedAttempts, nextLockedUntil, String(id)],
+        });
+        const after = { failed_attempts: failedAttempts, locked_until: nextLockedUntil };
+        await writeAuditLog(db, {
+          traderId: String(id),
+          entity: 'traders',
+          action: nextLockedUntil ? 'verify_lock' : 'verify_failure',
+          before,
+          after,
         });
 
         if (nextLockedUntil) {
@@ -116,6 +152,13 @@ exports.handler = async (event) => {
       await db.execute({
         sql: 'INSERT INTO traders (id, name, color, pin_hash, failed_attempts, locked_until) VALUES (?, ?, ?, ?, 0, NULL)',
         args: [trader.id, trader.name, trader.color, trader.pinHash],
+      });
+      await writeAuditLog(db, {
+        traderId: trader.id,
+        entity: 'traders',
+        action: 'create',
+        before: null,
+        after: { id: trader.id, name: trader.name, color: trader.color },
       });
 
       return ok({ id: trader.id, name: trader.name, color: trader.color }, 201);

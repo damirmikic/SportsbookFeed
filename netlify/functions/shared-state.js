@@ -1,4 +1,4 @@
-const { getClient, initSchema, ok, err } = require('./db');
+const { getClient, initSchema, ok, err, writeAuditLog } = require('./db');
 
 function cors(statusCode = 200) {
   return {
@@ -33,6 +33,32 @@ async function replaceRows(db, statements) {
   await db.batch(statements, 'write');
 }
 
+async function readSharedEntity(db, entity) {
+  if (entity === 'templates') {
+    const result = await db.execute('SELECT data FROM templates ORDER BY id');
+    return result.rows.map((row) => JSON.parse(row.data));
+  }
+  if (entity === 'league-settings') {
+    const result = await db.execute('SELECT league_code, data FROM league_settings');
+    return rowMap(result.rows, 'league_code');
+  }
+  if (entity === 'match-templates') {
+    const result = await db.execute('SELECT event_id, template_id FROM match_templates');
+    const out = {};
+    result.rows.forEach((row) => { out[row.event_id] = row.template_id; });
+    return out;
+  }
+  if (entity === 'suspensions') {
+    const result = await db.execute('SELECT key, status, set_by, set_at FROM suspensions');
+    const out = {};
+    result.rows.forEach((row) => {
+      out[row.key] = { status: row.status, set_by: row.set_by, set_at: row.set_at };
+    });
+    return out;
+  }
+  return null;
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return cors();
 
@@ -65,8 +91,10 @@ exports.handler = async (event) => {
     if (event.httpMethod === 'POST') {
       const entity = event.queryStringParameters?.entity;
       const body = parseBody(event);
+      const traderId = event.queryStringParameters?.traderId || null;
 
       if (entity === 'templates') {
+        const before = await readSharedEntity(db, entity);
         const templates = Array.isArray(body) ? body : [];
         const statements = [{ sql: 'DELETE FROM templates', args: [] }];
         templates.forEach((template) => {
@@ -76,10 +104,12 @@ exports.handler = async (event) => {
           });
         });
         await replaceRows(db, statements);
+        await writeAuditLog(db, { traderId, entity, action: 'replace', before, after: templates });
         return ok({ ok: true });
       }
 
       if (entity === 'league-settings') {
+        const before = await readSharedEntity(db, entity);
         const entries = Object.entries(body || {});
         const statements = [{ sql: 'DELETE FROM league_settings', args: [] }];
         entries.forEach(([leagueCode, data]) => {
@@ -89,11 +119,12 @@ exports.handler = async (event) => {
           });
         });
         await replaceRows(db, statements);
+        await writeAuditLog(db, { traderId, entity, action: 'replace', before, after: body || {} });
         return ok({ ok: true });
       }
 
       if (entity === 'match-templates') {
-        const traderId = event.queryStringParameters?.traderId || null;
+        const before = await readSharedEntity(db, entity);
         const entries = Object.entries(body || {});
         const statements = [{ sql: 'DELETE FROM match_templates', args: [] }];
         entries.forEach(([eventId, templateId]) => {
@@ -104,11 +135,12 @@ exports.handler = async (event) => {
           });
         });
         await replaceRows(db, statements);
+        await writeAuditLog(db, { traderId, entity, action: 'replace', before, after: body || {} });
         return ok({ ok: true });
       }
 
       if (entity === 'suspensions') {
-        const traderId = event.queryStringParameters?.traderId || null;
+        const before = await readSharedEntity(db, entity);
         const statements = [{ sql: 'DELETE FROM suspensions', args: [] }];
         Object.entries(body || {}).forEach(([key, data]) => {
           const status = typeof data === 'string' ? data : data?.status;
@@ -119,6 +151,7 @@ exports.handler = async (event) => {
           });
         });
         await replaceRows(db, statements);
+        await writeAuditLog(db, { traderId, entity, action: 'replace', before, after: body || {} });
         return ok({ ok: true });
       }
 

@@ -87,3 +87,7 @@ export async function pushTraderState(traderId, entity, data) {
     body: JSON.stringify(data),
   });
 }
+
+export async function fetchAuditLog(limit = 100) {
+  return await jsonRequest(`/api/audit-log?limit=${encodeURIComponent(limit)}`);
+}

@@ -380,6 +380,7 @@ export function applyMarginAndLadder(fairOdds, marginPct, ladder = 'eu') {
 let _solverWorker = null;
 const _pending = new Map();
 let _nextId = 0;
+const SOLVER_TIMEOUT_MS = 3000;
 
 function getSolverWorker() {
   if (!_solverWorker) {
@@ -387,10 +388,14 @@ function getSolverWorker() {
     _solverWorker.onmessage = ({ data: { id, result, error } }) => {
       const p = _pending.get(id);
       _pending.delete(id);
+      if (p?.timeoutId) clearTimeout(p.timeoutId);
       if (p) error ? p.reject(new Error(error)) : p.resolve(result);
     };
     _solverWorker.onerror = (e) => {
-      _pending.forEach(p => p.reject(e));
+      _pending.forEach(p => {
+        if (p.timeoutId) clearTimeout(p.timeoutId);
+        p.reject(e);
+      });
       _pending.clear();
       _solverWorker = null;
     };
@@ -401,8 +406,18 @@ function getSolverWorker() {
 function postToSolver(type, payload) {
   return new Promise((resolve, reject) => {
     const id = _nextId++;
-    _pending.set(id, { resolve, reject });
-    getSolverWorker().postMessage({ id, type, payload });
+    const timeoutId = setTimeout(() => {
+      _pending.delete(id);
+      reject(new Error(`${type} timed out after ${SOLVER_TIMEOUT_MS}ms`));
+    }, SOLVER_TIMEOUT_MS);
+    _pending.set(id, { resolve, reject, timeoutId });
+    try {
+      getSolverWorker().postMessage({ id, type, payload });
+    } catch (error) {
+      clearTimeout(timeoutId);
+      _pending.delete(id);
+      reject(error);
+    }
   });
 }
 

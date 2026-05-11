@@ -1,4 +1,4 @@
-const { getClient, initSchema, ok, err } = require('./db');
+const { getClient, initSchema, ok, err, writeAuditLog } = require('./db');
 
 function cors(statusCode = 200) {
   return {
@@ -33,6 +33,36 @@ function mapRows(rows, keyField, valueField, parser = (value) => value) {
     out[row[keyField]] = parser(row[valueField], row);
   });
   return out;
+}
+
+async function readTraderEntity(db, traderId, entity) {
+  if (entity === 'overrides') {
+    const result = await db.execute({ sql: 'SELECT key, value FROM trader_overrides WHERE trader_id = ?', args: [traderId] });
+    return mapRows(result.rows, 'key', 'value');
+  }
+  if (entity === 'meta') {
+    const result = await db.execute({ sql: 'SELECT key, data FROM trader_override_meta WHERE trader_id = ?', args: [traderId] });
+    return mapRows(result.rows, 'key', 'data', JSON.parse);
+  }
+  if (entity === 'modes') {
+    const result = await db.execute({ sql: 'SELECT event_id, mode FROM trader_modes WHERE trader_id = ?', args: [traderId] });
+    const out = {};
+    result.rows.forEach((row) => { out[row.event_id] = row.mode; });
+    return out;
+  }
+  if (entity === 'lambdas') {
+    const result = await db.execute({ sql: 'SELECT event_id, data FROM trader_lambdas WHERE trader_id = ?', args: [traderId] });
+    return mapRows(result.rows, 'event_id', 'data', JSON.parse);
+  }
+  if (entity === 'favorites') {
+    const result = await db.execute({ sql: 'SELECT league_code FROM trader_favorites WHERE trader_id = ?', args: [traderId] });
+    return result.rows.map((row) => row.league_code);
+  }
+  if (entity === 'prefs') {
+    const result = await db.execute({ sql: 'SELECT expanded_groups FROM trader_prefs WHERE trader_id = ?', args: [traderId] });
+    return { expandedGroups: result.rows[0]?.expanded_groups ? JSON.parse(result.rows[0].expanded_groups) : [] };
+  }
+  return null;
 }
 
 exports.handler = async (event) => {
@@ -70,6 +100,8 @@ exports.handler = async (event) => {
       const entity = event.queryStringParameters?.entity;
       const body = parseBody(event);
       const statements = [];
+      const before = await readTraderEntity(db, traderId, entity);
+      let after = body;
 
       if (entity === 'overrides') {
         statements.push({ sql: 'DELETE FROM trader_overrides WHERE trader_id = ?', args: [traderId] });
@@ -105,6 +137,7 @@ exports.handler = async (event) => {
           });
         });
       } else if (entity === 'favorites') {
+        after = Array.isArray(body) ? body : [];
         statements.push({ sql: 'DELETE FROM trader_favorites WHERE trader_id = ?', args: [traderId] });
         (Array.isArray(body) ? body : []).forEach((leagueCode) => {
           statements.push({
@@ -114,6 +147,7 @@ exports.handler = async (event) => {
         });
       } else if (entity === 'prefs') {
         const expandedGroups = Array.isArray(body?.expandedGroups) ? body.expandedGroups : [];
+        after = { expandedGroups };
         statements.push({
           sql: `INSERT INTO trader_prefs (trader_id, expanded_groups)
                 VALUES (?, ?)
@@ -125,6 +159,7 @@ exports.handler = async (event) => {
       }
 
       await db.batch(statements, 'write');
+      await writeAuditLog(db, { traderId, entity: `trader:${entity}`, action: 'replace', before, after });
       return ok({ ok: true });
     }
 

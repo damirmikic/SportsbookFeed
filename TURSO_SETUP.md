@@ -213,6 +213,7 @@ Netlify Functions  →  @libsql/client/http  →  Turso (distributed SQLite)
 | Table | Scope | Description |
 |-------|-------|-------------|
 | `traders` | Global | Operator profiles, PIN hashes, failed-attempt locks |
+| `audit_log` | Global | Append-only before/after log for durable POST writes |
 | `templates` | Global | Pricing templates |
 | `league_settings` | Global | Template assignment + activation per league |
 | `match_templates` | Global | Per-match template overrides |

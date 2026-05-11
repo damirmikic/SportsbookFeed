@@ -126,6 +126,23 @@ function renderTemplateBar(event, drawerContent) {
   drawerContent.appendChild(bar);
 }
 
+function showModelFallbackNotice(drawerContent) {
+  const notice = document.createElement('div');
+  notice.className = 'model-fallback-notice';
+  notice.textContent = 'Model unavailable — showing Shin fair';
+  drawerContent.appendChild(notice);
+}
+
+function applyShinAsModel(groupedMarkets) {
+  Object.values(groupedMarkets).forEach(markets => {
+    markets.forEach(market => {
+      market.rows.forEach(row => {
+        row.modelFair = row.shinFair || null;
+      });
+    });
+  });
+}
+
 // ── Drawer open / close ───────────────────────────────────────────────────────
 
 export async function openDrawer(eventId) {
@@ -193,7 +210,14 @@ export async function renderDrawerMarkets(event) {
   const effectivePeriod = isManual
     ? getEffectiveMatchPeriod(matchPeriod, event.id, homeTeam, awayTeam)
     : matchPeriod;
-  const lambdaData      = await calculateTeamLambdasAsync(effectivePeriod, h1Period);
+  let lambdaData = null;
+  let modelUnavailable = false;
+  try {
+    lambdaData = await calculateTeamLambdasAsync(effectivePeriod, h1Period);
+  } catch (error) {
+    console.warn('Model calculation failed:', error);
+    modelUnavailable = true;
+  }
 
   const ovLambdas          = getOverriddenLambdas(event.id);
   const effectiveLambdaData = (ovLambdas && lambdaData)
@@ -206,6 +230,10 @@ export async function renderDrawerMarkets(event) {
 
   const detailedAll    = getDetailedOdds(event.id) || {};
   const groupedMarkets = groupMarketsByCategory(event, matchPeriod, h1Period, effectiveLambdaData, detailedAll, homeTeam, awayTeam);
+  if (modelUnavailable) {
+    showModelFallbackNotice(drawerContent);
+    applyShinAsModel(groupedMarkets);
+  }
   const { template: activeTplMarkets } = resolveTemplate(event.id, state.currentLeagueCode);
 
   const categories = Object.keys(groupedMarkets);

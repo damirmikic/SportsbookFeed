@@ -1,4 +1,4 @@
-import { state, snapshotOdds, getOverride, getAllOverrideMeta, getTradingMode, isSuspended, hasAnySuspension, clearOverride, clearOverrideMetaSelection, hasAnyOverrideForEvent, setTradingMode, clearOverriddenLambdas } from './state.js';
+import { state, snapshotOdds, getOverride, getAllOverrideMeta, getTradingMode, isSuspended, hasAnySuspension, clearOverride, clearOverrideMetaSelection, hasAnyOverrideForEvent, setTradingMode, clearOverriddenLambdas, getLeagueSetting } from './state.js';
 import { fetchOdds } from './api.js';
 import { evaluateOverrides, resolveTemplate, getMarketConfig, resolveActiveKey } from './pricing.js';
 import { openDrawer, updateModeButton, renderDrawerMarkets } from './ui-drawer.js';
@@ -35,6 +35,42 @@ function processOverrideExpiries(expiries) {
 
 // ── Odds loading ──────────────────────────────────────────────────────────────
 
+let moveAlertAudio = null;
+
+function getMoveAlertThreshold() {
+  const factor = Number(getLeagueSetting(state.currentLeagueCode)?.alertFactor ?? 1);
+  if (!Number.isFinite(factor) || factor <= 0) return null;
+  return 0.1 / factor;
+}
+
+function playMoveAlertSound() {
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return;
+
+  moveAlertAudio ||= new AudioContext();
+  const ctx = moveAlertAudio;
+  if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  const now = ctx.currentTime;
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(740, now);
+  osc.frequency.exponentialRampToValueAtTime(520, now + 0.14);
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(0.035, now + 0.015);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + 0.18);
+}
+
+function hasSignificantMove(rawVal, prevVal, threshold) {
+  if (threshold == null || prevVal == null || rawVal === '-') return false;
+  const current = parseFloat(rawVal);
+  return Number.isFinite(current) && Math.abs(current - prevVal) > threshold;
+}
+
 export async function loadOdds(leagueCode, silent = false) {
   const oddsContainer = document.getElementById('odds-container');
   if (!silent) {
@@ -43,7 +79,7 @@ export async function loadOdds(leagueCode, silent = false) {
   try {
     state.previousOdds = snapshotOdds();
     const data = await fetchOdds(leagueCode);
-    renderOdds(data);
+    renderOdds(data, { alertMoves: true });
     processOverrideExpiries(evaluateOverrides(state.activeEvents));
     if (state.drawerEventId) {
       const freshEv = state.activeEvents.find(e => e.id.toString() === state.drawerEventId.toString());
@@ -69,7 +105,7 @@ function eventMatchesSearch(event, term) {
   return false;
 }
 
-function renderEventTable(eventsToRender) {
+function renderEventTable(eventsToRender, { alertMoves = false } = {}) {
   const oddsContainer = document.getElementById('odds-container');
 
   if (!eventsToRender.length) {
@@ -115,10 +151,16 @@ function renderEventTable(eventsToRender) {
     }
     let odds1 = raw1, oddsX = rawX, odds2 = raw2;
 
+    let rawOver = '-', rawUnder = '-';
     let oddsOver = '-', oddsUnder = '-';
     if (matchPeriod?.overUnder) {
       const ou25 = matchPeriod.overUnder.find(ou => ou.points === '2.5' || ou.points === 2.5);
-      if (ou25) { oddsOver = ou25.overOdds || ou25.over || '-'; oddsUnder = ou25.underOdds || ou25.under || '-'; }
+      if (ou25) {
+        rawOver = ou25.overOdds || ou25.over || '-';
+        rawUnder = ou25.underOdds || ou25.under || '-';
+        oddsOver = rawOver;
+        oddsUnder = rawUnder;
+      }
     }
 
     const isManual = getTradingMode(event.id) === 'manual';
@@ -182,6 +224,7 @@ function renderEventTable(eventsToRender) {
 
     // Trend arrows compare raw Pinnacle prices to detect feed movement
     const prev = state.previousOdds[event.id] || {};
+    const alertThreshold = alertMoves ? getMoveAlertThreshold() : null;
     const trend = (rawVal, prevVal, isManualCell) => {
       if (isManualCell || !prevVal || rawVal === '-') return '';
       const diff = parseFloat(rawVal) - prevVal;
@@ -191,6 +234,13 @@ function renderEventTable(eventsToRender) {
     const t1 = trend(raw1, prev.home, m1);
     const tX = trend(rawX, prev.draw, mX);
     const t2 = trend(raw2, prev.away, m2);
+    const hasMoveAlert = [
+      [raw1, prev.home],
+      [rawX, prev.draw],
+      [raw2, prev.away],
+      [rawOver, prev.over25],
+      [rawUnder, prev.under25],
+    ].some(([raw, previous]) => hasSignificantMove(raw, previous, alertThreshold));
 
     const allMeta = getAllOverrideMeta();
     const hasValueBet = isManual && Object.keys(allMeta).some(
@@ -200,7 +250,7 @@ function renderEventTable(eventsToRender) {
       ? `<span class="manual-row-badge${hasValueBet ? ' value-bet-badge' : ''}">${hasValueBet ? 'M⚠' : 'M'}</span>`
       : '';
     const suspBadge = anySusp && !evtSuspended ? '<span class="susp-badge">SUSP</span>' : '';
-    const rowClass  = [isManual ? 'manual-row' : '', evtSuspended ? 'event-suspended' : ''].filter(Boolean).join(' ');
+    const rowClass  = [isManual ? 'manual-row' : '', evtSuspended ? 'event-suspended' : '', hasMoveAlert ? 'move-alert-row' : ''].filter(Boolean).join(' ');
 
     html += `<tr data-event-id="${event.id}" class="${rowClass}">
       <td>
@@ -217,13 +267,14 @@ function renderEventTable(eventsToRender) {
 
   html += `</tbody></table>`;
   oddsContainer.innerHTML = html;
+  if (alertMoves && oddsContainer.querySelector('.move-alert-row')) playMoveAlertSound();
 
   oddsContainer.querySelectorAll('tr[data-event-id]').forEach(tr => {
     tr.addEventListener('click', () => openDrawer(tr.getAttribute('data-event-id')));
   });
 }
 
-export function renderOdds(data) {
+export function renderOdds(data, options = {}) {
   let events = [];
   if (data.leagues && Array.isArray(data.leagues)) {
     data.leagues.forEach(l => { if (l.events) events.push(...l.events); });
@@ -233,7 +284,7 @@ export function renderOdds(data) {
   state.activeEvents = events;
 
   const matchTerm = (document.getElementById('league-search')?.value || '').toLowerCase().trim();
-  renderEventTable(matchTerm ? events.filter(ev => eventMatchesSearch(ev, matchTerm)) : events);
+  renderEventTable(matchTerm ? events.filter(ev => eventMatchesSearch(ev, matchTerm)) : events, options);
 }
 
 export function filterAndRenderBoard() {

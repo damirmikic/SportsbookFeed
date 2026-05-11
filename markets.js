@@ -33,14 +33,37 @@ export function buildDoubleChance(grid) {
   };
 }
 
-export function buildDrawNoBet(grid) {
+export function calculateDrawNoBetPrices(grid) {
   const { pH, pA } = gridMatchProbs(grid);
   const norm = pH + pA;
+  if (norm <= 0) return { home: null, away: null, reason: 'zero_action' };
+
+  return {
+    home: pH > 0 ? norm / pH : null,
+    away: pA > 0 ? norm / pA : null,
+    reason: null,
+  };
+}
+
+export function buildDrawNoBet(grid) {
+  const prices = calculateDrawNoBetPrices(grid);
   return {
     id: 'dnb', name: 'Draw No Bet', cols: 'two-cols',
     selections: [
-      { label: 'Home', price: (norm / pH).toFixed(3), fairPrice: (norm / pH).toFixed(3), prob: pH / norm },
-      { label: 'Away', price: (norm / pA).toFixed(3), fairPrice: (norm / pA).toFixed(3), prob: pA / norm },
+      {
+        label: 'Home',
+        price: prices.home == null ? null : prices.home.toFixed(3),
+        fairPrice: prices.home == null ? null : prices.home.toFixed(3),
+        prob: prices.home == null ? null : 1 / prices.home,
+        reason: prices.reason,
+      },
+      {
+        label: 'Away',
+        price: prices.away == null ? null : prices.away.toFixed(3),
+        fairPrice: prices.away == null ? null : prices.away.toFixed(3),
+        prob: prices.away == null ? null : 1 / prices.away,
+        reason: prices.reason,
+      },
     ]
   };
 }
