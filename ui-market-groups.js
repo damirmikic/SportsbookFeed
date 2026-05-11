@@ -267,6 +267,26 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
       groups[cat].push({ id: market.id, name: market.name, rows });
     });
 
+    // --- Home & Away Multigoals ---
+    const MULTIGOAL_RANGES = [
+      { label: '1-2', check: k => k === 1 || k === 2 },
+      { label: '1-3', check: k => k >= 1 && k <= 3 },
+      { label: '2-3', check: k => k === 2 || k === 3 },
+      { label: '4+',  check: k => k >= 4 },
+    ];
+
+    const buildMultigoalRows = (isAway) =>
+      MULTIGOAL_RANGES.map(({ label, check }) => {
+        let prob = 0;
+        lambdaData.ft.grid.forEach(({ home, away, prob: p }) => {
+          if (check(isAway ? away : home)) prob += p;
+        });
+        return { label, value: null, shinFair: null, modelFair: prob > 0 ? (1 / prob).toFixed(3) : null, prob };
+      });
+
+    groups['TEAM GOALS'].push({ id: 'home_multigoals', name: `${homeTeam} Multigoals`, rows: buildMultigoalRows(false) });
+    groups['TEAM GOALS'].push({ id: 'away_multigoals', name: `${awayTeam} Multigoals`, rows: buildMultigoalRows(true) });
+
     if (lambdaData.h1 && lambdaData.h2) {
       const h1 = lambdaData.h1.grid;
       const h2 = lambdaData.h2.grid;

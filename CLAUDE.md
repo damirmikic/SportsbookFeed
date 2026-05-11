@@ -61,12 +61,12 @@ solver.worker.js                ← Web Worker: off-thread lambda solver
 **Odds pipeline (every 30s poll):**
 1. `fetchOdds(leagueCode)` → raw Pinnacle odds
 2. `renderOdds()` in `ui-board.js` → snapshot previous odds, render event rows
-3. Per-event: resolve template → `applyMarginAndLadder(shinFair, margin, ladder)` for AUTO mode offered price
+3. Per-event: resolve template → `computeOffer()` (in `ui-board.js`) calls `applyMarginAndLadder(shinFair, margin, ladder)` for AUTO mode offered price
 4. Trend arrows compare **raw Pinnacle prices** against `previousOdds` snapshot (not offered prices)
 
 **Price editing (MANUAL mode in drawer):**
 1. User edits a cell in `ui-market-table.js` → `setOverride(key, value)` in `state.js`
-2. `repriceOthers()` back-solves remaining outcomes to maintain book sum
+2. `repriceOthers()` (in `ui-market-table.js`) back-solves remaining outcomes to maintain book sum
 3. `scheduleSync('overrides')` fires 400ms debounce → `pushTraderState(traderId, 'overrides', data)` → Turso
 4. `solveLambdasAsync()` runs off-thread via `solver.worker.js` → updates Dixon-Coles λ display
 
@@ -78,6 +78,10 @@ DOMContentLoaded
       → hydrateSharedState() / hydrateTraderState()  ← writes back to localStorage
   → fetchLeagues() → renderLeagues()
 ```
+
+### Pinnacle API Proxy
+
+In production (`netlify dev` or deployed), `netlify.toml` reverse-proxies `/api/leagues`, `/api/odds/:code`, and `/api/odds/event/:id` to `pinnacle888.com` — no CORS issue. When running locally without Netlify (`npx serve .`), `api.js` detects `IS_LOCAL` and hits Pinnacle directly (relies on browser CORS policy or extension).
 
 ---
 
@@ -126,6 +130,78 @@ All mutable state lives in `state.js`. The `state` object holds transient runtim
    - `'us'`: snap to nearest 5-unit increment in American odds
 
 Always **floors** (never rounds up) to preserve bookmaker edge.
+
+---
+
+## Template & Market Object Shapes
+
+**Template** (stored in `_templates`):
+```js
+{
+  id: string,
+  name: string,
+  sport: 'soccer',
+  type: 'prematch' | 'live' | 'both',
+  active: boolean,
+  createdAt: ISO string,
+  updatedAt: ISO string,
+  markets: MarketConfig[]
+}
+```
+
+**MarketConfig** (one entry per `MARKET_DEFS` id):
+```js
+{
+  id: string,           // e.g. '1x2', 'asian_hcp', 'ou25'
+  enabled: boolean,
+  margin: number,       // base margin %, overridden per-node by timeline
+  maxBet: number,
+  ladder: 'eu' | 'us',
+  rangeLimit: null | number,
+  timeline: {           // per-node overrides; missing key = use base margin
+    [nodeId]: { margin: number, enabled: boolean, maxBet: number }
+  }
+}
+```
+
+`MARKET_DEFS` in `state.js` is the canonical list of all market types with their defaults (`defaultMargin`, `defaultMaxBet`, `defaultEnabled`). The `DRAWER_TO_TPL_ID` map in `ui-drawer.js` translates drawer market IDs (e.g. `'ml'`) to their template IDs (e.g. `'1x2'`).
+
+---
+
+## Lambda Data Structure
+
+`calculateTeamLambdasAsync()` (in `math.js`, called from `ui-drawer.js`) resolves λ values and returns:
+```js
+{
+  ft: { lambdaH, lambdaA, rho, grid: [{home, away, prob}] },  // full-time 10×10 score grid
+  h1: { lambdaH, lambdaA, rho, grid },                        // 1st half grid (half-λ)
+  h2: { lambdaH, lambdaA, rho, grid },                        // 2nd half grid (half-λ)
+}
+```
+
+`grid` is a flat array of `{ home: int, away: int, prob: float }` score-probability entries (scores 0–9 each). `h1`/`h2` are only present when the solver converges on both halves. All market builders in `markets.js` and `ui-market-groups.js` consume this structure.
+
+---
+
+## Drawer Market Categories
+
+`groupMarketsByCategory()` in `ui-market-groups.js` returns markets keyed by these category names (empty categories are deleted before return):
+
+| Category | Contents |
+|---|---|
+| `MATCH ODDS` | 1x2, DC, DNB, derived BTTS (from model) |
+| `HANDICAP` | Asian handicap (5 closest lines) |
+| `GOALS` | All OU lines, derived CS, BTTS, Both Halves OU |
+| `TEAM GOALS` | Team totals (home/away) |
+| `1ST HALF` | H1 1x2, H1 total, H1 team totals, H1 BTTS, H1 result combos |
+| `2ND HALF` | Model-only H2 1x2, H2 total, H2 team totals, Pinnacle 2nd-half specials |
+| `CORNERS` | Pinnacle corner specials |
+| `BOOKINGS` | Pinnacle card/booking specials |
+| `TEAM PROPS` | Win both halves, score both halves, win either half |
+| `SPECIALS` | HTFT, winning margin, other Pinnacle specials |
+| `PLAYER PROPS` | Goalscorer, anytime scorer specials |
+
+Each market in a category is a **market row object**: `{ id, name, rows: [{ label, value (API price), shinFair, modelFair, isApiOnly }] }`. `isApiOnly: true` means the row came from Pinnacle specials and has no independently computed Shin (Shin is still computed from the API price if ≥2 rows exist).
 
 ---
 

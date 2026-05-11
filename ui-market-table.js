@@ -224,7 +224,10 @@ export function renderMarketTable(market) {
             const tl = resolveActiveKey(offerMktConf, eventStart);
             if (tl?.key != null) marginPct = tl.key;
           }
-          if (marginPct != null) return applyMarginAndLadder(modelFair, marginPct, offerMktConf.ladder ?? 'eu');
+          if (marginPct != null) {
+            const offered = applyMarginAndLadder(modelFair, marginPct, offerMktConf.ladder ?? 'eu');
+            if (offered) return offered;
+          }
         }
         const rowIdx    = market.rows.indexOf(row);
         const isPaired  = market.id === 'ou' || market.id === 'hdp';
@@ -247,8 +250,17 @@ export function renderMarketTable(market) {
         if (tl?.key != null) marginPct = tl.key;
       }
       if (marginPct != null) {
-        const shin = parseFloat(row.shinFair);
-        if (!isNaN(shin) && shin > 1) return applyMarginAndLadder(shin, marginPct, offerMktConf.ladder ?? 'eu');
+        const shin  = parseFloat(row.shinFair);
+        const model = parseFloat(row.modelFair);
+        // Prefer shin fair; fall back to model fair for derived markets that lack independent devig
+        const fair  = (!isNaN(shin)  && shin  > 1) ? shin
+                    : (!isNaN(model) && model > 1) ? model
+                    : NaN;
+        if (!isNaN(fair)) {
+          const offered = applyMarginAndLadder(fair, marginPct, offerMktConf.ladder ?? 'eu');
+          if (offered) return offered;
+          // applyMarginAndLadder returned null (margined ≤ 1) — fall through to api
+        }
       }
     }
 
@@ -446,6 +458,7 @@ export function renderMarketTable(market) {
       if (count % 2 === 0) expectedPairs = count / 2;
     }
     if (market.name.includes('Double Chance')) expectedPairs = 2;
+    if (market.id === 'home_multigoals' || market.id === 'away_multigoals') expectedPairs = count;
     return marginBadgeHTML(sum / expectedPairs);
   };
 

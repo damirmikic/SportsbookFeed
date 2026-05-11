@@ -22,6 +22,22 @@ const DRAWER_TO_TPL_ID = {
   'htft':        'htft',
 };
 
+// Mirrors computeOffer logic: returns true if at least one row would produce a price.
+function marketHasOffer(market, activeTpl) {
+  const tplMarketId = DRAWER_TO_TPL_ID[market.id] ?? market.id;
+  const tplMarket   = activeTpl?.markets?.find(m => m.id === tplMarketId);
+  return market.rows.some(row => {
+    if (tplMarket?.enabled) {
+      const shin  = parseFloat(row.shinFair);
+      const model = parseFloat(row.modelFair);
+      if ((!isNaN(shin) && shin > 1) || (!isNaN(model) && model > 1)) return true;
+    }
+    // api fallback — same as computeOffer's last line
+    const api = parseFloat(row.value);
+    return !isNaN(api) && api > 1;
+  });
+}
+
 // ── Drawer header controls ────────────────────────────────────────────────────
 
 function updateSuspendButton(eventId) {
@@ -225,7 +241,6 @@ export async function renderDrawerMarkets(event) {
 
   activeGroup.forEach(market => {
     const btn = document.createElement('button');
-    btn.className = `left-tab-btn ${state.activeMarketId === market.id ? 'active' : ''}`;
 
     const tplMarketId = DRAWER_TO_TPL_ID[market.id];
     const tplMarket   = activeTplMarkets && tplMarketId
@@ -234,7 +249,9 @@ export async function renderDrawerMarkets(event) {
     const dotClass = tplMarket
       ? (tplMarket.enabled ? 'mkt-tpl-on' : 'mkt-tpl-off')
       : '';
+    const noOffer = !marketHasOffer(market, activeTplMarkets);
 
+    btn.className = `left-tab-btn ${state.activeMarketId === market.id ? 'active' : ''} ${noOffer ? 'mkt-no-offer' : ''}`.trim();
     btn.innerHTML = dotClass
       ? `<span class="mkt-tpl-dot ${dotClass}"></span><span>${market.name}</span>`
       : `<span>${market.name}</span>`;

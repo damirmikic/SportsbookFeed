@@ -1090,6 +1090,9 @@ body {
 .mkt-tpl-on  { background: var(--accent-color); }
 .mkt-tpl-off { background: rgba(150, 150, 150, 0.35); }
 
+.left-tab-btn.mkt-no-offer { opacity: 0.45; font-style: italic; }
+.left-tab-btn.mkt-no-offer.active { opacity: 0.7; }
+
 .left-tab-btn:hover {
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-primary);
