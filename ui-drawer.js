@@ -7,6 +7,21 @@ import { groupMarketsByCategory } from './ui-market-groups.js';
 import { renderMarketTable, createLambdaSection } from './ui-market-table.js';
 import { getTeamNames } from './utils.js';
 
+// Maps drawer market IDs to MARKET_DEFS template IDs for template-assignment indicators
+const DRAWER_TO_TPL_ID = {
+  'ml':          '1x2',
+  'hdp':         'asian_hcp',
+  'ou':          'ou25',
+  'btts':        'btts',
+  'btts_ou':     'btts_ou',
+  'cs':          'cs',
+  'dc':          'dc',
+  'dnb':         'dnb',
+  'exact_goals': 'exact_goals',
+  'win_nil':     'win_nil',
+  'htft':        'htft',
+};
+
 // ── Drawer header controls ────────────────────────────────────────────────────
 
 function updateSuspendButton(eventId) {
@@ -64,7 +79,9 @@ function renderTemplateBar(event, drawerContent) {
       <span class="dtpl-icon">⬡</span>
       <div class="dtpl-info">
         <span class="dtpl-label">Template</span>
-        <span class="dtpl-name">${activeTpl ? activeTpl.name : 'None assigned'}</span>
+        ${activeTpl
+          ? `<button class="dtpl-name dtpl-name-link" data-tpl-id="${activeTpl.id}">${activeTpl.name}</button>`
+          : `<span class="dtpl-name">None assigned</span>`}
       </div>
       ${activeTpl
         ? `<span class="dtpl-badge ${isOverride ? 'dtpl-override' : 'dtpl-league'}">${isOverride ? 'MATCH OVERRIDE' : 'LEAGUE'}</span>`
@@ -85,6 +102,9 @@ function renderTemplateBar(event, drawerContent) {
   bar.querySelector('#drawer-tpl-reset')?.addEventListener('click', () => {
     setMatchTemplate(event.id, null);
     renderDrawerMarkets(event);
+  });
+  bar.querySelector('.dtpl-name-link')?.addEventListener('click', () => {
+    document.dispatchEvent(new CustomEvent('navigate:template', { detail: { id: activeTpl.id } }));
   });
 
   drawerContent.appendChild(bar);
@@ -168,6 +188,7 @@ export async function renderDrawerMarkets(event) {
 
   const detailedAll    = state.detailedOdds[event.id] || {};
   const groupedMarkets = groupMarketsByCategory(event, matchPeriod, h1Period, effectiveLambdaData, detailedAll, homeTeam, awayTeam);
+  const { template: activeTplMarkets } = resolveTemplate(event.id, state.currentLeagueCode);
 
   const categories = Object.keys(groupedMarkets);
   if (categories.length === 0) return;
@@ -204,9 +225,20 @@ export async function renderDrawerMarkets(event) {
 
   activeGroup.forEach(market => {
     const btn = document.createElement('button');
-    btn.className   = `left-tab-btn ${state.activeMarketId === market.id ? 'active' : ''}`;
-    btn.textContent = market.name;
-    btn.onclick     = () => {
+    btn.className = `left-tab-btn ${state.activeMarketId === market.id ? 'active' : ''}`;
+
+    const tplMarketId = DRAWER_TO_TPL_ID[market.id];
+    const tplMarket   = activeTplMarkets && tplMarketId
+      ? activeTplMarkets.markets?.find(m => m.id === tplMarketId)
+      : null;
+    const dotClass = tplMarket
+      ? (tplMarket.enabled ? 'mkt-tpl-on' : 'mkt-tpl-off')
+      : '';
+
+    btn.innerHTML = dotClass
+      ? `<span class="mkt-tpl-dot ${dotClass}"></span><span>${market.name}</span>`
+      : `<span>${market.name}</span>`;
+    btn.onclick = () => {
       state.activeMarketId = market.id;
       renderDrawerMarkets(event);
     };

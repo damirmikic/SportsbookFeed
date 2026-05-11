@@ -2,7 +2,7 @@ import { fetchLeagues, fetchSharedState, fetchTraderState } from './api.js';
 import { state, hydrateSharedState, hydrateTraderState } from './state.js';
 import { renderLeagues, closeDrawer, loadOdds, filterAndRenderBoard } from './ui.js';
 import { renderAdminPanel } from './admin.js';
-import { renderTemplatesSection } from './templates-admin.js';
+import { renderTemplatesSection, openTemplateById } from './templates-admin.js';
 
 let refreshInterval = null;
 
@@ -109,6 +109,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.querySelectorAll('.admin-section-btn').forEach(btn =>
     btn.addEventListener('click', () => showAdminSection(btn.dataset.section))
   );
+
+  // Deep-link from drawer template badge → Admin > Templates editor
+  document.addEventListener('navigate:template', (e) => {
+    switchView('admin');
+    showAdminSection('templates');
+    openTemplateById(e.detail.id);
+  });
 
   // Hydrate from Turso in parallel — failures are non-fatal (localStorage remains source of truth)
   const traderId = localStorage.getItem('currentTraderId');

@@ -526,6 +526,11 @@ export function renderTemplatesSection() {
 }
 
 // ── Open / close modal ────────────────────────────────────
+export function openTemplateById(id) {
+  const tpl = getTemplates().find(t => t.id === id);
+  if (tpl) openForm(tpl);
+}
+
 function openForm(tpl = null) {
   document.getElementById('tpl-modal-backdrop')?.remove();
   document.body.insertAdjacentHTML('beforeend', formModalHTML(tpl));

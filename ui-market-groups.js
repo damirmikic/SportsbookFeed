@@ -319,6 +319,25 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
       });
       groups['1ST HALF'].push({ id: 'h1_result_btts', name: '1st Half Result & BTTS', rows: h1ResultBttsRows });
 
+      const h1OuLine = 1.5;
+      const h1OuThreshold = 2;
+      const h1ResultOuOutcomes = [
+        { label: `Home & Over ${h1OuLine}`,  resCheck: (h, a) => h > a,  over: true  },
+        { label: `Home & Under ${h1OuLine}`, resCheck: (h, a) => h > a,  over: false },
+        { label: `Draw & Over ${h1OuLine}`,  resCheck: (h, a) => h === a, over: true  },
+        { label: `Draw & Under ${h1OuLine}`, resCheck: (h, a) => h === a, over: false },
+        { label: `Away & Over ${h1OuLine}`,  resCheck: (h, a) => a > h,  over: true  },
+        { label: `Away & Under ${h1OuLine}`, resCheck: (h, a) => a > h,  over: false },
+      ];
+      const h1ResultOuRows = h1ResultOuOutcomes.map(({ label, resCheck, over }) => {
+        let prob = 0;
+        h1.forEach(({ home, away, prob: p }) => {
+          if (resCheck(home, away) && (over ? home + away >= h1OuThreshold : home + away < h1OuThreshold)) prob += p;
+        });
+        return { label, value: null, shinFair: null, modelFair: prob > 0 ? (1 / prob).toFixed(3) : null, prob };
+      });
+      groups['1ST HALF'].push({ id: 'h1_result_ou', name: `1st Half 1x2 & Total ${h1OuLine}`, rows: h1ResultOuRows });
+
       const pH1over = h1.reduce((s, { home, away, prob }) => home + away >= 2 ? s + prob : s, 0);
       const pH2over = h2.reduce((s, { home, away, prob }) => home + away >= 2 ? s + prob : s, 0);
       const pBothOver = pH1over * pH2over;
