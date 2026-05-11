@@ -32,7 +32,9 @@ exports.handler = async (event) => {
                    audit_log.after_json,
                    audit_log.ts
             FROM audit_log
-            LEFT JOIN traders ON traders.id = audit_log.trader_id
+            LEFT JOIN traders
+              ON traders.id = audit_log.trader_id
+             AND traders.deleted_at IS NULL
             ORDER BY audit_log.ts DESC
             LIMIT ?`,
       args: [limit],

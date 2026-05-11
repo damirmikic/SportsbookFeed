@@ -28,13 +28,15 @@ const SCHEMA = `
     failed_attempts INTEGER NOT NULL DEFAULT 0,
     locked_until    TEXT,
     created_at TEXT DEFAULT (datetime('now')),
+    deleted_at TIMESTAMP,
     active     INTEGER DEFAULT 1
   );
 
   CREATE TABLE IF NOT EXISTS templates (
     id         TEXT PRIMARY KEY,
     data       TEXT NOT NULL,
-    updated_at TEXT DEFAULT (datetime('now'))
+    updated_at TEXT DEFAULT (datetime('now')),
+    deleted_at TIMESTAMP
   );
 
   CREATE TABLE IF NOT EXISTS league_settings (
@@ -132,13 +134,20 @@ async function initSchema(db) {
     await db.execute(sql);
   }
 
-  const traderColumns = await db.execute('PRAGMA table_info(traders)');
-  const columnNames = new Set(traderColumns.rows.map(row => row.name));
-  if (!columnNames.has('failed_attempts')) {
+  const traderColumns = new Set((await db.execute('PRAGMA table_info(traders)')).rows.map(row => row.name));
+  if (!traderColumns.has('failed_attempts')) {
     await db.execute('ALTER TABLE traders ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0');
   }
-  if (!columnNames.has('locked_until')) {
+  if (!traderColumns.has('locked_until')) {
     await db.execute('ALTER TABLE traders ADD COLUMN locked_until TEXT');
+  }
+  if (!traderColumns.has('deleted_at')) {
+    await db.execute('ALTER TABLE traders ADD COLUMN deleted_at TIMESTAMP');
+  }
+
+  const templateColumns = new Set((await db.execute('PRAGMA table_info(templates)')).rows.map(row => row.name));
+  if (!templateColumns.has('deleted_at')) {
+    await db.execute('ALTER TABLE templates ADD COLUMN deleted_at TIMESTAMP');
   }
 }
 

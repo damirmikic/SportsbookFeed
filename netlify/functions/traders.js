@@ -54,7 +54,7 @@ exports.handler = async (event) => {
 
     if (event.httpMethod === 'GET') {
       const result = await db.execute(
-        'SELECT id, name, color FROM traders WHERE active = 1 ORDER BY name COLLATE NOCASE'
+        'SELECT id, name, color FROM traders WHERE active = 1 AND deleted_at IS NULL ORDER BY name COLLATE NOCASE'
       );
       return ok(result.rows);
     }
@@ -67,7 +67,7 @@ exports.handler = async (event) => {
         const { id, pin } = body;
         if (!id || !isValidPin(pin)) return err('Valid trader id and 4-6 digit PIN are required', 400);
         const result = await db.execute({
-          sql: 'SELECT pin_hash, failed_attempts, locked_until FROM traders WHERE id = ? AND active = 1',
+          sql: 'SELECT pin_hash, failed_attempts, locked_until FROM traders WHERE id = ? AND active = 1 AND deleted_at IS NULL',
           args: [String(id)],
         });
         const row = result.rows[0];
@@ -102,7 +102,7 @@ exports.handler = async (event) => {
 
         if (row.pin_hash === hashPin(pin)) {
           await db.execute({
-            sql: 'UPDATE traders SET failed_attempts = 0, locked_until = NULL WHERE id = ? AND active = 1',
+            sql: 'UPDATE traders SET failed_attempts = 0, locked_until = NULL WHERE id = ? AND active = 1 AND deleted_at IS NULL',
             args: [String(id)],
           });
           await writeAuditLog(db, {
@@ -120,7 +120,7 @@ exports.handler = async (event) => {
           ? new Date(Date.now() + LOCK_DURATION_MS).toISOString()
           : null;
         await db.execute({
-          sql: 'UPDATE traders SET failed_attempts = ?, locked_until = ? WHERE id = ? AND active = 1',
+          sql: 'UPDATE traders SET failed_attempts = ?, locked_until = ? WHERE id = ? AND active = 1 AND deleted_at IS NULL',
           args: [failedAttempts, nextLockedUntil, String(id)],
         });
         const after = { failed_attempts: failedAttempts, locked_until: nextLockedUntil };
@@ -191,12 +191,12 @@ exports.handler = async (event) => {
 
       args.push(String(id));
       await db.execute({
-        sql: `UPDATE traders SET ${fields.join(', ')} WHERE id = ? AND active = 1`,
+        sql: `UPDATE traders SET ${fields.join(', ')} WHERE id = ? AND active = 1 AND deleted_at IS NULL`,
         args,
       });
 
       const result = await db.execute({
-        sql: 'SELECT id, name, color FROM traders WHERE id = ? AND active = 1',
+        sql: 'SELECT id, name, color FROM traders WHERE id = ? AND active = 1 AND deleted_at IS NULL',
         args: [String(id)],
       });
       return ok(result.rows[0] || null);

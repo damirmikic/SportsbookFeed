@@ -103,7 +103,7 @@ With `netlify dev` running at `http://localhost:8888`:
 Verify the trader was written to Turso:
 
 ```powershell
-turso db shell sportsbook "SELECT id, name, color FROM traders;"
+turso db shell sportsbook "SELECT id, name, color FROM traders WHERE deleted_at IS NULL;"
 ```
 
 Sign out (click the trader chip in the top nav), sign back in with your PIN — should work immediately.
@@ -247,6 +247,12 @@ Local dev uses the mock backend (`USE_MOCK = IS_LOCAL`). Create traders in produ
 `initSchema()` only runs `CREATE TABLE IF NOT EXISTS` — it won't alter existing tables. For schema changes, run the new SQL manually:
 ```powershell
 turso db shell sportsbook "ALTER TABLE traders ADD COLUMN display_name TEXT;"
+```
+
+Current soft-delete columns, if your database predates them:
+```powershell
+turso db shell sportsbook "ALTER TABLE traders ADD COLUMN deleted_at TIMESTAMP;"
+turso db shell sportsbook "ALTER TABLE templates ADD COLUMN deleted_at TIMESTAMP;"
 ```
 
 ---

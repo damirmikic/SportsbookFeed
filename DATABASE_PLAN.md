@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS traders (
   failed_attempts INTEGER NOT NULL DEFAULT 0, -- consecutive failed PIN checks
   locked_until    TEXT,                 -- ISO timestamp; lock clears after expiry
   created_at TEXT DEFAULT (datetime('now')),
+  deleted_at TIMESTAMP,                 -- soft-delete marker; NULL means visible
   active     INTEGER DEFAULT 1          -- soft delete
 );
 ```
@@ -99,7 +100,8 @@ Full template JSON blobs — shared across all traders.
 CREATE TABLE IF NOT EXISTS templates (
   id         TEXT PRIMARY KEY,   -- e.g. "elite", "medium", "low"
   data       TEXT NOT NULL,      -- full template JSON (name, sport, markets[], etc.)
-  updated_at TEXT DEFAULT (datetime('now'))
+  updated_at TEXT DEFAULT (datetime('now')),
+  deleted_at TIMESTAMP           -- soft-delete marker; NULL means visible
 );
 ```
 

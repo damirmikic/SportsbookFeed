@@ -35,7 +35,7 @@ async function replaceRows(db, statements) {
 
 async function readSharedEntity(db, entity) {
   if (entity === 'templates') {
-    const result = await db.execute('SELECT data FROM templates ORDER BY id');
+    const result = await db.execute('SELECT data FROM templates WHERE deleted_at IS NULL ORDER BY id');
     return result.rows.map((row) => JSON.parse(row.data));
   }
   if (entity === 'league-settings') {
@@ -68,7 +68,7 @@ exports.handler = async (event) => {
 
     if (event.httpMethod === 'GET') {
       const [templatesRes, leagueRes, matchRes, suspRes] = await Promise.all([
-        db.execute('SELECT id, data FROM templates'),
+        db.execute('SELECT id, data FROM templates WHERE deleted_at IS NULL'),
         db.execute('SELECT league_code, data FROM league_settings'),
         db.execute('SELECT event_id, template_id FROM match_templates'),
         db.execute('SELECT key, status, set_by, set_at FROM suspensions'),
@@ -96,10 +96,15 @@ exports.handler = async (event) => {
       if (entity === 'templates') {
         const before = await readSharedEntity(db, entity);
         const templates = Array.isArray(body) ? body : [];
-        const statements = [{ sql: 'DELETE FROM templates', args: [] }];
+        const statements = [{ sql: `UPDATE templates SET deleted_at = datetime('now') WHERE deleted_at IS NULL`, args: [] }];
         templates.forEach((template) => {
           statements.push({
-            sql: `INSERT INTO templates (id, data, updated_at) VALUES (?, ?, datetime('now'))`,
+            sql: `INSERT INTO templates (id, data, updated_at, deleted_at)
+                  VALUES (?, ?, datetime('now'), NULL)
+                  ON CONFLICT(id) DO UPDATE SET
+                    data = excluded.data,
+                    updated_at = datetime('now'),
+                    deleted_at = NULL`,
             args: [String(template.id), JSON.stringify(template)],
           });
         });
