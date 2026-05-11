@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { getTemplates, getLeagueSetting, setLeagueSetting } from './state.js';
+import { getTemplates, getLeagueSetting, setLeagueSetting, isLeagueSuspended, setLeagueSuspension } from './state.js';
 
 // ── Filter state ──────────────────────────────────────────
 const filters = { category: '', tournament: '', template: '', unassigned: false };
@@ -100,6 +100,7 @@ function rowHTML(league, templates) {
   const s    = getLeagueSetting(code);
   const act  = s.activation || 'off';
   const af   = s.alertFactor ?? 1;
+  const leagueSuspended = isLeagueSuspended(code);
 
   return `
     <tr class="admin-row">
@@ -122,6 +123,11 @@ function rowHTML(league, templates) {
       </td>
       <td class="atd-bk">Soccer</td>
       <td class="atd-af">${alertSliderHTML(code, af)}</td>
+      <td class="atd-susp">
+        <button class="admin-league-suspend-btn ${leagueSuspended ? 'suspended' : 'open'}" data-code="${code}">
+          ${leagueSuspended ? 'Publish league' : 'Suspend all'}
+        </button>
+      </td>
     </tr>`;
 }
 
@@ -136,12 +142,13 @@ function tableHTML(leagues, templates) {
             <th>Activation</th>
             <th>Bookmaker List</th>
             <th>Alert Factors</th>
+            <th>League Suspension</th>
           </tr>
         </thead>
         <tbody>
           ${leagues.length
             ? leagues.map(l => rowHTML(l, templates)).join('')
-            : '<tr><td colspan="5" class="admin-empty">No tournaments match the current filters.</td></tr>'}
+            : '<tr><td colspan="6" class="admin-empty">No tournaments match the current filters.</td></tr>'}
         </tbody>
       </table>
     </div>`;
@@ -222,6 +229,18 @@ function wirePanel(panel, templates) {
       setLeagueSetting(code, { alertFactor: parseFloat(v) });
       dot.closest('.af-track').querySelectorAll('.af-dot').forEach(d => d.classList.remove('active'));
       dot.classList.add('active');
+    })
+  );
+
+  panel.querySelectorAll('.admin-league-suspend-btn').forEach(btn =>
+    btn.addEventListener('click', () => {
+      const { code } = btn.dataset;
+      const nextStatus = isLeagueSuspended(code) ? 'open' : 'suspended';
+      setLeagueSuspension(code, nextStatus);
+      renderAdminPanel();
+      showAdminToast(nextStatus === 'suspended'
+        ? `Suspended all markets in league ${code}.`
+        : `Published league ${code}.`);
     })
   );
 }

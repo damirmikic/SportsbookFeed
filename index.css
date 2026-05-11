@@ -410,6 +410,10 @@ body {
   background: var(--accent-glow);
 }
 
+.odds-btn[data-history-market] {
+  cursor: zoom-in;
+}
+
 .match-time {
   font-size: 0.8rem;
   color: var(--text-secondary);
@@ -1310,6 +1314,17 @@ body {
   font-size: 1rem;
 }
 
+.comparison-table td.offer-history-cell {
+  cursor: zoom-in;
+  text-decoration: underline;
+  text-decoration-color: rgba(16, 185, 129, 0.35);
+  text-underline-offset: 3px;
+}
+
+.comparison-table td.offer-history-cell:hover {
+  background: rgba(16, 185, 129, 0.08);
+}
+
 .comparison-table td.empty-cell {
   color: var(--text-secondary);
   opacity: 0.5;
@@ -1839,6 +1854,32 @@ body {
 /* Alert factor cell */
 .atd-af { min-width: 160px; }
 
+.atd-susp { min-width: 130px; }
+
+.admin-league-suspend-btn {
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  background: rgba(245, 158, 11, 0.12);
+  color: #fde68a;
+  border-radius: var(--radius-sm);
+  padding: 0.45rem 0.65rem;
+  font-family: var(--font-family);
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.admin-league-suspend-btn:hover {
+  border-color: #f59e0b;
+  color: #fef3c7;
+}
+
+.admin-league-suspend-btn.suspended {
+  border-color: rgba(16, 185, 129, 0.45);
+  background: rgba(16, 185, 129, 0.12);
+  color: #a7f3d0;
+}
+
 .af-wrap {
   display: flex;
   flex-direction: column;
@@ -2215,6 +2256,134 @@ body {
 }
 
 .tpl-modal-backdrop.visible .tpl-modal { transform: translateY(0); }
+
+.odds-history-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 12000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+
+.odds-history-backdrop.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.odds-history-modal {
+  width: min(560px, 96vw);
+  max-height: min(680px, 90vh);
+  overflow: hidden;
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+}
+
+.odds-history-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.odds-history-header h3 {
+  font-size: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.odds-history-header p {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+
+.odds-history-close {
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.odds-history-body {
+  padding: 1rem;
+  overflow: auto;
+}
+
+.odds-history-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.9rem;
+}
+
+.odds-history-summary span {
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 0.55rem;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.odds-history-chart {
+  width: 100%;
+  height: 140px;
+  background: #0f172a;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  margin-bottom: 0.9rem;
+}
+
+.odds-history-chart polyline {
+  fill: none;
+  stroke: var(--accent-color);
+  stroke-width: 2.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.odds-history-empty,
+.odds-history-empty-chart {
+  color: var(--text-secondary);
+  text-align: center;
+  padding: 1.5rem;
+}
+
+.odds-history-table-wrap {
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+
+.odds-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.odds-history-table th,
+.odds-history-table td {
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.odds-history-table th {
+  color: var(--text-secondary);
+  text-align: left;
+  background: #0f172a;
+}
 
 .tpl-modal-header {
   display: flex;

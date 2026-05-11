@@ -128,6 +128,7 @@ CREATE TABLE IF NOT EXISTS match_templates (
 
 ### `suspensions`
 Global market suspension state. One trader suspending a market suspends it for everyone.
+League-wide suspensions use keys shaped like `league|{leagueCode}|event` and are checked before event or market keys.
 
 ```sql
 CREATE TABLE IF NOT EXISTS suspensions (

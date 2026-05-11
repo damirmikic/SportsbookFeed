@@ -3,6 +3,7 @@ import { resolveTemplate, getMarketConfig, resolveActiveKey } from './pricing.js
 import { calculateShinNoVig, solveLambdasAsync, applyMarginAndLadder } from './math.js';
 import { calcMargin, marginBadgeHTML } from './ui-helpers.js';
 import { updateModeButton, renderDrawerMarkets } from './ui-drawer.js';
+import { openOddsHistory } from './odds-history-ui.js';
 
 // ── Lambda back-solve ─────────────────────────────────────────────────────────
 
@@ -141,6 +142,38 @@ function resolveTargetMargin(eventId, leagueCode, marketId, repriceRows) {
     const p = parseFloat(r.value);
     return (!isNaN(p) && p > 1) ? s + 1 / p : s;
   }, 0);
+}
+
+function parseLineFromLabel(label) {
+  const match = String(label || '').match(/(-?\d+(?:\.\d+)?)/);
+  return match ? match[1] : null;
+}
+
+function getOfferHistoryRequest(market, row, drawerEvent) {
+  const eventId = drawerEvent?.id || state.drawerEventId;
+  const home = drawerEvent?.home || drawerEvent?.homeTeam?.name || 'Home';
+  const away = drawerEvent?.away || drawerEvent?.awayTeam?.name || 'Away';
+  const subtitle = `${home} vs ${away}`;
+  const label = String(row.label || '');
+  const lower = label.toLowerCase();
+
+  if (market.id === 'ml') {
+    const side = label === 'Draw' ? 'draw' : market.rows.indexOf(row) === 2 ? 'away' : 'home';
+    return { eventId, period: '0', market: 'moneyline', side, title: label, subtitle };
+  }
+  if (market.id === 'ou') {
+    return { eventId, period: '0', market: 'total', side: lower.startsWith('over') ? 'over' : 'under', points: parseLineFromLabel(label), title: label, subtitle };
+  }
+  if (market.id === 'hdp') {
+    return { eventId, period: '0', market: 'spread', side: lower.startsWith('away') ? 'away' : 'home', title: label, subtitle };
+  }
+  if (market.id.includes('tt_home')) {
+    return { eventId, period: market.id.startsWith('h1_') ? '1' : '0', market: 'team_total_home', side: lower.startsWith('over') ? 'over' : 'under', points: parseLineFromLabel(label), title: label, subtitle };
+  }
+  if (market.id.includes('tt_away')) {
+    return { eventId, period: market.id.startsWith('h1_') ? '1' : '0', market: 'team_total_away', side: lower.startsWith('over') ? 'over' : 'under', points: parseLineFromLabel(label), title: label, subtitle };
+  }
+  return null;
 }
 
 function makeEditable(chip, priceSpan, key, currentVal, rows = [], marketId = '', shinFair = null, apiVal = null) {
@@ -357,6 +390,15 @@ export function renderMarketTable(market) {
     const tdOffer = document.createElement('td');
     tdOffer.className   = offerDisplay !== '-' ? 'offer-cell' : 'empty-cell';
     tdOffer.textContent = offerDisplay;
+    const historyRequest = offerDisplay !== '-' ? getOfferHistoryRequest(market, row, drawerEvent) : null;
+    if (historyRequest) {
+      tdOffer.classList.add('offer-history-cell');
+      tdOffer.title = 'View odds history';
+      tdOffer.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openOddsHistory(historyRequest);
+      });
+    }
 
     const tdShin = document.createElement('td');
     tdShin.className   = shinVal !== '-' ? 'price-cell' : 'empty-cell';

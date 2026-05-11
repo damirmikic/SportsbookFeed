@@ -204,6 +204,7 @@ Netlify Functions  →  @libsql/client/http  →  Turso (distributed SQLite)
 - Turso sync is fire-and-forget — network failure never blocks the UI
 - Startup hydration (`Promise.allSettled`) fails silently — app works offline from localStorage
 - Suspensions are **global** (all traders see the same suspension state)
+- League suspensions are stored as `league|{leagueCode}|event` keys and override event / market keys
 - Overrides / modes / lambdas are **per-trader** (scoped by `trader_id`)
 
 ---

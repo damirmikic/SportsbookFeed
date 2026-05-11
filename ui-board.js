@@ -4,6 +4,7 @@ import { evaluateOverrides, resolveTemplate, getMarketConfig, resolveActiveKey }
 import { openDrawer, updateModeButton, renderDrawerMarkets } from './ui-drawer.js';
 import { getTeamNames } from './utils.js';
 import { calculateShinNoVig, applyMarginAndLadder } from './math.js';
+import { openOddsHistory } from './odds-history-ui.js';
 
 // ── Override expiry processing ────────────────────────────────────────────────
 
@@ -69,6 +70,14 @@ function hasSignificantMove(rawVal, prevVal, threshold) {
   if (threshold == null || prevVal == null || rawVal === '-') return false;
   const current = parseFloat(rawVal);
   return Number.isFinite(current) && Math.abs(current - prevVal) > threshold;
+}
+
+function escapeAttr(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 function persistOddsHistory(data) {
@@ -258,17 +267,18 @@ function renderEventTable(eventsToRender, { alertMoves = false } = {}) {
       : '';
     const suspBadge = anySusp && !evtSuspended ? '<span class="susp-badge">SUSP</span>' : '';
     const rowClass  = [isManual ? 'manual-row' : '', evtSuspended ? 'event-suspended' : '', hasMoveAlert ? 'move-alert-row' : ''].filter(Boolean).join(' ');
+    const matchName = `${homeTeam} vs ${awayTeam}`;
 
-    html += `<tr data-event-id="${event.id}" class="${rowClass}">
+    html += `<tr data-event-id="${event.id}" data-match-name="${escapeAttr(matchName)}" class="${rowClass}">
       <td>
         <div class="match-time">${time}${manualBadge}${suspBadge}</div>
         <div class="match-teams">${homeTeam} vs ${awayTeam}</div>
       </td>
-      <td class="${mlSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${m1 ? ' manual-price' : t1}">${evtSuspended || mlSuspended ? 'SUSP' : odds1}${!m1 && t1 === ' price-up' ? ' ▲' : !m1 && t1 === ' price-down' ? ' ▼' : ''}</button></td>
-      <td class="${mlSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${mX ? ' manual-price' : tX}">${evtSuspended || mlSuspended ? 'SUSP' : oddsX}${!mX && tX === ' price-up' ? ' ▲' : !mX && tX === ' price-down' ? ' ▼' : ''}</button></td>
-      <td class="${mlSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${m2 ? ' manual-price' : t2}">${evtSuspended || mlSuspended ? 'SUSP' : odds2}${!m2 && t2 === ' price-up' ? ' ▲' : !m2 && t2 === ' price-down' ? ' ▼' : ''}</button></td>
-      <td class="${ouSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${mOver ? ' manual-price' : ''}" style="border-color:${mOver ? '#fbbf24' : 'var(--accent-color)'}">${evtSuspended || ouSuspended ? 'SUSP' : oddsOver}</button></td>
-      <td class="${ouSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${mUnder ? ' manual-price' : ''}" style="border-color:${mUnder ? '#fbbf24' : 'var(--accent-color)'}">${evtSuspended || ouSuspended ? 'SUSP' : oddsUnder}</button></td>
+      <td class="${mlSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${m1 ? ' manual-price' : t1}" data-history-market="moneyline" data-history-side="home" data-history-label="${escapeAttr(homeTeam)}">${evtSuspended || mlSuspended ? 'SUSP' : odds1}${!m1 && t1 === ' price-up' ? ' ▲' : !m1 && t1 === ' price-down' ? ' ▼' : ''}</button></td>
+      <td class="${mlSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${mX ? ' manual-price' : tX}" data-history-market="moneyline" data-history-side="draw" data-history-label="Draw">${evtSuspended || mlSuspended ? 'SUSP' : oddsX}${!mX && tX === ' price-up' ? ' ▲' : !mX && tX === ' price-down' ? ' ▼' : ''}</button></td>
+      <td class="${mlSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${m2 ? ' manual-price' : t2}" data-history-market="moneyline" data-history-side="away" data-history-label="${escapeAttr(awayTeam)}">${evtSuspended || mlSuspended ? 'SUSP' : odds2}${!m2 && t2 === ' price-up' ? ' ▲' : !m2 && t2 === ' price-down' ? ' ▼' : ''}</button></td>
+      <td class="${ouSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${mOver ? ' manual-price' : ''}" data-history-market="total" data-history-side="over" data-history-points="2.5" data-history-label="Over 2.5" style="border-color:${mOver ? '#fbbf24' : 'var(--accent-color)'}">${evtSuspended || ouSuspended ? 'SUSP' : oddsOver}</button></td>
+      <td class="${ouSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${mUnder ? ' manual-price' : ''}" data-history-market="total" data-history-side="under" data-history-points="2.5" data-history-label="Under 2.5" style="border-color:${mUnder ? '#fbbf24' : 'var(--accent-color)'}">${evtSuspended || ouSuspended ? 'SUSP' : oddsUnder}</button></td>
     </tr>`;
   });
 
@@ -278,6 +288,21 @@ function renderEventTable(eventsToRender, { alertMoves = false } = {}) {
 
   oddsContainer.querySelectorAll('tr[data-event-id]').forEach(tr => {
     tr.addEventListener('click', () => openDrawer(tr.getAttribute('data-event-id')));
+  });
+  oddsContainer.querySelectorAll('.odds-btn[data-history-market]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const row = btn.closest('tr[data-event-id]');
+      openOddsHistory({
+        eventId: row?.dataset.eventId,
+        period: '0',
+        market: btn.dataset.historyMarket,
+        side: btn.dataset.historySide,
+        points: btn.dataset.historyPoints,
+        title: btn.dataset.historyLabel,
+        subtitle: row?.dataset.matchName,
+      });
+    });
   });
 }
 

@@ -370,16 +370,44 @@ export function setTradingMode(eventId, mode) {
 
 const _suspensions = readJson('suspensions', {});
 
+function leagueSuspensionKey(leagueCode) {
+  return `league|${leagueCode}|event`;
+}
+
+function suspensionStatus(key) {
+  const value = _suspensions[key];
+  return typeof value === 'string' ? value : value?.status;
+}
+
+function getEventLeagueCode(eventId) {
+  const event = state.activeEvents.find(e => String(e.id) === String(eventId));
+  return event?.leagueCode || event?.league_code || event?.league?.code || state.currentLeagueCode;
+}
+
+export function isLeagueSuspended(leagueCode) {
+  return !!leagueCode && suspensionStatus(leagueSuspensionKey(leagueCode)) === 'suspended';
+}
+
 export function isSuspended(eventId, marketId = 'event') {
-  if (_suspensions[`${eventId}|event`] === 'suspended') return true;
+  if (isLeagueSuspended(getEventLeagueCode(eventId))) return true;
+  if (suspensionStatus(`${eventId}|event`) === 'suspended') return true;
   if (marketId === 'event') return false;
-  return _suspensions[`${eventId}|${marketId}`] === 'suspended';
+  return suspensionStatus(`${eventId}|${marketId}`) === 'suspended';
 }
 
 export function isSelectionSuspended(eventId, marketId, label) {
-  if (_suspensions[`${eventId}|event`] === 'suspended') return true;
-  if (_suspensions[`${eventId}|${marketId}`] === 'suspended') return true;
-  return _suspensions[`${eventId}|${marketId}|${label}`] === 'suspended';
+  if (isLeagueSuspended(getEventLeagueCode(eventId))) return true;
+  if (suspensionStatus(`${eventId}|event`) === 'suspended') return true;
+  if (suspensionStatus(`${eventId}|${marketId}`) === 'suspended') return true;
+  return suspensionStatus(`${eventId}|${marketId}|${label}`) === 'suspended';
+}
+
+export function setLeagueSuspension(leagueCode, status) {
+  if (!leagueCode) return;
+  const key = leagueSuspensionKey(leagueCode);
+  if (status === 'open') delete _suspensions[key];
+  else _suspensions[key] = { status, set_at: new Date().toISOString() };
+  persistSharedEntity('suspensions', _suspensions);
 }
 
 export function setSuspension(eventId, marketId, status) {
