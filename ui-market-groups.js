@@ -287,6 +287,30 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
     groups['TEAM GOALS'].push({ id: 'home_multigoals', name: `${homeTeam} Multigoals`, rows: buildMultigoalRows(false) });
     groups['TEAM GOALS'].push({ id: 'away_multigoals', name: `${awayTeam} Multigoals`, rows: buildMultigoalRows(true) });
 
+    // --- Double Chance & Total ---
+    const DC_OUTCOMES = [
+      { label: 'Home/Draw', check: (h, a) => h >= a },
+      { label: 'Home/Away', check: (h, a) => h !== a },
+      { label: 'Draw/Away', check: (h, a) => h <= a },
+    ];
+
+    [1.5, 2.5, 3.5].forEach(line => {
+      const overThresh  = Math.ceil(line);
+      const underThresh = Math.floor(line);
+      const rows = [];
+      ['Under', 'Over'].forEach(ouDir => {
+        DC_OUTCOMES.forEach(({ label: dcLabel, check: dcCheck }) => {
+          let prob = 0;
+          lambdaData.ft.grid.forEach(({ home, away, prob: p }) => {
+            const total = home + away;
+            if (dcCheck(home, away) && (ouDir === 'Over' ? total >= overThresh : total <= underThresh)) prob += p;
+          });
+          rows.push({ label: `${dcLabel} & ${ouDir} ${line}`, value: null, shinFair: null, modelFair: prob > 0 ? (1 / prob).toFixed(3) : null, prob });
+        });
+      });
+      groups['SPECIALS'].push({ id: `dc_total_${line.toString().replace('.', '')}`, name: `Double Chance & Total ${line}`, rows });
+    });
+
     if (lambdaData.h1 && lambdaData.h2) {
       const h1 = lambdaData.h1.grid;
       const h2 = lambdaData.h2.grid;
@@ -339,24 +363,114 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
       });
       groups['1ST HALF'].push({ id: 'h1_result_btts', name: '1st Half Result & BTTS', rows: h1ResultBttsRows });
 
-      const h1OuLine = 1.5;
-      const h1OuThreshold = 2;
-      const h1ResultOuOutcomes = [
-        { label: `Home & Over ${h1OuLine}`,  resCheck: (h, a) => h > a,  over: true  },
-        { label: `Home & Under ${h1OuLine}`, resCheck: (h, a) => h > a,  over: false },
-        { label: `Draw & Over ${h1OuLine}`,  resCheck: (h, a) => h === a, over: true  },
-        { label: `Draw & Under ${h1OuLine}`, resCheck: (h, a) => h === a, over: false },
-        { label: `Away & Over ${h1OuLine}`,  resCheck: (h, a) => a > h,  over: true  },
-        { label: `Away & Under ${h1OuLine}`, resCheck: (h, a) => a > h,  over: false },
-      ];
-      const h1ResultOuRows = h1ResultOuOutcomes.map(({ label, resCheck, over }) => {
-        let prob = 0;
-        h1.forEach(({ home, away, prob: p }) => {
-          if (resCheck(home, away) && (over ? home + away >= h1OuThreshold : home + away < h1OuThreshold)) prob += p;
+      [1.5, 2.5].forEach(h1OuLine => {
+        const h1OuThreshold = Math.ceil(h1OuLine);
+        const h1ResultOuOutcomes = [
+          { label: `Home & Over ${h1OuLine}`,  resCheck: (h, a) => h > a,   over: true  },
+          { label: `Home & Under ${h1OuLine}`, resCheck: (h, a) => h > a,   over: false },
+          { label: `Draw & Over ${h1OuLine}`,  resCheck: (h, a) => h === a,  over: true  },
+          { label: `Draw & Under ${h1OuLine}`, resCheck: (h, a) => h === a,  over: false },
+          { label: `Away & Over ${h1OuLine}`,  resCheck: (h, a) => a > h,   over: true  },
+          { label: `Away & Under ${h1OuLine}`, resCheck: (h, a) => a > h,   over: false },
+        ];
+        const h1ResultOuRows = h1ResultOuOutcomes.map(({ label, resCheck, over }) => {
+          let prob = 0;
+          h1.forEach(({ home, away, prob: p }) => {
+            if (resCheck(home, away) && (over ? home + away >= h1OuThreshold : home + away < h1OuThreshold)) prob += p;
+          });
+          return { label, value: null, shinFair: null, modelFair: prob > 0 ? (1 / prob).toFixed(3) : null, prob };
         });
-        return { label, value: null, shinFair: null, modelFair: prob > 0 ? (1 / prob).toFixed(3) : null, prob };
+        const idStr = `h1_result_ou_${h1OuLine.toString().replace('.', '')}`;
+        groups['1ST HALF'].push({ id: idStr, name: `1st Half 1x2 & Total ${h1OuLine}`, rows: h1ResultOuRows });
       });
-      groups['1ST HALF'].push({ id: 'h1_result_ou', name: `1st Half 1x2 & Total ${h1OuLine}`, rows: h1ResultOuRows });
+
+      // --- 1st Half Double Chance & Total ---
+      [0.5, 1.5, 2.5].forEach(line => {
+        const overThresh  = Math.ceil(line);
+        const underThresh = Math.floor(line);
+        const rows = [];
+        ['Under', 'Over'].forEach(ouDir => {
+          DC_OUTCOMES.forEach(({ label: dcLabel, check: dcCheck }) => {
+            let prob = 0;
+            h1.forEach(({ home, away, prob: p }) => {
+              const total = home + away;
+              if (dcCheck(home, away) && (ouDir === 'Over' ? total >= overThresh : total <= underThresh)) prob += p;
+            });
+            rows.push({ label: `${dcLabel} & ${ouDir} ${line}`, value: null, shinFair: null, modelFair: prob > 0 ? (1 / prob).toFixed(3) : null, prob });
+          });
+        });
+        groups['1ST HALF'].push({ id: `h1_dc_total_${line.toString().replace('.', '')}`, name: `1st Half DC & Total ${line}`, rows });
+      });
+
+      // --- HT/FT & Total ---
+      const HTFT_OUTCOMES = [
+        { label: 'Home/Home', htCheck: (h, a) => h > a,   ftCheck: (fh, fa) => fh > fa   },
+        { label: 'Home/Draw', htCheck: (h, a) => h > a,   ftCheck: (fh, fa) => fh === fa  },
+        { label: 'Home/Away', htCheck: (h, a) => h > a,   ftCheck: (fh, fa) => fa > fh   },
+        { label: 'Draw/Home', htCheck: (h, a) => h === a, ftCheck: (fh, fa) => fh > fa   },
+        { label: 'Draw/Draw', htCheck: (h, a) => h === a, ftCheck: (fh, fa) => fh === fa  },
+        { label: 'Draw/Away', htCheck: (h, a) => h === a, ftCheck: (fh, fa) => fa > fh   },
+        { label: 'Away/Home', htCheck: (h, a) => a > h,   ftCheck: (fh, fa) => fh > fa   },
+        { label: 'Away/Draw', htCheck: (h, a) => a > h,   ftCheck: (fh, fa) => fh === fa  },
+        { label: 'Away/Away', htCheck: (h, a) => a > h,   ftCheck: (fh, fa) => fa > fh   },
+      ];
+
+      [1.5, 2.5, 3.5].forEach(line => {
+        const overThresh  = Math.ceil(line);
+        const underThresh = Math.floor(line);
+        const rows = [];
+        ['Under', 'Over'].forEach(ouDir => {
+          HTFT_OUTCOMES.forEach(({ label: htftLabel, htCheck, ftCheck }) => {
+            let prob = 0;
+            h1.forEach(s1 => {
+              if (!htCheck(s1.home, s1.away)) return;
+              h2.forEach(s2 => {
+                const ftHome = s1.home + s2.home;
+                const ftAway = s1.away + s2.away;
+                const total  = ftHome + ftAway;
+                if (ftCheck(ftHome, ftAway) && (ouDir === 'Over' ? total >= overThresh : total <= underThresh)) prob += s1.prob * s2.prob;
+              });
+            });
+            rows.push({ label: `${htftLabel} & ${ouDir} ${line}`, value: null, shinFair: null, modelFair: prob > 0 ? (1 / prob).toFixed(3) : null, prob });
+          });
+        });
+        groups['SPECIALS'].push({ id: `htft_total_${line.toString().replace('.', '')}`, name: `HT/FT & Total ${line}`, rows });
+      });
+
+      // --- 1st Half Result Or Match Result ---
+      let pHTH = 0, pHTD = 0, pHTA = 0;
+      let pFTH = 0, pFTD = 0, pFTA = 0;
+      let pSameH = 0, pSameD = 0, pSameA = 0;
+      h1.forEach(s1 => {
+        const htR = s1.home > s1.away ? 1 : s1.home === s1.away ? 0 : -1;
+        if (htR === 1)  pHTH += s1.prob;
+        else if (htR === 0) pHTD += s1.prob;
+        else pHTA += s1.prob;
+        h2.forEach(s2 => {
+          const fh = s1.home + s2.home, fa = s1.away + s2.away;
+          const ftR = fh > fa ? 1 : fh === fa ? 0 : -1;
+          if (htR === 1  && ftR === 1)  pSameH += s1.prob * s2.prob;
+          if (htR === 0  && ftR === 0)  pSameD += s1.prob * s2.prob;
+          if (htR === -1 && ftR === -1) pSameA += s1.prob * s2.prob;
+        });
+      });
+      lambdaData.ft.grid.forEach(({ home, away, prob: p }) => {
+        if (home > away) pFTH += p;
+        else if (home === away) pFTD += p;
+        else pFTA += p;
+      });
+      const pHomeOr = pHTH + pFTH - pSameH;
+      const pDrawOr = pHTD + pFTD - pSameD;
+      const pAwayOr = pHTA + pFTA - pSameA;
+      groups['SPECIALS'].push({
+        id: 'h1_or_ft',
+        name: '1st Half Result Or Match Result',
+        rows: [
+          { label: homeTeam, value: null, shinFair: null, modelFair: pHomeOr > 0 ? (1 / pHomeOr).toFixed(3) : null, prob: pHomeOr },
+          { label: 'Draw',   value: null, shinFair: null, modelFair: pDrawOr > 0 ? (1 / pDrawOr).toFixed(3) : null, prob: pDrawOr },
+          { label: awayTeam, value: null, shinFair: null, modelFair: pAwayOr > 0 ? (1 / pAwayOr).toFixed(3) : null, prob: pAwayOr },
+        ]
+      });
 
       const pH1over = h1.reduce((s, { home, away, prob }) => home + away >= 2 ? s + prob : s, 0);
       const pH2over = h2.reduce((s, { home, away, prob }) => home + away >= 2 ? s + prob : s, 0);
@@ -379,6 +493,24 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
         rows: [
           { label: 'Yes', value: null, shinFair: null, modelFair: (1 / pBothUnder).toFixed(3), prob: pBothUnder },
           { label: 'No',  value: null, shinFair: null, modelFair: (1 / (1 - pBothUnder)).toFixed(3), prob: 1 - pBothUnder }
+        ]
+      });
+
+      // --- 1st/2nd Half BTTS ---
+      const pH2btts = h2.reduce((s, { home, away, prob: p }) => home > 0 && away > 0 ? s + p : s, 0);
+      const pH1no = 1 - pH1btts, pH2no = 1 - pH2btts;
+      const pNoNo   = pH1no   * pH2no;
+      const pYesNo  = pH1btts * pH2no;
+      const pYesYes = pH1btts * pH2btts;
+      const pNoYes  = pH1no   * pH2btts;
+      groups['GOALS'].push({
+        id: 'h1h2_btts',
+        name: '1st/2nd Half Both Teams To Score',
+        rows: [
+          { label: 'No/No',   value: null, shinFair: null, modelFair: pNoNo   > 0 ? (1 / pNoNo).toFixed(3)   : null, prob: pNoNo   },
+          { label: 'Yes/No',  value: null, shinFair: null, modelFair: pYesNo  > 0 ? (1 / pYesNo).toFixed(3)  : null, prob: pYesNo  },
+          { label: 'Yes/Yes', value: null, shinFair: null, modelFair: pYesYes > 0 ? (1 / pYesYes).toFixed(3) : null, prob: pYesYes },
+          { label: 'No/Yes',  value: null, shinFair: null, modelFair: pNoYes  > 0 ? (1 / pNoYes).toFixed(3)  : null, prob: pNoYes  },
         ]
       });
 

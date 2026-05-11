@@ -459,6 +459,7 @@ export function renderMarketTable(market) {
     }
     if (market.name.includes('Double Chance')) expectedPairs = 2;
     if (market.id === 'home_multigoals' || market.id === 'away_multigoals') expectedPairs = count;
+    if (market.id.startsWith('htft_total') || market.id === 'h1_or_ft') expectedPairs = 1;
     return marginBadgeHTML(sum / expectedPairs);
   };
 
