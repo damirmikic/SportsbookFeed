@@ -311,6 +311,43 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
       groups['SPECIALS'].push({ id: `dc_total_${line.toString().replace('.', '')}`, name: `Double Chance & Total ${line}`, rows });
     });
 
+    // --- Home/Away or BTTS / Over 2.5 ---
+    const OR_MARKETS = [
+      {
+        id: 'home_or_btts',
+        name: `${homeTeam} or BTTS`,
+        cond: (h, a) => h > a || (h > 0 && a > 0),
+      },
+      {
+        id: 'away_or_btts',
+        name: `${awayTeam} or BTTS`,
+        cond: (h, a) => a > h || (h > 0 && a > 0),
+      },
+      {
+        id: 'home_or_over25',
+        name: `${homeTeam} or Over 2.5`,
+        cond: (h, a) => h > a || h + a >= 3,
+      },
+      {
+        id: 'away_or_over25',
+        name: `${awayTeam} or Over 2.5`,
+        cond: (h, a) => a > h || h + a >= 3,
+      },
+    ];
+    OR_MARKETS.forEach(({ id, name, cond }) => {
+      let pYes = 0;
+      lambdaData.ft.grid.forEach(({ home, away, prob: p }) => { if (cond(home, away)) pYes += p; });
+      const pNo = 1 - pYes;
+      groups['SPECIALS'].push({
+        id,
+        name,
+        rows: [
+          { label: 'Yes', value: null, shinFair: null, modelFair: pYes > 0 ? (1 / pYes).toFixed(3) : null, prob: pYes },
+          { label: 'No',  value: null, shinFair: null, modelFair: pNo  > 0 ? (1 / pNo).toFixed(3)  : null, prob: pNo  },
+        ]
+      });
+    });
+
     if (lambdaData.h1 && lambdaData.h2) {
       const h1 = lambdaData.h1.grid;
       const h2 = lambdaData.h2.grid;
