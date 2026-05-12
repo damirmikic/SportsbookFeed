@@ -3699,3 +3699,204 @@ button.dtpl-name-link:hover { color: var(--accent-color); }
 .dtpl-reset-btn:hover {
   background: rgba(239,68,68,0.1); border-color: #f87171;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   FEED TIMELINE
+════════════════════════════════════════════════════════════ */
+
+.feed-tl-btn {
+  display: block;
+  margin-top: 5px;
+  width: 100%;
+  background: transparent;
+  border: 1px dashed var(--border-color);
+  color: var(--text-secondary);
+  font-family: var(--font-family);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  padding: 0.28rem 0.55rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.12s, color 0.12s;
+}
+
+.feed-tl-btn:hover {
+  border-color: var(--accent-color);
+  color: var(--text-primary);
+}
+
+.feed-tl-btn.has-tl {
+  border-style: solid;
+  border-color: rgba(99,102,241,0.45);
+  color: #a5b4fc;
+  background: rgba(99,102,241,0.08);
+}
+
+.feed-tl-btn.has-tl:hover {
+  border-color: #818cf8;
+  color: #c7d2fe;
+}
+
+/* Modal size */
+.feed-tl-modal { max-width: 560px; }
+
+.feed-tl-desc {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin: 0 0 1rem 0;
+  line-height: 1.5;
+}
+
+/* Timeline table */
+.feed-tl-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.feed-tl-table thead th {
+  background: #0f172a;
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 0.55rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.feed-tl-table thead th:last-child { width: 36px; }
+
+.feed-tl-row {
+  border-bottom: 1px solid var(--border-color);
+}
+
+.feed-tl-row:last-child { border-bottom: none; }
+
+.feed-tl-row td {
+  padding: 0.55rem 0.75rem;
+  vertical-align: middle;
+}
+
+.ftl-node {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #a5b4fc;
+  width: 80px;
+}
+
+.ftl-tpl {
+  color: var(--text-primary);
+  font-size: 0.82rem;
+}
+
+.ftl-del { text-align: center; }
+
+.ftl-del-btn {
+  background: none;
+  border: 1px solid rgba(239,68,68,0.3);
+  color: #f87171;
+  border-radius: var(--radius-sm);
+  width: 22px;
+  height: 22px;
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+}
+
+.ftl-del-btn:hover {
+  background: rgba(239,68,68,0.12);
+  border-color: #f87171;
+}
+
+.feed-tl-empty {
+  padding: 1rem 0.75rem;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+/* Add-row controls */
+.feed-tl-add-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.feed-tl-add-row select {
+  flex: 1;
+  min-width: 120px;
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: 0.8rem;
+  padding: 0.38rem 0.6rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.feed-tl-add-row select:hover,
+.feed-tl-add-row select:focus { border-color: var(--accent-color); }
+
+.feed-tl-add-btn {
+  background: var(--accent-color);
+  border: none;
+  color: #fff;
+  font-family: var(--font-family);
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.38rem 0.85rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.12s;
+}
+
+.feed-tl-add-btn:hover { opacity: 0.85; }
+
+/* Modal footer buttons */
+.feed-tl-save-btn {
+  background: var(--accent-color);
+  border: none;
+  color: #fff;
+  font-family: var(--font-family);
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 0.5rem 1.1rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+
+.feed-tl-save-btn:hover { opacity: 0.85; }
+
+.feed-tl-cancel-btn {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-family: var(--font-family);
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.5rem 1.1rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+}
+
+.feed-tl-cancel-btn:hover {
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
+}

@@ -555,7 +555,7 @@ export function setMatchTemplate(eventId, templateId) {
 const _leagueSettings = readJson('leagueSettings', {});
 
 export function getLeagueSetting(code) {
-  return _leagueSettings[String(code)] || { template: null, activation: 'off', alertFactor: 1 };
+  return _leagueSettings[String(code)] || { template: null, activation: 'off', alertFactor: 1, templateTimeline: [] };
 }
 
 export function getAllLeagueSettings() { return _leagueSettings; }

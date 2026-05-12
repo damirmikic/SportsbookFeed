@@ -9,6 +9,7 @@ import {
   hasAnySuspension,
   getTradingMode,
   hasAnyOverrideForEvent,
+  TIMELINE_NODES,
 } from './state.js';
 import { fetchActiveTraders } from './api.js';
 import { resolveTemplate } from './pricing.js';
@@ -255,6 +256,7 @@ function rowHTML(league, templates) {
   const act  = s.activation || 'off';
   const af   = s.alertFactor ?? 1;
   const leagueSuspended = isLeagueSuspended(code);
+  const timelineCount = (s.templateTimeline || []).length;
 
   return `
     <tr class="admin-row">
@@ -267,6 +269,11 @@ function rowHTML(league, templates) {
           <option value="">Select an option</option>
           ${templates.map(t => `<option value="${t.id}" ${s.template === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
         </select>
+        <button class="feed-tl-btn ${timelineCount > 0 ? 'has-tl' : ''}"
+                data-code="${code}"
+                data-league-name="${escapeHtml(getLeagueName(league))}">
+          ${timelineCount > 0 ? `Timeline (${timelineCount})` : '+ Feed Timeline'}
+        </button>
       </td>
       <td class="atd-act">
         <div class="act-group">
@@ -306,6 +313,123 @@ function tableHTML(leagues, templates) {
         </tbody>
       </table>
     </div>`;
+}
+
+// ── Feed Timeline Modal ───────────────────────────────────
+let _ftlCode = null;
+let _ftlRows = [];
+
+function ftlRowsHTML(rows, templates, usedNodes) {
+  if (!rows.length) return '<tr><td colspan="3" class="feed-tl-empty">No nodes configured. Use the controls below to add one.</td></tr>';
+  return rows.map((row, i) => {
+    const node = TIMELINE_NODES.find(n => n.id === row.nodeId);
+    const tpl  = templates.find(t => t.id === row.templateId);
+    return `
+      <tr class="feed-tl-row">
+        <td class="ftl-node">${node ? node.label : row.nodeId}</td>
+        <td class="ftl-tpl">${tpl ? escapeHtml(tpl.name) : '<em>Unknown template</em>'}</td>
+        <td class="ftl-del"><button class="ftl-del-btn" data-idx="${i}" title="Remove">×</button></td>
+      </tr>`;
+  }).join('');
+}
+
+function ftlAvailableNodes(rows) {
+  const used = new Set(rows.map(r => r.nodeId));
+  return TIMELINE_NODES.filter(n => !used.has(n.id));
+}
+
+function openFeedTimelineModal(code, leagueName, templates) {
+  closeFeedTimelineModal();
+  _ftlCode = code;
+  const s = getLeagueSetting(code);
+  _ftlRows = JSON.parse(JSON.stringify(s.templateTimeline || []));
+
+  const backdrop = document.createElement('div');
+  backdrop.id = 'feed-tl-backdrop';
+  backdrop.className = 'tpl-modal-backdrop';
+  backdrop.innerHTML = `
+    <div class="tpl-modal feed-tl-modal" role="dialog" aria-modal="true">
+      <div class="tpl-modal-header">
+        <h3>Feed Timeline &mdash; ${escapeHtml(leagueName)}</h3>
+        <button class="tpl-modal-close" id="feed-tl-close">&times;</button>
+      </div>
+      <div class="tpl-modal-body">
+        <p class="feed-tl-desc">Configure which template activates at each time threshold before kick-off. Nodes are evaluated nearest-to-kick-off first; the first matching node wins.</p>
+        <table class="feed-tl-table">
+          <thead>
+            <tr><th>Node</th><th>Template</th><th></th></tr>
+          </thead>
+          <tbody id="feed-tl-rows"></tbody>
+        </table>
+        <div class="feed-tl-add-row">
+          <select id="ftl-node-sel">
+            <option value="">Select node&hellip;</option>
+          </select>
+          <select id="ftl-tpl-sel">
+            <option value="">Select template&hellip;</option>
+            ${templates.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('')}
+          </select>
+          <button class="feed-tl-add-btn" id="ftl-add-btn">Add</button>
+        </div>
+      </div>
+      <div class="tpl-modal-footer">
+        <button class="feed-tl-save-btn" id="ftl-save">Save Timeline</button>
+        <button class="feed-tl-cancel-btn" id="ftl-cancel">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(backdrop);
+  requestAnimationFrame(() => backdrop.classList.add('visible'));
+
+  function refreshRows() {
+    backdrop.querySelector('#feed-tl-rows').innerHTML = ftlRowsHTML(_ftlRows, templates);
+    const nodeSel = backdrop.querySelector('#ftl-node-sel');
+    const available = ftlAvailableNodes(_ftlRows);
+    nodeSel.innerHTML = '<option value="">Select node…</option>'
+      + available.map(n => `<option value="${n.id}">${n.label}</option>`).join('');
+  }
+
+  refreshRows();
+
+  backdrop.querySelector('#feed-tl-close').addEventListener('click', closeFeedTimelineModal);
+  backdrop.querySelector('#ftl-cancel').addEventListener('click', closeFeedTimelineModal);
+  backdrop.addEventListener('click', e => { if (e.target === backdrop) closeFeedTimelineModal(); });
+
+  backdrop.querySelector('#feed-tl-rows').addEventListener('click', e => {
+    const btn = e.target.closest('.ftl-del-btn');
+    if (!btn) return;
+    _ftlRows.splice(parseInt(btn.dataset.idx, 10), 1);
+    refreshRows();
+  });
+
+  backdrop.querySelector('#ftl-add-btn').addEventListener('click', () => {
+    const nodeId = backdrop.querySelector('#ftl-node-sel').value;
+    const templateId = backdrop.querySelector('#ftl-tpl-sel').value;
+    if (!nodeId || !templateId) {
+      showAdminToast('Select both a node and a template before adding.');
+      return;
+    }
+    if (_ftlRows.some(r => r.nodeId === nodeId)) {
+      showAdminToast('That node is already in the timeline.');
+      return;
+    }
+    _ftlRows.push({ nodeId, templateId });
+    _ftlRows.sort((a, b) => TIMELINE_NODES.findIndex(n => n.id === a.nodeId) - TIMELINE_NODES.findIndex(n => n.id === b.nodeId));
+    refreshRows();
+  });
+
+  backdrop.querySelector('#ftl-save').addEventListener('click', () => {
+    setLeagueSetting(_ftlCode, { templateTimeline: _ftlRows });
+    closeFeedTimelineModal();
+    renderAdminPanel();
+    showAdminToast(_ftlRows.length ? `Feed timeline saved (${_ftlRows.length} node${_ftlRows.length > 1 ? 's' : ''}).` : 'Feed timeline cleared.');
+  });
+}
+
+function closeFeedTimelineModal() {
+  const el = document.getElementById('feed-tl-backdrop');
+  if (!el) return;
+  el.classList.remove('visible');
+  setTimeout(() => el.remove(), 200);
 }
 
 // ── Main render ───────────────────────────────────────────
@@ -386,6 +510,13 @@ function wirePanel(panel, templates) {
       dot.closest('.af-track').querySelectorAll('.af-dot').forEach(d => d.classList.remove('active'));
       dot.classList.add('active');
     })
+  );
+
+  // Row: feed timeline button
+  panel.querySelectorAll('.feed-tl-btn').forEach(btn =>
+    btn.addEventListener('click', () =>
+      openFeedTimelineModal(btn.dataset.code, btn.dataset.leagueName, templates)
+    )
   );
 
   panel.querySelectorAll('.admin-league-suspend-btn').forEach(btn =>

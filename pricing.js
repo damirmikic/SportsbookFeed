@@ -1,7 +1,7 @@
 // pricing.js — Template pricing engine
 // Steps are implemented incrementally; each function is independently importable.
 
-import { getMatchTemplate, getLeagueSetting, getTemplates, TIMELINE_NODES, getAllOverrideMeta, updateOverrideAlertState } from './state.js';
+import { getMatchTemplate, getLeagueSetting, getTemplates, TIMELINE_NODES, getAllOverrideMeta, updateOverrideAlertState, state } from './state.js';
 import { calculateShinNoVig } from './math.js';
 import { getTeamNames } from './utils.js';
 
@@ -59,11 +59,32 @@ export function resolveTemplate(eventId, leagueCode) {
   const matchTpl = find(getMatchTemplate(eventId));
   if (matchTpl) return { template: matchTpl, source: 'match' };
 
-  // 2. League default
-  const leagueTpl = find(getLeagueSetting(leagueCode)?.template);
+  const leagueSettings = getLeagueSetting(leagueCode);
+
+  // 2. Feed timeline — walk nodes nearest-first, pick first whose threshold is satisfied
+  const feedTimeline = leagueSettings?.templateTimeline;
+  if (Array.isArray(feedTimeline) && feedTimeline.length > 0) {
+    const event = state.activeEvents.find(e => String(e.id) === String(eventId));
+    const rawStart = event?.starts || event?.startTime || event?.time || event?.start;
+    if (rawStart) {
+      const minutesToKickoff = (new Date(rawStart).getTime() - Date.now()) / 60_000;
+      const nodesNearFirst = [...TIMELINE_NODES].reverse();
+      for (const node of nodesNearFirst) {
+        const entry = feedTimeline.find(e => e.nodeId === node.id);
+        if (!entry?.templateId) continue;
+        if (minutesToKickoff <= NODE_MINUTES[node.id]) {
+          const tpl = find(entry.templateId);
+          if (tpl) return { template: tpl, source: 'feed-timeline', node: node.id };
+        }
+      }
+    }
+  }
+
+  // 3. League default
+  const leagueTpl = find(leagueSettings?.template);
   if (leagueTpl) return { template: leagueTpl, source: 'league' };
 
-  // 3. Nothing assigned
+  // 4. Nothing assigned
   return { template: null, source: 'none' };
 }
 
