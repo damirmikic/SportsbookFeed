@@ -54,7 +54,7 @@ exports.handler = async (event) => {
 
     if (event.httpMethod === 'GET') {
       const result = await db.execute(
-        'SELECT id, name, color FROM traders WHERE active = 1 AND deleted_at IS NULL ORDER BY name COLLATE NOCASE'
+        'SELECT id, name, color, role FROM traders WHERE active = 1 AND deleted_at IS NULL ORDER BY name COLLATE NOCASE'
       );
       return ok(result.rows);
     }
@@ -138,30 +138,33 @@ exports.handler = async (event) => {
         return ok({ ok: false });
       }
 
-      const { name, color, pin } = body;
+      const VALID_ROLES = ['monitor', 'trader', 'senior'];
+      const { name, color, pin, role: bodyRole } = body;
       if (!name?.trim()) return err('Trader name is required', 400);
       if (!isValidPin(pin)) return err('PIN must be 4-6 digits', 400);
+      const role = VALID_ROLES.includes(bodyRole) ? bodyRole : 'trader';
 
       const trader = {
         id: crypto.randomUUID(),
         name: name.trim(),
         color: color || '#3b82f6',
         pinHash: hashPin(pin),
+        role,
       };
 
       await db.execute({
-        sql: 'INSERT INTO traders (id, name, color, pin_hash, failed_attempts, locked_until) VALUES (?, ?, ?, ?, 0, NULL)',
-        args: [trader.id, trader.name, trader.color, trader.pinHash],
+        sql: 'INSERT INTO traders (id, name, color, pin_hash, role, failed_attempts, locked_until) VALUES (?, ?, ?, ?, ?, 0, NULL)',
+        args: [trader.id, trader.name, trader.color, trader.pinHash, trader.role],
       });
       await writeAuditLog(db, {
         traderId: trader.id,
         entity: 'traders',
         action: 'create',
         before: null,
-        after: { id: trader.id, name: trader.name, color: trader.color },
+        after: { id: trader.id, name: trader.name, color: trader.color, role: trader.role },
       });
 
-      return ok({ id: trader.id, name: trader.name, color: trader.color }, 201);
+      return ok({ id: trader.id, name: trader.name, color: trader.color, role: trader.role }, 201);
     }
 
     if (event.httpMethod === 'PUT') {
@@ -187,6 +190,12 @@ exports.handler = async (event) => {
         fields.push('failed_attempts = 0');
         fields.push('locked_until = NULL');
       }
+      if (body.role != null) {
+        const VALID_ROLES = ['monitor', 'trader', 'senior'];
+        if (!VALID_ROLES.includes(body.role)) return err('Invalid role', 400);
+        fields.push('role = ?');
+        args.push(body.role);
+      }
       if (!fields.length) return err('No valid fields to update', 400);
 
       args.push(String(id));
@@ -196,7 +205,7 @@ exports.handler = async (event) => {
       });
 
       const result = await db.execute({
-        sql: 'SELECT id, name, color FROM traders WHERE id = ? AND active = 1 AND deleted_at IS NULL',
+        sql: 'SELECT id, name, color, role FROM traders WHERE id = ? AND active = 1 AND deleted_at IS NULL',
         args: [String(id)],
       });
       return ok(result.rows[0] || null);

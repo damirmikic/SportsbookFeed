@@ -58,11 +58,12 @@ async function createTrader(name, color, pin) {
       name,
       color,
       pin_hash:   await sha256(pin),
+      role:       'trader',
       created_at: new Date().toISOString(),
       active:     1,
     };
     mockSaveTraders([...traders, trader]);
-    return { id: trader.id, name: trader.name, color: trader.color };
+    return { id: trader.id, name: trader.name, color: trader.color, role: trader.role };
   }
   return apiFetch('/api/traders', {
     method: 'POST',

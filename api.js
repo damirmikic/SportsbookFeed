@@ -57,6 +57,13 @@ export async function createTrader(name, color, pin) {
   });
 }
 
+export async function updateTrader(id, updates) {
+  return await jsonRequest(`/api/traders?id=${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(updates),
+  });
+}
+
 export async function verifyTraderPin(id, pin) {
   return await jsonRequest('/api/traders?verify=1', {
     method: 'POST',

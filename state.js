@@ -6,6 +6,7 @@ const SHARED_ENTITY_KEYS = {
   'league-settings': 'leagueSettings',
   'match-templates': 'matchTemplates',
   suspensions: 'suspensions',
+  'pending-overrides': 'pendingOverrides',
 };
 
 const TRADER_ENTITY_KEYS = {
@@ -95,6 +96,7 @@ function getEntityData(entity) {
     case 'league-settings': return _leagueSettings;
     case 'match-templates': return _matchTemplates;
     case 'suspensions': return _suspensions;
+    case 'pending-overrides': return _pendingOverrides;
     case 'overrides': return _overrides;
     case 'meta': return _overrideMeta;
     case 'modes': return _tradingModes;
@@ -213,6 +215,28 @@ export function getCurrentTrader() {
   return state.currentTraderProfile;
 }
 
+export function canDo(permission) {
+  const role = state.currentTraderProfile?.role || 'trader';
+  if (permission === 'set-override') return role === 'trader' || role === 'senior';
+  if (permission === 'manage-leagues') return role === 'senior';
+  if (permission === 'manage-templates') return role === 'senior';
+  if (permission === 'manage-traders') return role === 'senior';
+  return false;
+}
+
+export function getPendingOverride(key) { return _pendingOverrides[key] ?? null; }
+export function getAllPendingOverrides() { return _pendingOverrides; }
+
+export function setPendingOverride(key, data) {
+  _pendingOverrides[key] = data;
+  persistSharedEntity('pending-overrides', _pendingOverrides);
+}
+
+export function removePendingOverride(key) {
+  delete _pendingOverrides[key];
+  persistSharedEntity('pending-overrides', _pendingOverrides);
+}
+
 export function hydrateSharedState(sharedState = {}) {
   withHydration(() => {
     if (Array.isArray(sharedState.templates)) {
@@ -234,6 +258,10 @@ export function hydrateSharedState(sharedState = {}) {
       });
       replaceObject(_suspensions, normalized);
       writeJson('suspensions', _suspensions);
+    }
+    if (sharedState.pendingOverrides && typeof sharedState.pendingOverrides === 'object') {
+      replaceObject(_pendingOverrides, sharedState.pendingOverrides);
+      writeJson('pendingOverrides', _pendingOverrides);
     }
     if (sharedState.syncMeta?.lastSharedPushAt) {
       state.sharedSyncLastPushedAt = sharedState.syncMeta.lastSharedPushAt;
@@ -313,6 +341,7 @@ export function snapshotOdds() {
 const _overrides = readJson('priceOverrides', {});
 const _overrideMeta = readJson('overrideMeta', {});
 const _overriddenLambdas = readJson('overriddenLambdas', {});
+const _pendingOverrides = readJson('pendingOverrides', {});
 
 export function getOverride(key) { return _overrides[key] || null; }
 

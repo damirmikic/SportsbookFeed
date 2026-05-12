@@ -2,7 +2,7 @@ import {
   getTemplates, addTemplate, updateTemplate, deleteTemplate,
   MARKET_DEFS, TIMELINE_NODES, getDiscoveredMarkets, setDiscoveredMarkets,
   getDetailedOdds, isDetailedOddsFresh, setDetailedOdds,
-  getAllLeagueSettings, getCurrentTrader,
+  getAllLeagueSettings, getCurrentTrader, canDo,
 } from './state.js';
 import { state } from './state.js';
 import { fetchEventOdds } from './api.js';
@@ -216,7 +216,7 @@ function extractMarketsFromEvent(event, detailed) {
 }
 
 // ── Filter bar + chips ────────────────────────────────────
-function filterBarHTML() {
+function filterBarHTML(canManage = true) {
   return `
     <div class="tpl-filter-bar">
       <div class="tpl-filters-left">
@@ -230,11 +230,12 @@ function filterBarHTML() {
         <label class="admin-cb-label tpl-active-cb">
           <input type="checkbox" id="tf-active" ${tplFilters.activeOnly ? 'checked' : ''}> Active templates
         </label>
+        ${!canManage ? '<span class="role-badge trader" title="Senior access required to manage templates">Read Only</span>' : ''}
       </div>
       <div class="tpl-filters-right">
         <button class="tpl-ladders-btn"  id="tpl-my-ladders">MY LADDERS</button>
         <button class="tpl-compare-btn"  id="tpl-compare">COMPARE</button>
-        <button class="tpl-create-btn"   id="tpl-create-new">CREATE NEW</button>
+        <button class="tpl-create-btn"   id="tpl-create-new" ${!canManage ? 'disabled title="Senior access required"' : ''}>CREATE NEW</button>
       </div>
     </div>`;
 }
@@ -251,7 +252,7 @@ function chipsBarHTML() {
 }
 
 // ── Template listing table ────────────────────────────────
-function templateRowHTML(tpl) {
+function templateRowHTML(tpl, canManage = true) {
   const enabled  = enabledCount(tpl);
   const total    = (tpl.markets || []).length;
   const created  = tpl.createdAt ? new Date(tpl.createdAt).toLocaleDateString() : '—';
@@ -259,13 +260,15 @@ function templateRowHTML(tpl) {
   const locked   = tpl.locked ?? false;
   const updRel   = relativeTime(tpl.updatedAt);
   const updBy    = tpl.updatedBy ? ` by ${tpl.updatedBy}` : '';
+  const noEdit   = locked || !canManage;
+  const noEditTitle = !canManage ? 'Senior access required' : 'Unlock template before editing';
   return `
     <tr class="tpl-row${locked ? ' tpl-row-locked' : ''}" data-id="${tpl.id}">
       <td class="tpl-td-name">
         <div class="tpl-name-display">
           <span class="tpl-name-text">${tpl.name}</span>
           ${locked ? '<span class="tpl-lock-icon" title="Locked">🔒</span>' : ''}
-          ${!locked ? `<button class="tpl-rename-btn" data-id="${tpl.id}" title="Rename">✏</button>` : ''}
+          ${(!locked && canManage) ? `<button class="tpl-rename-btn" data-id="${tpl.id}" title="Rename">✏</button>` : ''}
         </div>
         <div class="tpl-rename-wrap hidden">
           <input class="tpl-rename-input" type="text" value="${tpl.name}" data-id="${tpl.id}" maxlength="60">
@@ -287,7 +290,7 @@ function templateRowHTML(tpl) {
       </td>
       <td>
         <label class="tpl-status-toggle">
-          <input type="checkbox" class="tpl-status-cb" data-id="${tpl.id}" ${tpl.active ? 'checked' : ''}>
+          <input type="checkbox" class="tpl-status-cb" data-id="${tpl.id}" ${tpl.active ? 'checked' : ''} ${!canManage ? 'disabled' : ''}>
           <span class="tpl-status-track"></span>
           <span class="tpl-status-label">${tpl.active ? 'Active' : 'Inactive'}</span>
         </label>
@@ -298,18 +301,18 @@ function templateRowHTML(tpl) {
       </td>
       <td class="tpl-td-actions">
         <button class="tpl-lock-btn ${locked ? 'tpl-locked' : ''}" data-id="${tpl.id}"
-          title="${locked ? 'Unlock template' : 'Lock template'}">${locked ? '🔓' : '🔒'}</button>
+          ${!canManage ? 'disabled title="Senior access required"' : `title="${locked ? 'Unlock template' : 'Lock template'}"`}>${locked ? '🔓' : '🔒'}</button>
         <button class="tpl-edit-btn" data-id="${tpl.id}"
-          ${locked ? 'disabled title="Unlock template before editing"' : ''}>Edit</button>
-        <button class="tpl-clone-btn"   data-id="${tpl.id}" title="Clone template">Clone</button>
+          ${noEdit ? `disabled title="${noEditTitle}"` : ''}>Edit</button>
+        <button class="tpl-clone-btn"   data-id="${tpl.id}" title="Clone template" ${!canManage ? 'disabled title="Senior access required"' : ''}>Clone</button>
         <button class="tpl-preview-btn" data-id="${tpl.id}" title="Preview pricing against a live event">Preview</button>
         <button class="tpl-delete-btn"  data-id="${tpl.id}"
-          ${locked ? 'disabled title="Unlock template before deleting"' : ''}>Delete</button>
+          ${noEdit ? `disabled title="${noEditTitle}"` : ''}>Delete</button>
       </td>
     </tr>`;
 }
 
-function tableHTML(templates) {
+function tableHTML(templates, canManage = true) {
   return `
     <div class="admin-table-wrap">
       <table class="admin-tbl tpl-tbl">
@@ -321,7 +324,7 @@ function tableHTML(templates) {
         </thead>
         <tbody>
           ${templates.length
-            ? templates.map(templateRowHTML).join('')
+            ? templates.map(t => templateRowHTML(t, canManage)).join('')
             : '<tr><td colspan="8" class="admin-empty">No templates match the current filters.</td></tr>'}
         </tbody>
       </table>
@@ -404,6 +407,10 @@ function marketCardHTML(def, config, group) {
               <input type="number" class="mkt-range-input mkt-cfg-num" data-id="${config.id}"
                 value="${config.rangeLimit ?? ''}" placeholder="None" min="1" max="5" step="0.001">
             </label>
+            <label class="mkt-inline-field mkt-approval-field" title="Overrides on this market require senior approval">
+              <input type="checkbox" class="mkt-approval-cb" data-id="${config.id}" ${config.requiresApproval ? 'checked' : ''}>
+              Requires approval
+            </label>
           </div>
         </div>
 
@@ -429,13 +436,14 @@ function marketConfigHTML(existingMarkets, marketDefs) {
     groupItems[def.group].push({
       def,
       config: {
-        id:         def.id,
-        enabled:    existing?.enabled    ?? dfl.enabled,
-        margin:     existing?.margin     ?? dfl.margin,
-        maxBet:     existing?.maxBet     ?? dfl.maxBet,
-        ladder:     existing?.ladder     ?? 'eu',
-        rangeLimit: existing?.rangeLimit ?? null,
-        timeline:   existing?.timeline   ?? {},
+        id:               def.id,
+        enabled:          existing?.enabled          ?? dfl.enabled,
+        margin:           existing?.margin           ?? dfl.margin,
+        maxBet:           existing?.maxBet           ?? dfl.maxBet,
+        ladder:           existing?.ladder           ?? 'eu',
+        rangeLimit:       existing?.rangeLimit       ?? null,
+        timeline:         existing?.timeline         ?? {},
+        requiresApproval: existing?.requiresApproval ?? false,
       },
     });
   });
@@ -473,11 +481,12 @@ function collectMarketsFromForm(backdrop) {
     });
     markets.push({
       id,
-      enabled:    cb ? cb.checked : false,
-      margin:     parseFloat(card.querySelector('.mkt-margin-input')?.value) || 5.0,
-      maxBet:     parseInt(card.querySelector('.mkt-maxbet-input')?.value, 10) || 1000,
-      ladder:     card.querySelector('.mkt-ladder-sel')?.value || 'eu',
-      rangeLimit: parseFloat(card.querySelector('.mkt-range-input')?.value) || null,
+      enabled:          cb ? cb.checked : false,
+      margin:           parseFloat(card.querySelector('.mkt-margin-input')?.value) || 5.0,
+      maxBet:           parseInt(card.querySelector('.mkt-maxbet-input')?.value, 10) || 1000,
+      ladder:           card.querySelector('.mkt-ladder-sel')?.value || 'eu',
+      rangeLimit:       parseFloat(card.querySelector('.mkt-range-input')?.value) || null,
+      requiresApproval: card.querySelector('.mkt-approval-cb')?.checked ?? false,
       timeline,
     });
   });
@@ -825,8 +834,9 @@ function wirePreviewModal(backdrop, tpl) {
 export function renderTemplatesSection() {
   const panel = document.getElementById('templates-panel');
   if (!panel) return;
-  panel.innerHTML = filterBarHTML() + chipsBarHTML() + tableHTML(getFiltered());
-  wireSectionEvents(panel);
+  const canManage = canDo('manage-templates');
+  panel.innerHTML = filterBarHTML(canManage) + chipsBarHTML() + tableHTML(getFiltered(), canManage);
+  wireSectionEvents(panel, canManage);
 }
 
 // ── Open / close modal ────────────────────────────────────
@@ -1123,7 +1133,7 @@ async function loadMarketsFromFeed(backdrop) {
 }
 
 // ── Section event wiring ──────────────────────────────────
-function wireSectionEvents(panel) {
+function wireSectionEvents(panel, canManage = true) {
   panel.querySelector('#tf-type').addEventListener('change',   e => { tplFilters.type      = e.target.value;   renderTemplatesSection(); });
   panel.querySelector('#tf-active').addEventListener('change', e => { tplFilters.activeOnly = e.target.checked; renderTemplatesSection(); });
   panel.querySelector('#tf-clear').addEventListener('click', () => {
@@ -1138,7 +1148,11 @@ function wireSectionEvents(panel) {
     })
   );
 
-  panel.querySelector('#tpl-create-new').addEventListener('click', () => openForm(null));
+  if (canManage) {
+    panel.querySelector('#tpl-create-new').addEventListener('click', () => openForm(null));
+  } else {
+    panel.querySelector('#tpl-create-new')?.addEventListener('click', () => showTplToast('Senior access required to create templates.'));
+  }
   panel.querySelector('#tpl-my-ladders').addEventListener('click', () => showTplToast('Price Ladders configuration coming soon.'));
   panel.querySelector('#tpl-compare').addEventListener('click', () => openCompareModal());
 
@@ -1156,6 +1170,7 @@ function wireSectionEvents(panel) {
   // Status toggle
   panel.querySelectorAll('.tpl-status-cb').forEach(cb =>
     cb.addEventListener('change', e => {
+      if (!canManage) { e.target.checked = !e.target.checked; showTplToast('Senior access required.'); return; }
       updateTemplate(e.target.dataset.id, { active: e.target.checked });
       const label = e.target.closest('label').querySelector('.tpl-status-label');
       if (label) label.textContent = e.target.checked ? 'Active' : 'Inactive';
@@ -1164,6 +1179,7 @@ function wireSectionEvents(panel) {
 
   panel.querySelectorAll('.tpl-edit-btn').forEach(btn =>
     btn.addEventListener('click', () => {
+      if (!canManage) { showTplToast('Senior access required to edit templates.'); return; }
       const tpl = getTemplates().find(t => t.id === btn.dataset.id);
       if (tpl && !tpl.locked) openForm(tpl);
     })
@@ -1171,6 +1187,7 @@ function wireSectionEvents(panel) {
 
   panel.querySelectorAll('.tpl-lock-btn').forEach(btn =>
     btn.addEventListener('click', () => {
+      if (!canManage) { showTplToast('Senior access required.'); return; }
       const tpl = getTemplates().find(t => t.id === btn.dataset.id);
       if (!tpl) return;
       updateTemplate(tpl.id, { locked: !tpl.locked });
@@ -1181,6 +1198,7 @@ function wireSectionEvents(panel) {
 
   panel.querySelectorAll('.tpl-clone-btn').forEach(btn =>
     btn.addEventListener('click', () => {
+      if (!canManage) { showTplToast('Senior access required to clone templates.'); return; }
       const tpl = getTemplates().find(t => t.id === btn.dataset.id);
       if (!tpl) return;
       const newName = prompt(`Clone "${tpl.name}" — enter a name for the copy:`, `${tpl.name} (copy)`);
@@ -1209,6 +1227,7 @@ function wireSectionEvents(panel) {
 
   panel.querySelectorAll('.tpl-delete-btn').forEach(btn =>
     btn.addEventListener('click', () => {
+      if (!canManage) { showTplToast('Senior access required to delete templates.'); return; }
       const tpl = getTemplates().find(t => t.id === btn.dataset.id);
       if (!tpl || tpl.locked) return;
       const leagues = leagueCount(tpl.id);

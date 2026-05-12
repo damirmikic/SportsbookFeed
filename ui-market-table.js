@@ -1,4 +1,4 @@
-import { state, getOverride, setOverride, getOverrideMeta, setOverrideWithMeta, updateOverrideAlertState, setTradingMode, getOverriddenLambdas, setOverriddenLambdas, isSuspended, isSelectionSuspended, setSuspension, clearOverride, clearOverrideMetaSelection, hasAnyOverrideForEvent, clearOverriddenLambdas } from './state.js';
+import { state, getOverride, setOverride, getOverrideMeta, setOverrideWithMeta, updateOverrideAlertState, setTradingMode, getOverriddenLambdas, setOverriddenLambdas, isSuspended, isSelectionSuspended, setSuspension, clearOverride, clearOverrideMetaSelection, hasAnyOverrideForEvent, clearOverriddenLambdas, canDo, getPendingOverride, setPendingOverride, removePendingOverride, getLeagueSetting } from './state.js';
 import { resolveTemplate, getMarketConfig, resolveActiveKey } from './pricing.js';
 import { calculateShinNoVig, solveLambdasAsync, applyMarginAndLadder } from './math.js';
 import { calcMargin, marginBadgeHTML } from './ui-helpers.js';
@@ -176,7 +176,26 @@ function getOfferHistoryRequest(market, row, drawerEvent) {
   return null;
 }
 
+// ── Permission + approval helpers ────────────────────────────────────────────
+
+const DRAWER_TO_TPL = {
+  ml: '1x2', dc: 'dc', dnb: 'dnb', hdp: 'asian_hcp', ou: 'asian_tot',
+  ou15: 'ou15', ou25: 'ou25', ou35: 'ou35', btts: 'btts',
+  btts_ou: 'btts_ou', cs: 'cs', exact_goals: 'exact_goals', win_nil: 'win_nil', htft: 'htft',
+};
+
+function needsApproval(eventId, leagueCode, drawerMarketId) {
+  const { template } = resolveTemplate(eventId, leagueCode);
+  const tplMarketId = DRAWER_TO_TPL[drawerMarketId] || drawerMarketId;
+  const mc = getMarketConfig(template, tplMarketId);
+  if (mc?.requiresApproval) return true;
+  const threshold = getLeagueSetting(leagueCode)?.approvalThresholdBet;
+  return !!(threshold && mc?.maxBet >= threshold);
+}
+
 function makeEditable(chip, priceSpan, key, currentVal, rows = [], marketId = '', shinFair = null, apiVal = null) {
+  if (!canDo('set-override')) return;
+
   const input = document.createElement('input');
   input.type      = 'number';
   input.step      = '0.01';
@@ -190,8 +209,35 @@ function makeEditable(chip, priceSpan, key, currentVal, rows = [], marketId = ''
   const confirm = () => {
     const val = parseFloat(input.value);
     if (val > 1) {
-      setOverride(key, val);
       const [evId, mktId, label] = key.split('|');
+
+      // Check if override needs approval routing
+      if (needsApproval(evId, state.currentLeagueCode, mktId)) {
+        const shinFairOdds = parseFloat(shinFair);
+        const refOdds      = parseFloat(apiVal) || shinFairOdds;
+        const direction    = (!isNaN(refOdds) && refOdds > 1) ? (val < refOdds ? 'DOWN' : 'UP') : 'UP';
+        const profile = state.currentTraderProfile;
+        setPendingOverride(key, {
+          price: val,
+          direction,
+          shinFairAtTime: shinFairOdds || null,
+          requestedById: profile?.id || 'unknown',
+          requestedByName: profile?.name || 'Unknown',
+          requestedAt: new Date().toISOString(),
+          eventId: evId,
+          marketId: mktId,
+          label,
+        });
+        // Show pending state instead of applying override
+        input.replaceWith(priceSpan);
+        priceSpan.textContent = val.toFixed(3);
+        priceSpan.style.cssText = 'color:#f59e0b;font-weight:700;';
+        const ev = state.activeEvents.find(e => e.id.toString() === state.drawerEventId?.toString());
+        if (ev) renderDrawerMarkets(ev);
+        return;
+      }
+
+      setOverride(key, val);
       if (rows.length > 1 && marketId) {
         repriceOthers(key, val, rows, marketId, resolveTargetMargin(evId, state.currentLeagueCode, marketId, rows));
       }

@@ -29,7 +29,14 @@ const SCHEMA = `
     locked_until    TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     deleted_at TIMESTAMP,
-    active     INTEGER DEFAULT 1
+    active     INTEGER DEFAULT 1,
+    role       TEXT NOT NULL DEFAULT 'trader'
+  );
+
+  CREATE TABLE IF NOT EXISTS pending_overrides (
+    key        TEXT PRIMARY KEY,
+    data       TEXT NOT NULL,
+    updated_at TEXT DEFAULT (datetime('now'))
   );
 
   CREATE TABLE IF NOT EXISTS templates (
@@ -154,6 +161,10 @@ async function initSchema(db) {
   }
   if (!traderColumns.has('deleted_at')) {
     await db.execute('ALTER TABLE traders ADD COLUMN deleted_at TIMESTAMP');
+  }
+
+  if (!traderColumns.has('role')) {
+    await db.execute("ALTER TABLE traders ADD COLUMN role TEXT NOT NULL DEFAULT 'trader'");
   }
 
   const templateColumns = new Set((await db.execute('PRAGMA table_info(templates)')).rows.map(row => row.name));

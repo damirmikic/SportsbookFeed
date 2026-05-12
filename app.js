@@ -1,5 +1,5 @@
 import { fetchLeagues, fetchSharedState, fetchTraderState, pushTraderPresence } from './api.js';
-import { state, hydrateSharedState, hydrateTraderState } from './state.js';
+import { state, hydrateSharedState, hydrateTraderState, getLeagueSetting } from './state.js';
 import { renderLeagues, closeDrawer, loadOdds, filterAndRenderBoard } from './ui.js';
 import { renderAdminPanel } from './admin.js';
 import { renderTemplatesSection, openTemplateById } from './templates-admin.js';
@@ -9,6 +9,35 @@ import { clearTraderSession, getSessionExpiresAt, getValidTraderSession } from '
 let refreshInterval = null;
 let sessionExpiryTimer = null;
 let presenceInterval = null;
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function showHandoverNoteBanner(code) {
+  const existing = document.getElementById('handover-banner');
+  if (existing) existing.remove();
+  const note = getLeagueSetting(code)?.handoverNote;
+  if (!note) return;
+  const banner = document.createElement('div');
+  banner.id = 'handover-banner';
+  banner.className = 'handover-banner';
+  banner.innerHTML = `
+    <div class="handover-banner-content">
+      <span class="handover-banner-label">Shift Note</span>
+      <span class="handover-banner-text">${escapeHtml(note)}</span>
+    </div>
+    <button class="handover-banner-close" title="Dismiss">&times;</button>
+  `;
+  banner.querySelector('.handover-banner-close').addEventListener('click', () => banner.remove());
+  const boardEl = document.getElementById('board') || document.querySelector('.board-wrap') || document.querySelector('main');
+  boardEl?.prepend(banner);
+}
 
 function scheduleSessionExpiry(session) {
   if (sessionExpiryTimer) clearTimeout(sessionExpiryTimer);
@@ -161,6 +190,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.currentLeagueName = e.detail.name || e.detail.code;
     startPolling(e.detail.code);
     updateTraderPresence();
+    showHandoverNoteBanner(e.detail.code);
   });
 
   // Top-level nav (Trading / Admin)

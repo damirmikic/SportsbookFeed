@@ -10,8 +10,13 @@ import {
   getTradingMode,
   hasAnyOverrideForEvent,
   TIMELINE_NODES,
+  canDo,
+  getAllPendingOverrides,
+  removePendingOverride,
+  setPendingOverride,
+  setOverride,
 } from './state.js';
-import { fetchActiveTraders } from './api.js';
+import { fetchActiveTraders, fetchTraders, updateTrader } from './api.js';
 import { resolveTemplate } from './pricing.js';
 
 // ── Filter state ──────────────────────────────────────────
@@ -107,6 +112,43 @@ function computeAdminSummary() {
   return { ...summary, total: events.length, loadedTotal: loadedEvents.length, unpricedSoon };
 }
 
+function pendingApprovalsHTML() {
+  const all = getAllPendingOverrides();
+  const myId = state.currentTraderId;
+  const pending = Object.entries(all).filter(([, data]) => data.requestedById !== myId);
+  if (!pending.length || !canDo('manage-leagues')) return '';
+
+  const rows = pending.map(([key, data]) => {
+    const timeAgo = data.requestedAt
+      ? formatRelativeTime(data.requestedAt)
+      : 'Unknown time';
+    return `
+      <div class="approval-row" data-key="${escapeHtml(key)}">
+        <span class="approval-key">${escapeHtml(key)}</span>
+        <span class="approval-price">${parseFloat(data.price).toFixed(3)}</span>
+        <span class="approval-requester">by ${escapeHtml(data.requestedByName || 'Unknown')}</span>
+        <span class="approval-time">${timeAgo}</span>
+        <button class="approval-approve-btn" data-key="${escapeHtml(key)}">Approve</button>
+        <button class="approval-reject-btn" data-key="${escapeHtml(key)}">Reject</button>
+      </div>`;
+  }).join('');
+
+  return `
+    <section class="admin-approvals">
+      <h3 class="admin-approvals-title">Pending Approvals (${pending.length})</h3>
+      <div class="admin-approvals-list">${rows}</div>
+    </section>`;
+}
+
+function traderManagementHTML() {
+  if (!canDo('manage-traders')) return '';
+  return `
+    <div class="admin-trader-mgmt" id="admin-trader-mgmt-section">
+      <h3>Trader Management</h3>
+      <div id="admin-trader-mgmt-list"><em>Loading traders…</em></div>
+    </div>`;
+}
+
 function summaryHTML() {
   const summary = computeAdminSummary();
   const syncAt = state.sharedSyncLastPushedAt;
@@ -146,6 +188,7 @@ function summaryHTML() {
           ${activeTradersHTML(state.activeTraders)}
         </div>
       </div>
+      ${traderManagementHTML()}
     </section>`;
 }
 
@@ -257,35 +300,47 @@ function rowHTML(league, templates) {
   const af   = s.alertFactor ?? 1;
   const leagueSuspended = isLeagueSuspended(code);
   const timelineCount = (s.templateTimeline || []).length;
+  const readonly = !canDo('manage-leagues');
+  const approvalThreshold = s.approvalThresholdBet ?? '';
 
   return `
-    <tr class="admin-row">
+    <tr class="admin-row" data-code="${code}">
       <td class="atd-name">
         <span class="atd-crumb">Soccer › ${getCountry(league)}</span>
         <span class="atd-title">${getLeagueName(league)}</span>
+        <button class="hn-edit-btn ${s.handoverNote ? 'has-note' : ''}" data-code="${code}" title="Shift note">📝</button>
       </td>
       <td class="atd-tmpl">
-        <select class="a-tmpl-sel" data-code="${code}">
+        <select class="a-tmpl-sel" data-code="${code}" ${readonly ? 'disabled title="Senior access required"' : ''}>
           <option value="">Select an option</option>
           ${templates.map(t => `<option value="${t.id}" ${s.template === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
         </select>
         <button class="feed-tl-btn ${timelineCount > 0 ? 'has-tl' : ''}"
                 data-code="${code}"
-                data-league-name="${escapeHtml(getLeagueName(league))}">
+                data-league-name="${escapeHtml(getLeagueName(league))}"
+                ${readonly ? 'disabled title="Senior access required"' : ''}>
           ${timelineCount > 0 ? `Timeline (${timelineCount})` : '+ Feed Timeline'}
         </button>
       </td>
       <td class="atd-act">
         <div class="act-group">
-          <button class="act-seg ${act === 'ctrl' ? 'act-on' : ''}" data-code="${code}" data-m="ctrl">CTRL</button>
-          <button class="act-seg ${act === 'mon'  ? 'act-on' : ''}" data-code="${code}" data-m="mon">MON</button>
-          <button class="act-seg ${act === 'off'  ? 'act-inactive' : ''}" data-code="${code}" data-m="off">OFF</button>
+          <button class="act-seg ${act === 'ctrl' ? 'act-on' : ''}" data-code="${code}" data-m="ctrl" ${readonly ? 'disabled title="Senior access required"' : ''}>CTRL</button>
+          <button class="act-seg ${act === 'mon'  ? 'act-on' : ''}" data-code="${code}" data-m="mon" ${readonly ? 'disabled title="Senior access required"' : ''}>MON</button>
+          <button class="act-seg ${act === 'off'  ? 'act-inactive' : ''}" data-code="${code}" data-m="off" ${readonly ? 'disabled title="Senior access required"' : ''}>OFF</button>
         </div>
       </td>
       <td class="atd-bk">Soccer</td>
-      <td class="atd-af">${alertSliderHTML(code, af)}</td>
+      <td class="atd-af">
+        ${alertSliderHTML(code, af)}
+        <div class="approval-threshold-wrap">
+          <label class="approval-threshold-label" title="Overrides on markets with maxBet ≥ this value require senior approval">Approval threshold £</label>
+          <input type="number" class="approval-threshold-input" data-code="${code}"
+            value="${approvalThreshold}" placeholder="None" min="1" step="100"
+            ${readonly ? 'disabled' : ''}>
+        </div>
+      </td>
       <td class="atd-susp">
-        <button class="admin-league-suspend-btn ${leagueSuspended ? 'suspended' : 'open'}" data-code="${code}">
+        <button class="admin-league-suspend-btn ${leagueSuspended ? 'suspended' : 'open'}" data-code="${code}" ${readonly ? 'disabled title="Senior access required"' : ''}>
           ${leagueSuspended ? 'Publish league' : 'Suspend all'}
         </button>
       </td>
@@ -443,12 +498,14 @@ export function renderAdminPanel() {
 
   panel.innerHTML =
     summaryHTML() +
+    pendingApprovalsHTML() +
     filterBarHTML(countries, templates) +
     chipsBarHTML(templates) +
     tableHTML(leagues, templates);
 
   wirePanel(panel, templates);
   refreshActiveTraders();
+  if (canDo('manage-traders')) loadTraderManagement();
 }
 
 // ── Event wiring ──────────────────────────────────────────
@@ -530,6 +587,113 @@ function wirePanel(panel, templates) {
         : `Published league ${code}.`);
     })
   );
+
+  // Approval threshold inputs
+  panel.querySelectorAll('.approval-threshold-input').forEach(input =>
+    input.addEventListener('change', () => {
+      const { code } = input.dataset;
+      const val = parseFloat(input.value);
+      setLeagueSetting(code, { approvalThresholdBet: (!isNaN(val) && val > 0) ? val : null });
+    })
+  );
+
+  // Pending approval buttons
+  panel.querySelectorAll('.approval-approve-btn').forEach(btn =>
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.key;
+      const data = getAllPendingOverrides()[key];
+      if (!data) return;
+      removePendingOverride(key);
+      setOverride(key, data.price);
+      renderAdminPanel();
+      showAdminToast(`Override approved: ${key} → ${parseFloat(data.price).toFixed(3)}`);
+    })
+  );
+
+  panel.querySelectorAll('.approval-reject-btn').forEach(btn =>
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.key;
+      removePendingOverride(key);
+      renderAdminPanel();
+      showAdminToast(`Override rejected: ${key}`);
+    })
+  );
+
+  // Handover note buttons
+  panel.querySelectorAll('.hn-edit-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const { code } = btn.dataset;
+      const existingRow = panel.querySelector(`.hn-row[data-code="${code}"]`);
+      if (existingRow) { existingRow.remove(); return; }
+      const mainRow = panel.querySelector(`tr.admin-row[data-code="${code}"]`);
+      if (!mainRow) return;
+      const s = getLeagueSetting(code);
+      const hnRow = document.createElement('tr');
+      hnRow.className = 'hn-row';
+      hnRow.dataset.code = code;
+      hnRow.innerHTML = `
+        <td colspan="6">
+          <div class="hn-row-inner">
+            <textarea class="hn-textarea" placeholder="Shift handover note…">${escapeHtml(s.handoverNote || '')}</textarea>
+            <button class="hn-save-btn">Save Note</button>
+            <button class="hn-cancel-btn">Cancel</button>
+          </div>
+        </td>`;
+      mainRow.insertAdjacentElement('afterend', hnRow);
+      hnRow.querySelector('.hn-save-btn').addEventListener('click', () => {
+        const text = hnRow.querySelector('.hn-textarea').value.trim() || null;
+        setLeagueSetting(code, { handoverNote: text });
+        hnRow.remove();
+        // Update button state without full re-render
+        btn.classList.toggle('has-note', !!text);
+        showAdminToast(text ? 'Shift note saved.' : 'Shift note cleared.');
+      });
+      hnRow.querySelector('.hn-cancel-btn').addEventListener('click', () => hnRow.remove());
+    });
+  });
+}
+
+// ── Trader management (async) ─────────────────────────────
+async function loadTraderManagement() {
+  const container = document.getElementById('admin-trader-mgmt-list');
+  if (!container) return;
+  try {
+    const traders = await fetchTraders();
+    const ROLES = ['monitor', 'trader', 'senior'];
+    container.innerHTML = `
+      <table class="admin-tbl trader-mgmt-tbl">
+        <thead><tr><th>Color</th><th>Name</th><th>Role</th><th></th></tr></thead>
+        <tbody>
+          ${traders.map(t => `
+            <tr class="trader-mgmt-row" data-tid="${escapeHtml(t.id)}">
+              <td><span class="admin-trader-dot" style="background:${escapeHtml(t.color || '#64748b')}"></span></td>
+              <td>${escapeHtml(t.name)}</td>
+              <td>
+                <select class="trader-role-sel" data-tid="${escapeHtml(t.id)}">
+                  ${ROLES.map(r => `<option value="${r}" ${(t.role || 'trader') === r ? 'selected' : ''}>${r.charAt(0).toUpperCase() + r.slice(1)}</option>`).join('')}
+                </select>
+              </td>
+              <td><button class="trader-role-save-btn" data-tid="${escapeHtml(t.id)}">Save</button></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+
+    container.querySelectorAll('.trader-role-save-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const { tid } = btn.dataset;
+        const sel = container.querySelector(`.trader-role-sel[data-tid="${tid}"]`);
+        if (!sel) return;
+        try {
+          await updateTrader(tid, { role: sel.value });
+          showAdminToast('Trader role updated.');
+        } catch (e) {
+          showAdminToast(`Failed to update role: ${e.message}`);
+        }
+      });
+    });
+  } catch (e) {
+    container.innerHTML = `<div class="admin-trader-empty">Failed to load traders: ${escapeHtml(e.message)}</div>`;
+  }
 }
 
 // ── Toast notification ────────────────────────────────────

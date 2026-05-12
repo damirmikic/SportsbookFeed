@@ -58,6 +58,17 @@ async function readSyncMeta(db) {
   };
 }
 
+async function readPendingOverrides(db) {
+  try {
+    const result = await db.execute('SELECT key, data FROM pending_overrides');
+    const out = {};
+    result.rows.forEach((row) => { out[row.key] = JSON.parse(row.data); });
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 async function replaceRows(db, statements) {
   await db.batch(statements, 'write');
 }
@@ -114,9 +125,10 @@ exports.handler = async (event) => {
         suspensions[row.key] = { status: row.status, set_by: row.set_by, set_at: row.set_at };
       });
 
+      const pendingOverrides = await readPendingOverrides(db);
       const syncMeta = await readSyncMeta(db);
 
-      return ok({ templates, leagueSettings, matchTemplates, suspensions, syncMeta });
+      return ok({ templates, leagueSettings, matchTemplates, suspensions, pendingOverrides, syncMeta });
     }
 
     if (event.httpMethod === 'POST') {
@@ -188,6 +200,19 @@ exports.handler = async (event) => {
         });
         await replaceRows(db, statements);
         await writeAuditLog(db, { traderId, entity, action: 'replace', before, after: body || {} });
+        return ok({ ok: true, ...(await readSyncMeta(db)) });
+      }
+
+      if (entity === 'pending-overrides') {
+        const entries = Object.entries(body || {});
+        const statements = [{ sql: 'DELETE FROM pending_overrides', args: [] }];
+        entries.forEach(([key, data]) => {
+          statements.push({
+            sql: `INSERT INTO pending_overrides (key, data, updated_at) VALUES (?, ?, datetime('now'))`,
+            args: [String(key), JSON.stringify(data)],
+          });
+        });
+        await replaceRows(db, statements);
         return ok({ ok: true, ...(await readSyncMeta(db)) });
       }
 

@@ -3900,3 +3900,298 @@ button.dtpl-name-link:hover { color: var(--accent-color); }
   border-color: var(--text-secondary);
   color: var(--text-primary);
 }
+
+/* ── Role badges + permission disabled states ────────────────── */
+.role-badge {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+.role-badge.monitor {
+  background: rgba(100,116,139,0.15);
+  color: #94a3b8;
+  border: 1px solid rgba(100,116,139,0.3);
+}
+.role-badge.trader {
+  background: rgba(59,130,246,0.12);
+  color: #93c5fd;
+  border: 1px solid rgba(59,130,246,0.3);
+}
+.role-badge.senior {
+  background: rgba(16,185,129,0.12);
+  color: #6ee7b7;
+  border: 1px solid rgba(16,185,129,0.3);
+}
+[disabled].a-tmpl-sel,
+[disabled].act-seg,
+[disabled].admin-league-suspend-btn,
+[disabled].feed-tl-btn {
+  opacity: 0.38;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ── Approval threshold input ────────────────────────────────── */
+.approval-threshold-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+.approval-threshold-label {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.approval-threshold-input {
+  width: 80px;
+  background: var(--input-bg, var(--bg-color));
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: 0.75rem;
+  padding: 2px 5px;
+  border-radius: var(--radius-sm);
+}
+
+/* ── Pending approvals section ───────────────────────────────── */
+.admin-approvals {
+  background: rgba(245,158,11,0.07);
+  border: 1px solid rgba(245,158,11,0.3);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+.admin-approvals-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #fbbf24;
+  margin: 0 0 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.admin-approvals-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.approval-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: rgba(0,0,0,0.15);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.65rem;
+  font-size: 0.78rem;
+}
+.approval-key {
+  font-family: monospace;
+  color: var(--text-secondary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.approval-price {
+  font-weight: 700;
+  color: var(--text-primary);
+  min-width: 50px;
+}
+.approval-requester { color: #93c5fd; }
+.approval-time { color: var(--text-secondary); white-space: nowrap; }
+.approval-approve-btn {
+  background: rgba(16,185,129,0.15);
+  border: 1px solid rgba(16,185,129,0.4);
+  color: #6ee7b7;
+  font-family: var(--font-family);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.approval-approve-btn:hover { background: rgba(16,185,129,0.28); }
+.approval-reject-btn {
+  background: rgba(239,68,68,0.12);
+  border: 1px solid rgba(239,68,68,0.35);
+  color: #fca5a5;
+  font-family: var(--font-family);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.approval-reject-btn:hover { background: rgba(239,68,68,0.22); }
+
+/* ── Trader management section ───────────────────────────────── */
+.admin-trader-mgmt {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-color);
+}
+.admin-trader-mgmt h3 {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin: 0 0 0.5rem;
+}
+.trader-mgmt-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+.trader-mgmt-tbl td {
+  padding: 4px 8px;
+  vertical-align: middle;
+}
+.trader-role-sel {
+  background: var(--input-bg, var(--bg-color));
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: 0.75rem;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+.trader-role-save-btn {
+  background: var(--accent-color);
+  border: none;
+  color: #fff;
+  font-family: var(--font-family);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+.trader-role-save-btn:hover { opacity: 0.82; }
+
+/* ── Handover note row ───────────────────────────────────────── */
+.hn-edit-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  padding: 2px;
+  margin-left: 0.3rem;
+  vertical-align: middle;
+  opacity: 0.6;
+  transition: opacity 0.12s;
+}
+.hn-edit-btn:hover { opacity: 1; }
+.hn-edit-btn.has-note { color: #fbbf24; opacity: 1; }
+.hn-row td {
+  background: rgba(251,191,36,0.05);
+  border-top: 1px dashed rgba(251,191,36,0.2);
+  padding: 0.5rem 0.75rem;
+}
+.hn-row-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.hn-textarea {
+  width: 100%;
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: 0.82rem;
+  padding: 0.5rem;
+  border-radius: var(--radius-sm);
+  resize: vertical;
+  min-height: 60px;
+  box-sizing: border-box;
+}
+.hn-save-btn {
+  background: var(--accent-color);
+  border: none;
+  color: #fff;
+  font-family: var(--font-family);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  align-self: flex-start;
+  transition: opacity 0.12s;
+}
+.hn-save-btn:hover { opacity: 0.85; }
+.hn-cancel-btn {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-family: var(--font-family);
+  font-size: 0.75rem;
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  align-self: flex-start;
+  margin-left: 0.4rem;
+}
+
+/* ── Handover banner ─────────────────────────────────────────── */
+.handover-banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  background: rgba(251,191,36,0.1);
+  border: 1px solid rgba(251,191,36,0.35);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 1rem;
+  margin-bottom: 0.75rem;
+}
+.handover-banner-content {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex: 1;
+}
+.handover-banner-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #fbbf24;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.handover-banner-text {
+  font-size: 0.82rem;
+  color: var(--text-primary);
+}
+.handover-banner-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 1.1rem;
+  padding: 0 4px;
+  line-height: 1;
+  transition: color 0.12s;
+}
+.handover-banner-close:hover { color: var(--text-primary); }
+
+/* ── Approval checkbox in market card ────────────────────────── */
+.mkt-approval-field {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.mkt-approval-cb {
+  cursor: pointer;
+}
