@@ -47,7 +47,9 @@ app.js                          ← bootstrap, polling, view switching
 │   ├── ui-helpers.js           ← margin badge HTML, effective period computation
 │   └── ui-market-groups.js     ← market card grouping for drawer categories
 ├── admin.js                    ← Admin > Tournaments panel
-└── templates-admin.js          ← Admin > Templates panel (template CRUD, market discovery)
+├── templates-admin.js          ← Admin > Templates panel (template CRUD, market discovery)
+├── audit-admin.js              ← Admin > Audit Log panel (table of entity writes with before/after JSON)
+└── odds-history-ui.js          ← per-selection price history modal (fetches 24h snapshots, renders timeline)
 
 pricing.js                      ← template resolution + override expiry/alert evaluation
 math.js                         ← Shin no-vig, Dixon-Coles model, Asian odds, ladder rounding
@@ -99,6 +101,7 @@ All mutable state lives in `state.js`. The `state` object holds transient runtim
 | `_templates` | `templates` | `templates` | **Global** |
 | `_matchTemplates` | `matchTemplates` | `match-templates` | **Global** |
 | `_leagueSettings` | `leagueSettings` | `league-settings` | **Global** |
+| `_pendingOverrides` | `pendingOverrides` | `pending-overrides` | **Global** |
 
 **Write pattern**: every setter calls `persistTraderEntity(entity, data)` or `persistSharedEntity(entity, data)` which does: `localStorage.setItem` (sync) + `scheduleSync(entity)` (debounced 400ms async Turso write).
 
@@ -215,12 +218,15 @@ Each market in a category is a **market row object**: `{ id, name, rows: [{ labe
 
 ## Netlify Functions (`netlify/functions/`)
 
-Four files; `db.js` is a shared helper, the other three are HTTP endpoints. All use CommonJS (`require`) and call `initSchema(db)` on every cold start (idempotent `CREATE TABLE IF NOT EXISTS`).
+`db.js` is a shared helper; all other files are HTTP endpoints. All use CommonJS (`require`) and call `initSchema(db)` on every cold start (idempotent `CREATE TABLE IF NOT EXISTS`).
 
-- **`db.js`**: shared Turso client singleton (`@libsql/client/http` — no native binaries), schema SQL, `ok(body)`/`err(msg, status)` response helpers
+- **`db.js`**: shared Turso client singleton (`@libsql/client/http` — no native binaries), schema SQL, `ok(body)`/`err(msg, status)` response helpers, and `writeAuditLog(db, {traderId, entity, action, before, after})` for append-only audit entries
 - **`traders.js`**: `GET /api/traders`, `POST /api/traders`, `POST /api/traders?verify=1`, `PUT /api/traders?id=`
-- **`shared-state.js`**: `GET /api/shared-state`, `POST /api/shared-state?entity=templates|league-settings|match-templates|suspensions`
+- **`shared-state.js`**: `GET /api/shared-state`, `POST /api/shared-state?entity=templates|league-settings|match-templates|suspensions|pending-overrides`
 - **`trader-state.js`**: `GET /api/trader-state?traderId=`, `POST /api/trader-state?traderId=&entity=overrides|meta|modes|lambdas|favorites|prefs`
+- **`trader-presence.js`**: `GET /api/trader-presence` returns active traders (within 3-minute window) with name/color/league context; `POST /api/trader-presence` upserts trader's current league and updates `last_seen`
+- **`audit-log.js`**: `GET /api/audit-log[?limit=N]` (read-only, max 250 entries) — returns audit entries with trader name JOIN, parsed before/after JSON
+- **`odds-history.js`**: `GET /api/odds-history?eventId=` returns 24h snapshots for that event; `POST /api/odds-history` extracts and stores moneyline/total/spread snapshots from a Pinnacle payload, auto-purges entries older than 24h in the same batch
 
 All POST writes use `db.batch(statements, 'write')` — full replace (DELETE + INSERT), not partial upsert.
 
@@ -238,6 +244,30 @@ Required for Netlify Functions (set in `.env` locally, Netlify dashboard in prod
 TURSO_CONNECTION_URL=libsql://sportsbookfeed-damirmikic.aws-eu-west-1.turso.io
 TURSO_AUTH_TOKEN=<token>
 ```
+
+---
+
+## Database Schema (Turso / SQLite)
+
+All tables are created by `initSchema()` in `netlify/functions/db.js`. `initSchema` is idempotent and also runs `ALTER TABLE … ADD COLUMN` migrations for legacy columns.
+
+| Table | Key columns | Notes |
+|---|---|---|
+| `traders` | `id`, `name`, `color`, `pin_hash`, `role`, `active`, `deleted_at` | Soft-delete via `deleted_at`; `role` is `'trader'` or `'admin'` |
+| `templates` | `id`, `data` (JSON), `deleted_at` | Soft-delete; `data` is the full Template object |
+| `league_settings` | `league_code` PK, `data` (JSON) | One row per league |
+| `match_templates` | `event_id` PK, `template_id`, `set_by` | Per-event template override |
+| `suspensions` | `key` PK, `status`, `set_by` | Key format: `"eventId\|marketId"` |
+| `pending_overrides` | `key` PK, `data` (JSON) | Shared approval queue for high-stakes manual prices |
+| `trader_overrides` | `(trader_id, key)` PK, `value` | Key format: `"eventId\|marketId\|label"` |
+| `trader_override_meta` | `(trader_id, key)` PK, `data` (JSON) | Stores `shinFairAtTime`, `alertState`, expiry metadata |
+| `trader_modes` | `(trader_id, event_id)` PK, `mode` | Only `'manual'` rows stored; absence = auto |
+| `trader_lambdas` | `(trader_id, event_id)` PK, `data` (JSON) | Overridden λ values |
+| `trader_favorites` | `(trader_id, league_code)` PK | Starred leagues |
+| `trader_prefs` | `trader_id` PK, `expanded_groups` (JSON) | UI preference state |
+| `trader_presence` | `trader_id` PK, `league_code`, `league_name`, `last_seen` | Updated on each poll; 3-min active window |
+| `audit_log` | `id` UUID PK, `trader_id`, `entity`, `action`, `before_json`, `after_json`, `ts` | Append-only; written by `writeAuditLog()` in `db.js` |
+| `odds_history` | `event_id`, `period`, `market`, `prices` (JSON), `ts` | Rolling 24h; indexed on `(event_id, ts)` |
 
 ---
 
