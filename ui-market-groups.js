@@ -1,4 +1,4 @@
-import { calculateShinNoVig, dcAsianHandicapOdds, dcAsianTotalOdds, dcAsianTeamTotalOdds } from './math.js';
+import { calculateShinNoVig, dcAsianHandicapOdds, dcAsianTotalOdds, dcAsianTeamTotalOdds, dcThreeWayHandicapOdds } from './math.js';
 import { buildAllMarkets } from './markets.js';
 
 export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData, detailedAll, homeTeam, awayTeam) {
@@ -104,6 +104,23 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
       hdpRows.push({ label: `Away ${fmt(awaySpread)}`, value: null, shinFair: null, modelFair: awayOdds.toFixed(3) });
     });
     if (hdpRows.length) groups['HANDICAP'].push({ id: 'hdp', name: 'Handicap (Best 5)', rows: hdpRows });
+  }
+
+  if (lambdaData) {
+    const fmt3 = n => (n === 0) ? '0' : (n > 0 ? `+${n}` : `${n}`);
+    [-3, -2, -1, 0, 1, 2, 3].forEach(line => {
+      const { home: hOdds, draw: dOdds, away: aOdds } = dcThreeWayHandicapOdds(lambdaData.ft.grid, line);
+      if (!hOdds || !dOdds || !aOdds) return;
+      groups['HANDICAP'].push({
+        id: `3way_hdp_${line}`,
+        name: `3-Way Handicap ${fmt3(line)}`,
+        rows: [
+          { label: homeTeam, value: null, shinFair: null, modelFair: hOdds.toFixed(3) },
+          { label: 'Draw',   value: null, shinFair: null, modelFair: dOdds.toFixed(3) },
+          { label: awayTeam, value: null, shinFair: null, modelFair: aOdds.toFixed(3) },
+        ]
+      });
+    });
   }
 
   if (matchPeriod.overUnder && Array.isArray(matchPeriod.overUnder)) {
@@ -880,8 +897,25 @@ function getModelPriceForSpecial(marketName, selectionLabel, lambdaData, homeTea
   const label = selectionLabel.toLowerCase();
 
   let grid = lambdaData.ft.grid;
-  if (n.includes('1st half')) grid = lambdaData.h1.grid;
-  else if (n.includes('2nd half')) grid = lambdaData.h2.grid;
+  if (n.includes('1st half')) grid = lambdaData.h1?.grid ?? lambdaData.ft.grid;
+  else if (n.includes('2nd half')) grid = lambdaData.h2?.grid ?? lambdaData.ft.grid;
+
+  if (n.includes('3-way handicap') || (n.includes('handicap') && !n.includes('asian'))) {
+    const lineMatch = marketName.match(/([+-]?\d+(?:\.\d+)?)\s*$/);
+    if (lineMatch) {
+      const homeHandicap = parseFloat(lineMatch[1]);
+      if (!isNaN(homeHandicap)) {
+        const { home: hOdds, draw: dOdds, away: aOdds } = dcThreeWayHandicapOdds(grid, homeHandicap);
+        const lbl = selectionLabel.toLowerCase();
+        const isHome = lbl === 'home' || (homeTeam && lbl.includes(homeTeam.toLowerCase()));
+        const isDraw = lbl === 'draw' || lbl === 'x';
+        const isAway = lbl === 'away' || (awayTeam && lbl.includes(awayTeam.toLowerCase()));
+        if (isHome && hOdds) return hOdds.toFixed(3);
+        if (isDraw && dOdds) return dOdds.toFixed(3);
+        if (isAway && aOdds) return aOdds.toFixed(3);
+      }
+    }
+  }
 
   if (n.includes('to win both halves')) {
     if (!lambdaData.h1 || !lambdaData.h2) return null;

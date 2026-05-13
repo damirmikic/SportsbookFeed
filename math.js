@@ -188,6 +188,21 @@ export function dcAsianTotalOdds(grid, line, isOver) {
   return calcAsianOdds(pWin, pLoss, pPush, pHalfWin, pHalfLoss);
 }
 
+export function dcThreeWayHandicapOdds(grid, homeHandicap) {
+  let pH = 0, pD = 0, pA = 0;
+  grid.forEach(({ home, away, prob }) => {
+    const adj = home + homeHandicap - away;
+    if (adj > 0) pH += prob;
+    else if (adj === 0) pD += prob;
+    else pA += prob;
+  });
+  return {
+    home: pH > 0 ? 1 / pH : null,
+    draw: pD > 0 ? 1 / pD : null,
+    away: pA > 0 ? 1 / pA : null,
+  };
+}
+
 export function dcAsianTeamTotalOdds(grid, line, isOver, isAway = false) {
   let pWin = 0, pLoss = 0, pPush = 0, pHalfWin = 0, pHalfLoss = 0;
   grid.forEach(({ home, away, prob }) => {
