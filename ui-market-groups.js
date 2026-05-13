@@ -806,6 +806,54 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
     addCornerHdp(c1, 'h1_corner_hdp',   '1st Half Corner Handicap');
   }
 
+  // --- Bookings (dedicated detailedAll.bookings periods) ---
+  if (detailedAll.bookings?.periods) {
+    const bp  = detailedAll.bookings.periods;
+    const b0  = bp['0'] || Object.values(bp).find(p => p.num === 0 || p.periodNumber === 0) || Object.values(bp)[0];
+    const b1  = bp['1'] || Object.values(bp).find(p => p.num === 1 || p.periodNumber === 1);
+    const fmt = s => { const n = parseFloat(s); return (n === 0 || isNaN(n)) ? '0' : (n > 0 ? `+${n}` : `${n}`); };
+
+    const addBookingOU = (period, id, name) => {
+      if (!period?.overUnder?.length) return;
+      const rows = [];
+      [...period.overUnder].sort((a, b) => parseFloat(a.points) - parseFloat(b.points)).forEach(ou => {
+        const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
+        rows.push({ label: `Over ${ou.points}`,  value: ou.overOdds,  shinFair: shin[0], modelFair: null });
+        rows.push({ label: `Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: null });
+      });
+      groups['BOOKINGS'].push({ id, name, rows });
+    };
+
+    const addBookingHdp = (period, id, name) => {
+      if (!period?.handicap?.length) return;
+      const rows = [];
+      [...period.handicap].sort((a, b) => parseFloat(a.homeSpread) - parseFloat(b.homeSpread)).forEach(h => {
+        const shin = calculateShinNoVig([h.homeOdds, h.awayOdds]);
+        rows.push({ label: `Home ${fmt(h.homeSpread)}`, value: h.homeOdds, shinFair: shin[0], modelFair: null });
+        rows.push({ label: `Away ${fmt(h.awaySpread)}`, value: h.awayOdds, shinFair: shin[1], modelFair: null });
+      });
+      groups['BOOKINGS'].push({ id, name, rows });
+    };
+
+    const addBookingTeamTotal = (lines, id, name) => {
+      if (!lines?.length) return;
+      const rows = [];
+      [...lines].sort((a, b) => parseFloat(a.points) - parseFloat(b.points)).forEach(ou => {
+        const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
+        rows.push({ label: `Over ${ou.points}`,  value: ou.overOdds,  shinFair: shin[0], modelFair: null });
+        rows.push({ label: `Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: null });
+      });
+      groups['BOOKINGS'].push({ id, name, rows });
+    };
+
+    addBookingOU(b0,  'booking_ou',      'Total Bookings (All Lines)');
+    addBookingHdp(b0, 'booking_hdp',     'Bookings Handicap');
+    addBookingTeamTotal(b0?.teamTotals?.homeLines, 'booking_tt_home', `${homeTeam} Bookings`);
+    addBookingTeamTotal(b0?.teamTotals?.awayLines, 'booking_tt_away', `${awayTeam} Bookings`);
+    addBookingOU(b1,  'h1_booking_ou',   '1st Half Booking Total');
+    addBookingHdp(b1, 'h1_booking_hdp',  '1st Half Bookings Handicap');
+  }
+
   // --- Additional Pinnacle Markets ---
   if (detailedAll.specials && Array.isArray(detailedAll.specials)) {
     detailedAll.specials.forEach(category => {
@@ -840,7 +888,10 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
           catName = '2ND HALF';
         } else if (n.includes('1st half') || n.includes('first half')) {
           catName = '1ST HALF';
-        } else if (n.includes('booking') || n.includes('yellow card') || n.includes('red card') || n.includes('card')) {
+        } else if (
+          category.code === 'bookings' ||
+          n.includes('booking') || n.includes('yellow card') || n.includes('red card') || n.includes('card')
+        ) {
           catName = 'BOOKINGS';
         } else if ((/^(home|away|[a-z ]+) goals/i.test(mkt.name) && !n.includes('total goals')) || n.includes('team total')) {
           catName = 'TEAM GOALS';
