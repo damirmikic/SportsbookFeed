@@ -312,6 +312,20 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
       groups['SPECIALS'].push({ id: `dc_total_${line.toString().replace('.', '')}`, name: `Double Chance & Total ${line}`, rows });
     });
 
+    // --- Double Chance & BTTS ---
+    const dcBttsRows = [];
+    DC_OUTCOMES.forEach(({ label: dcLabel, check: dcCheck }) => {
+      ['Yes', 'No'].forEach(bttsLabel => {
+        const btts = bttsLabel === 'Yes';
+        let prob = 0;
+        lambdaData.ft.grid.forEach(({ home, away, prob: p }) => {
+          if (dcCheck(home, away) && (home > 0 && away > 0) === btts) prob += p;
+        });
+        dcBttsRows.push({ label: `${dcLabel} & ${bttsLabel}`, value: null, shinFair: null, modelFair: prob > 0 ? (1 / prob).toFixed(3) : null, prob });
+      });
+    });
+    groups['SPECIALS'].push({ id: 'dc_btts', name: 'Double Chance & BTTS', rows: dcBttsRows });
+
     // --- Home/Away or BTTS / Over 2.5 ---
     const OR_MARKETS = [
       {
@@ -510,6 +524,18 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
         ]
       });
 
+      const pH1goal = h1.reduce((s, { home, away, prob }) => home + away >= 1 ? s + prob : s, 0);
+      const pH2goal = h2.reduce((s, { home, away, prob }) => home + away >= 1 ? s + prob : s, 0);
+      const pGoalBothHalves = pH1goal * pH2goal;
+      groups['GOALS'].push({
+        id: 'goal_both_halves',
+        name: 'Goal In Both Halves',
+        rows: [
+          { label: 'Yes', value: null, shinFair: null, modelFair: (1 / pGoalBothHalves).toFixed(3), prob: pGoalBothHalves },
+          { label: 'No',  value: null, shinFair: null, modelFair: (1 / (1 - pGoalBothHalves)).toFixed(3), prob: 1 - pGoalBothHalves }
+        ]
+      });
+
       const pH1over = h1.reduce((s, { home, away, prob }) => home + away >= 2 ? s + prob : s, 0);
       const pH2over = h2.reduce((s, { home, away, prob }) => home + away >= 2 ? s + prob : s, 0);
       const pBothOver = pH1over * pH2over;
@@ -697,6 +723,7 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
         if (['Both Teams To Score?', 'Draw No Bet', 'Double Chance', 'Correct Score'].includes(mkt.name)) return;
         if (mkt.name.toLowerCase().includes('corner')) return;
         if (mkt.name.toLowerCase().includes('to score in both halves')) return;
+        if (mkt.name.toLowerCase().includes('goal in both halves')) return;
         if (mkt.name.toLowerCase().includes('both halves over')) return;
         if (mkt.name.toLowerCase().includes('both halves under')) return;
         if (mkt.name.toLowerCase().includes('to win both halves')) return;
