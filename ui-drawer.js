@@ -148,7 +148,12 @@ function applyShinAsModel(groupedMarkets) {
 export async function openDrawer(eventId) {
   const event = state.activeEvents.find(e => e.id.toString() === eventId.toString());
   if (!event) return;
+  const isNewEvent = state.drawerEventId !== eventId.toString();
   state.drawerEventId = eventId;
+  if (isNewEvent) {
+    state.activeCategory = 'MATCH ODDS';
+    state.activeMarketId = null;
+  }
   updateModeButton(eventId);
   updateSuspendButton(eventId);
 
