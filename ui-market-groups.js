@@ -363,6 +363,26 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
       });
     });
 
+    // --- Win & BTTS ---
+    [
+      { id: 'home_win_btts', name: `${homeTeam} To Win & BTTS`, winCheck: (h, a) => h > a },
+      { id: 'away_win_btts', name: `${awayTeam} To Win & BTTS`, winCheck: (h, a) => a > h },
+    ].forEach(({ id, name, winCheck }) => {
+      let pYes = 0;
+      lambdaData.ft.grid.forEach(({ home, away, prob: p }) => {
+        if (winCheck(home, away) && home > 0 && away > 0) pYes += p;
+      });
+      const pNo = 1 - pYes;
+      groups['TEAM PROPS'].push({
+        id,
+        name,
+        rows: [
+          { label: 'Yes', value: null, shinFair: null, modelFair: pYes > 0 ? (1 / pYes).toFixed(3) : null, prob: pYes },
+          { label: 'No',  value: null, shinFair: null, modelFair: pNo  > 0 ? (1 / pNo).toFixed(3)  : null, prob: pNo  },
+        ]
+      });
+    });
+
     if (lambdaData.h1 && lambdaData.h2) {
       const h1 = lambdaData.h1.grid;
       const h2 = lambdaData.h2.grid;
