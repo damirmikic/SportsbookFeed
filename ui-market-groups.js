@@ -40,6 +40,20 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
         { label: awayTeam, value: odds[2] || '-', shinFair: shin[2], modelFair: modelRows[2] }
       ]
     });
+  } else if (lambdaData) {
+    let pH = 0, pD = 0, pA = 0;
+    lambdaData.ft.grid.forEach(({ home, away, prob }) => {
+      if (home > away) pH += prob; else if (home === away) pD += prob; else pA += prob;
+    });
+    groups['MATCH ODDS'].push({
+      id: 'ml',
+      name: '1x2',
+      rows: [
+        { label: homeTeam, value: null, shinFair: null, modelFair: (1/pH).toFixed(3) },
+        { label: 'Draw',   value: null, shinFair: null, modelFair: (1/pD).toFixed(3) },
+        { label: awayTeam, value: null, shinFair: null, modelFair: (1/pA).toFixed(3) }
+      ]
+    });
   }
 
   if (matchPeriod.handicap && Array.isArray(matchPeriod.handicap)) {
@@ -69,6 +83,27 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
       rows.push({ label: `Away ${fmt(h.awaySpread)}`, value: h.awayOdds, shinFair: shin[1], modelFair: mAway });
     });
     groups['HANDICAP'].push({ id: 'hdp', name: 'Handicap (Best 5)', rows });
+  } else if (lambdaData) {
+    const fmt = s => { const n = parseFloat(s); return (n === 0 || isNaN(n)) ? '0' : (n > 0 ? `+${n}` : `${n}`); };
+    const candidates = [-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2].map(homeSpread => {
+      const homeOdds = dcAsianHandicapOdds(lambdaData.ft.grid, homeSpread, false);
+      const awayOdds = dcAsianHandicapOdds(lambdaData.ft.grid, -homeSpread, true);
+      return { homeSpread, awaySpread: -homeSpread, homeOdds, awayOdds };
+    }).filter(c => c.homeOdds && c.awayOdds);
+    let minDiff = Infinity, balancedIdx = 0;
+    candidates.forEach((c, i) => {
+      const diff = Math.abs(c.homeOdds - c.awayOdds);
+      if (diff < minDiff) { minDiff = diff; balancedIdx = i; }
+    });
+    let startIdx = Math.max(0, balancedIdx - 2);
+    let endIdx = Math.min(candidates.length - 1, startIdx + 4);
+    if (endIdx - startIdx < 4) startIdx = Math.max(0, endIdx - 4);
+    const hdpRows = [];
+    candidates.slice(startIdx, endIdx + 1).forEach(({ homeSpread, awaySpread, homeOdds, awayOdds }) => {
+      hdpRows.push({ label: `Home ${fmt(homeSpread)}`, value: null, shinFair: null, modelFair: homeOdds.toFixed(3) });
+      hdpRows.push({ label: `Away ${fmt(awaySpread)}`, value: null, shinFair: null, modelFair: awayOdds.toFixed(3) });
+    });
+    if (hdpRows.length) groups['HANDICAP'].push({ id: 'hdp', name: 'Handicap (Best 5)', rows: hdpRows });
   }
 
   if (matchPeriod.overUnder && Array.isArray(matchPeriod.overUnder)) {
@@ -88,6 +123,15 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
       rows.push({ label: `Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: mUnder });
     });
     groups['GOALS'].push({ id: 'ou', name: 'Total (All Lines)', rows });
+  } else if (lambdaData) {
+    const ouRows = [];
+    [0.5, 1.5, 2.5, 3.5, 4.5].forEach(line => {
+      const mOver  = dcAsianTotalOdds(lambdaData.ft.grid, line, true);
+      const mUnder = dcAsianTotalOdds(lambdaData.ft.grid, line, false);
+      if (mOver)  ouRows.push({ label: `Over ${line}`,  value: null, shinFair: null, modelFair: mOver.toFixed(3) });
+      if (mUnder) ouRows.push({ label: `Under ${line}`, value: null, shinFair: null, modelFair: mUnder.toFixed(3) });
+    });
+    if (ouRows.length) groups['GOALS'].push({ id: 'ou', name: 'Total (All Lines)', rows: ouRows });
   }
 
   const detailedFTPeriod = detailedAll?.normal?.periods?.['0'];
@@ -119,6 +163,17 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
     };
     processTeamTotal(ftTeamTotals.homeLines || ftTeamTotals.home, 'home', homeTeam, false);
     processTeamTotal(ftTeamTotals.awayLines || ftTeamTotals.away, 'away', awayTeam, true);
+  } else if (lambdaData) {
+    [[homeTeam, 'home', false], [awayTeam, 'away', true]].forEach(([teamName, labelPrefix, isAway]) => {
+      const ttRows = [];
+      [0.5, 1.5].forEach(line => {
+        const mOver  = dcAsianTeamTotalOdds(lambdaData.ft.grid, line, true, isAway);
+        const mUnder = dcAsianTeamTotalOdds(lambdaData.ft.grid, line, false, isAway);
+        if (mOver)  ttRows.push({ label: `Over ${line}`,  value: null, shinFair: null, modelFair: mOver.toFixed(3) });
+        if (mUnder) ttRows.push({ label: `Under ${line}`, value: null, shinFair: null, modelFair: mUnder.toFixed(3) });
+      });
+      if (ttRows.length) groups['TEAM GOALS'].push({ id: `tt_${labelPrefix}`, name: `${teamName} Totals`, rows: ttRows });
+    });
   }
 
   if (h1Period && (h1Period.moneyLine || h1Period.moneyline)) {
@@ -175,6 +230,15 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
       rows.push({ label: `Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: mUnder });
     });
     groups['1ST HALF'].push({ id: 'h1_ou', name: '1st Half Total', rows });
+  } else if (lambdaData && lambdaData.h1) {
+    const h1OuRows = [];
+    [0.5, 1.5].forEach(line => {
+      const mOver  = dcAsianTotalOdds(lambdaData.h1.grid, line, true);
+      const mUnder = dcAsianTotalOdds(lambdaData.h1.grid, line, false);
+      if (mOver)  h1OuRows.push({ label: `Over ${line}`,  value: null, shinFair: null, modelFair: mOver.toFixed(3) });
+      if (mUnder) h1OuRows.push({ label: `Under ${line}`, value: null, shinFair: null, modelFair: mUnder.toFixed(3) });
+    });
+    if (h1OuRows.length) groups['1ST HALF'].push({ id: 'h1_ou', name: '1st Half Total', rows: h1OuRows });
   }
 
   const detailedH1Period = detailedAll?.normal?.periods?.['1'];
@@ -206,6 +270,17 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
     };
     processTeamTotalH1(h1TeamTotals.homeLines || h1TeamTotals.home, 'home', homeTeam, false);
     processTeamTotalH1(h1TeamTotals.awayLines || h1TeamTotals.away, 'away', awayTeam, true);
+  } else if (lambdaData && lambdaData.h1) {
+    [[homeTeam, 'home', false], [awayTeam, 'away', true]].forEach(([teamName, labelPrefix, isAway]) => {
+      const h1TtRows = [];
+      [0.5, 1.5].forEach(line => {
+        const mOver  = dcAsianTeamTotalOdds(lambdaData.h1.grid, line, true, isAway);
+        const mUnder = dcAsianTeamTotalOdds(lambdaData.h1.grid, line, false, isAway);
+        if (mOver)  h1TtRows.push({ label: `Over ${line}`,  value: null, shinFair: null, modelFair: mOver.toFixed(3) });
+        if (mUnder) h1TtRows.push({ label: `Under ${line}`, value: null, shinFair: null, modelFair: mUnder.toFixed(3) });
+      });
+      if (h1TtRows.length) groups['1ST HALF'].push({ id: `h1_tt_${labelPrefix}`, name: `1st Half ${teamName} Totals`, rows: h1TtRows });
+    });
   }
 
   // --- Derived Markets ---
@@ -354,26 +429,6 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
       lambdaData.ft.grid.forEach(({ home, away, prob: p }) => { if (cond(home, away)) pYes += p; });
       const pNo = 1 - pYes;
       groups['SPECIALS'].push({
-        id,
-        name,
-        rows: [
-          { label: 'Yes', value: null, shinFair: null, modelFair: pYes > 0 ? (1 / pYes).toFixed(3) : null, prob: pYes },
-          { label: 'No',  value: null, shinFair: null, modelFair: pNo  > 0 ? (1 / pNo).toFixed(3)  : null, prob: pNo  },
-        ]
-      });
-    });
-
-    // --- Win & BTTS ---
-    [
-      { id: 'home_win_btts', name: `${homeTeam} To Win & BTTS`, winCheck: (h, a) => h > a },
-      { id: 'away_win_btts', name: `${awayTeam} To Win & BTTS`, winCheck: (h, a) => a > h },
-    ].forEach(({ id, name, winCheck }) => {
-      let pYes = 0;
-      lambdaData.ft.grid.forEach(({ home, away, prob: p }) => {
-        if (winCheck(home, away) && home > 0 && away > 0) pYes += p;
-      });
-      const pNo = 1 - pYes;
-      groups['TEAM PROPS'].push({
         id,
         name,
         rows: [
