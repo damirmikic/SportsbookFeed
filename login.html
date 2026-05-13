@@ -20,12 +20,75 @@
       <div class="brand-icon">📈</div>
       <h1 class="brand-title">Sportsbook Feed</h1>
       <p class="brand-sub">Trading Terminal</p>
+      <p class="org-badge hidden" id="org-badge"></p>
     </div>
 
     <!-- ══ CARD ══ -->
     <div class="card" id="login-card">
 
-      <!-- ── Screen: Select Operator ── -->
+      <!-- ── Screen: First Time Setup ── -->
+    <div class="screen" id="screen-setup">
+      <div class="screen-header">
+        <div class="setup-first-run-badge">FIRST TIME SETUP</div>
+        <h2>Create Administrator</h2>
+        <p>No operators found. Create the first senior administrator to get started.</p>
+      </div>
+
+      <form class="create-form" id="setup-form" autocomplete="off">
+
+        <div class="avatar-preview-row">
+          <div class="operator-avatar-lg" id="setup-avatar">A</div>
+          <div class="color-swatches">
+            <button type="button" class="swatch setup-swatch active" data-color="#e11d48" title="Red"></button>
+            <button type="button" class="swatch setup-swatch" data-color="#3b82f6" title="Blue"></button>
+            <button type="button" class="swatch setup-swatch" data-color="#10b981" title="Emerald"></button>
+            <button type="button" class="swatch setup-swatch" data-color="#f59e0b" title="Amber"></button>
+            <button type="button" class="swatch setup-swatch" data-color="#8b5cf6" title="Violet"></button>
+            <button type="button" class="swatch setup-swatch" data-color="#ec4899" title="Pink"></button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="setup-org">Organisation Name</label>
+          <input type="text" id="setup-org" placeholder="e.g. Acme Sportsbook" maxlength="64" autocomplete="off" spellcheck="false">
+        </div>
+
+        <div class="field">
+          <label for="setup-name">Your Name <span class="field-optional">(owner account)</span></label>
+          <input type="text" id="setup-name" placeholder="e.g. Alice" maxlength="32" autocomplete="off" spellcheck="false">
+        </div>
+
+        <div class="field">
+          <label for="setup-pin">PIN <span class="field-optional">(4–6 digits)</span></label>
+          <div class="pin-input-wrap">
+            <input type="password" id="setup-pin" placeholder="••••" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password">
+            <button type="button" class="pin-toggle" id="pin-toggle-setup" aria-label="Show PIN">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="setup-pin-confirm">Confirm PIN</label>
+          <div class="pin-input-wrap">
+            <input type="password" id="setup-pin-confirm" placeholder="••••" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password">
+            <button type="button" class="pin-toggle" id="pin-toggle-setup-confirm" aria-label="Show PIN">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <p class="form-error hidden" id="setup-error"></p>
+
+        <button type="submit" class="btn-primary" id="setup-submit">
+          <span id="setup-btn-label">Create Administrator</span>
+          <div class="btn-spinner hidden" id="setup-spinner"></div>
+        </button>
+
+      </form>
+    </div>
+
+    <!-- ── Screen: Select Operator ── -->
       <div class="screen active" id="screen-select">
         <div class="screen-header">
           <h2>Select Operator</h2>
@@ -104,14 +167,14 @@
 
           <!-- Color pick + name preview -->
           <div class="avatar-preview-row">
-            <div class="operator-avatar-lg" id="create-avatar" style="background:#3b82f6">A</div>
+            <div class="operator-avatar-lg" id="create-avatar">A</div>
             <div class="color-swatches">
-              <button type="button" class="swatch active" data-color="#3b82f6" style="background:#3b82f6" title="Blue"></button>
-              <button type="button" class="swatch" data-color="#10b981" style="background:#10b981" title="Emerald"></button>
-              <button type="button" class="swatch" data-color="#f59e0b" style="background:#f59e0b" title="Amber"></button>
-              <button type="button" class="swatch" data-color="#ef4444" style="background:#ef4444" title="Red"></button>
-              <button type="button" class="swatch" data-color="#8b5cf6" style="background:#8b5cf6" title="Violet"></button>
-              <button type="button" class="swatch" data-color="#ec4899" style="background:#ec4899" title="Pink"></button>
+              <button type="button" class="swatch active" data-color="#3b82f6" title="Blue"></button>
+              <button type="button" class="swatch" data-color="#10b981" title="Emerald"></button>
+              <button type="button" class="swatch" data-color="#f59e0b" title="Amber"></button>
+              <button type="button" class="swatch" data-color="#ef4444" title="Red"></button>
+              <button type="button" class="swatch" data-color="#8b5cf6" title="Violet"></button>
+              <button type="button" class="swatch" data-color="#ec4899" title="Pink"></button>
             </div>
           </div>
 

@@ -79,6 +79,19 @@ body {
   font-size: 0.9rem;
 }
 
+.org-badge {
+  display: inline-block;
+  margin-top: 0.5rem;
+  padding: 0.2rem 0.75rem;
+  background: var(--accent-dim);
+  border: 1px solid rgba(16,185,129,0.25);
+  border-radius: 99px;
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
 /* ── Card ── */
 .card {
   width: 100%;
@@ -404,6 +417,26 @@ body {
 
 .swatch:hover  { transform: scale(1.15); }
 .swatch.active { border-color: #fff; transform: scale(1.15); }
+
+.swatch[data-color="#3b82f6"] { background: #3b82f6; }
+.swatch[data-color="#10b981"] { background: #10b981; }
+.swatch[data-color="#f59e0b"] { background: #f59e0b; }
+.swatch[data-color="#ef4444"] { background: #ef4444; }
+.swatch[data-color="#8b5cf6"] { background: #8b5cf6; }
+.swatch[data-color="#ec4899"] { background: #ec4899; }
+.swatch[data-color="#e11d48"] { background: #e11d48; }
+
+.setup-first-run-badge {
+  display: inline-block;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  margin-bottom: 0.5rem;
+}
 
 .field {
   display: flex;

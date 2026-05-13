@@ -53,10 +53,13 @@ exports.handler = async (event) => {
     await initSchema(db);
 
     if (event.httpMethod === 'GET') {
-      const result = await db.execute(
-        'SELECT id, name, color, role FROM traders WHERE active = 1 AND deleted_at IS NULL ORDER BY name COLLATE NOCASE'
-      );
-      return ok(result.rows);
+      const [tradersRes, configRes] = await Promise.all([
+        db.execute('SELECT id, name, color, role FROM traders WHERE active = 1 AND deleted_at IS NULL ORDER BY name COLLATE NOCASE'),
+        db.execute("SELECT value FROM app_config WHERE key = 'org_name'"),
+      ]);
+      const traders = tradersRes.rows;
+      const orgName = configRes.rows[0]?.value || null;
+      return ok({ traders, firstRun: traders.length === 0, orgName });
     }
 
     if (event.httpMethod === 'POST') {
@@ -138,11 +141,25 @@ exports.handler = async (event) => {
         return ok({ ok: false });
       }
 
-      const VALID_ROLES = ['monitor', 'trader', 'senior'];
-      const { name, color, pin, role: bodyRole } = body;
+      const { name, color, pin, role: bodyRole, orgName } = body;
       if (!name?.trim()) return err('Trader name is required', 400);
       if (!isValidPin(pin)) return err('PIN must be 4-6 digits', 400);
-      const role = VALID_ROLES.includes(bodyRole) ? bodyRole : 'trader';
+
+      const countResult = await db.execute(
+        'SELECT COUNT(*) AS n FROM traders WHERE active = 1 AND deleted_at IS NULL'
+      );
+      const isFirstRun = Number(countResult.rows[0]?.n ?? 0) === 0;
+      const VALID_ROLES = ['monitor', 'trader', 'senior', 'owner'];
+      const role = isFirstRun
+        ? (VALID_ROLES.includes(bodyRole) ? bodyRole : 'owner')
+        : (['owner', 'senior'].includes(bodyRole) ? 'trader' : (VALID_ROLES.includes(bodyRole) ? bodyRole : 'trader'));
+
+      if (isFirstRun && orgName?.trim()) {
+        await db.execute({
+          sql: "INSERT OR REPLACE INTO app_config (key, value) VALUES ('org_name', ?)",
+          args: [orgName.trim()],
+        });
+      }
 
       const trader = {
         id: crypto.randomUUID(),
@@ -192,7 +209,7 @@ exports.handler = async (event) => {
       }
       if (body.role != null) {
         const VALID_ROLES = ['monitor', 'trader', 'senior'];
-        if (!VALID_ROLES.includes(body.role)) return err('Invalid role', 400);
+        if (!VALID_ROLES.includes(body.role)) return err('Invalid role', 400); // owner role is permanent
         fields.push('role = ?');
         args.push(body.role);
       }

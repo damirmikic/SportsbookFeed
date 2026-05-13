@@ -43,11 +43,15 @@ async function sha256(str) {
 }
 
 async function fetchTraders() {
-  if (USE_MOCK) return mockGetTraders();
+  if (USE_MOCK) {
+    const traders = mockGetTraders();
+    const orgName = localStorage.getItem('_mock_org_name') || null;
+    return { traders, firstRun: traders.length === 0, orgName };
+  }
   return apiFetch('/api/traders');
 }
 
-async function createTrader(name, color, pin) {
+async function createTrader(name, color, pin, role = 'trader', orgName = null) {
   if (USE_MOCK) {
     const traders = mockGetTraders();
     if (traders.find(t => t.name.toLowerCase() === name.toLowerCase())) {
@@ -58,16 +62,17 @@ async function createTrader(name, color, pin) {
       name,
       color,
       pin_hash:   await sha256(pin),
-      role:       'trader',
+      role,
       created_at: new Date().toISOString(),
       active:     1,
     };
     mockSaveTraders([...traders, trader]);
+    if (orgName) localStorage.setItem('_mock_org_name', orgName);
     return { id: trader.id, name: trader.name, color: trader.color, role: trader.role };
   }
   return apiFetch('/api/traders', {
     method: 'POST',
-    body: JSON.stringify({ name, color, pin }),
+    body: JSON.stringify({ name, color, pin, role, orgName }),
   });
 }
 
@@ -118,6 +123,7 @@ let pinBuffer   = '';   // digits entered on the numpad
 
 const card       = document.getElementById('login-card');
 const screens    = {
+  setup:  document.getElementById('screen-setup'),
   select: document.getElementById('screen-select'),
   pin:    document.getElementById('screen-pin'),
   create: document.getElementById('screen-create'),
@@ -191,9 +197,22 @@ function renderOperatorList(list) {
   });
 }
 
+function applyOrgName(orgName) {
+  if (!orgName) return;
+  localStorage.setItem('orgName', orgName);
+  const badge = document.getElementById('org-badge');
+  if (badge) { badge.textContent = orgName; badge.classList.remove('hidden'); }
+}
+
 async function loadOperators() {
   try {
-    operators = await fetchTraders();
+    const res = await fetchTraders();
+    operators = res.traders ?? res;
+    applyOrgName(res.orgName);
+    if (res.firstRun) {
+      showScreen('setup');
+      return;
+    }
     renderOperatorList(operators);
   } catch (e) {
     operatorList.innerHTML = `<div class="empty-operators" style="color:#f87171">Failed to load operators.<br>${e.message}</div>`;
@@ -285,6 +304,7 @@ pinBack.addEventListener('click', () => showScreen('select'));
 // ── Create screen ─────────────────────────────────────────────────────────────
 
 let selectedColor = '#3b82f6';
+createAvatar.style.background = selectedColor;
 
 swatches.forEach(sw => {
   sw.addEventListener('click', () => {
@@ -367,6 +387,77 @@ btnGoCreate.addEventListener('click', () => {
 });
 
 createBack.addEventListener('click', () => showScreen('select'));
+
+// ── Setup screen (first-run: create senior administrator) ─────────────────────
+
+const setupForm           = document.getElementById('setup-form');
+const setupAvatar         = document.getElementById('setup-avatar');
+const setupSwatches       = document.querySelectorAll('.setup-swatch');
+const setupOrg            = document.getElementById('setup-org');
+const setupName           = document.getElementById('setup-name');
+const setupPin            = document.getElementById('setup-pin');
+const setupPinConfirm     = document.getElementById('setup-pin-confirm');
+const setupError          = document.getElementById('setup-error');
+const setupSubmit         = document.getElementById('setup-submit');
+const setupBtnLabel       = document.getElementById('setup-btn-label');
+const setupSpinner        = document.getElementById('setup-spinner');
+const pinToggleSetup      = document.getElementById('pin-toggle-setup');
+const pinToggleSetupConfirm = document.getElementById('pin-toggle-setup-confirm');
+
+let setupColor = '#e11d48';
+setupAvatar.style.background = setupColor;
+
+setupSwatches.forEach(sw => {
+  sw.addEventListener('click', () => {
+    setupSwatches.forEach(s => s.classList.remove('active'));
+    sw.classList.add('active');
+    setupColor = sw.dataset.color;
+    setupAvatar.style.background = setupColor;
+  });
+});
+
+setupName.addEventListener('input', () => {
+  const val = setupName.value.trim();
+  setupAvatar.textContent = val ? val.charAt(0).toUpperCase() : 'A';
+  setupName.classList.remove('invalid');
+});
+
+makePinToggle(setupPin, pinToggleSetup);
+makePinToggle(setupPinConfirm, pinToggleSetupConfirm);
+
+setupForm.addEventListener('submit', async e => {
+  e.preventDefault();
+  setupError.classList.add('hidden');
+  setupError.textContent = '';
+  [setupOrg, setupName, setupPin, setupPinConfirm].forEach(i => i.classList.remove('invalid'));
+
+  const org  = setupOrg.value.trim();
+  const name = setupName.value.trim();
+  const pin  = setupPin.value.trim();
+  const pin2 = setupPinConfirm.value.trim();
+
+  if (!org) { setupError.textContent = 'Organisation name is required.'; setupError.classList.remove('hidden'); setupOrg.classList.add('invalid'); return; }
+  if (org.length < 2) { setupError.textContent = 'Organisation name must be at least 2 characters.'; setupError.classList.remove('hidden'); setupOrg.classList.add('invalid'); return; }
+  if (!name) { setupError.textContent = 'Display name is required.'; setupError.classList.remove('hidden'); setupName.classList.add('invalid'); return; }
+  if (name.length < 2) { setupError.textContent = 'Name must be at least 2 characters.'; setupError.classList.remove('hidden'); setupName.classList.add('invalid'); return; }
+  if (!pin || !/^\d{4,6}$/.test(pin)) { setupError.textContent = 'PIN must be 4–6 digits.'; setupError.classList.remove('hidden'); setupPin.classList.add('invalid'); return; }
+  if (pin !== pin2) { setupError.textContent = 'PINs do not match.'; setupError.classList.remove('hidden'); setupPin.classList.add('invalid'); setupPinConfirm.classList.add('invalid'); return; }
+
+  setupSubmit.disabled = true;
+  setupBtnLabel.textContent = 'Creating…';
+  setupSpinner.classList.remove('hidden');
+  try {
+    const trader = await createTrader(name, setupColor, pin, 'owner', org);
+    setTraderSession(trader);
+    window.location.replace('index.html');
+  } catch (err) {
+    setupError.textContent = err.message || 'Failed to create administrator.';
+    setupError.classList.remove('hidden');
+    setupSubmit.disabled = false;
+    setupBtnLabel.textContent = 'Create Administrator';
+    setupSpinner.classList.add('hidden');
+  }
+});
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
