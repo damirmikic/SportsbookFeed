@@ -107,11 +107,12 @@ exports.handler = async (event) => {
     await initSchema(db);
 
     if (event.httpMethod === 'GET') {
-      const [templatesRes, leagueRes, matchRes, suspRes] = await Promise.all([
+      const [templatesRes, leagueRes, matchRes, suspRes, configRes] = await Promise.all([
         db.execute('SELECT id, data FROM templates WHERE deleted_at IS NULL'),
         db.execute('SELECT league_code, data FROM league_settings'),
         db.execute('SELECT event_id, template_id FROM match_templates'),
         db.execute('SELECT key, status, set_by, set_at FROM suspensions'),
+        db.execute("SELECT value FROM app_config WHERE key = 'org_name'"),
       ]);
 
       const templates = templatesRes.rows.map((row) => JSON.parse(row.data));
@@ -127,8 +128,9 @@ exports.handler = async (event) => {
 
       const pendingOverrides = await readPendingOverrides(db);
       const syncMeta = await readSyncMeta(db);
+      const orgName = configRes.rows[0]?.value || null;
 
-      return ok({ templates, leagueSettings, matchTemplates, suspensions, pendingOverrides, syncMeta });
+      return ok({ templates, leagueSettings, matchTemplates, suspensions, pendingOverrides, syncMeta, orgName });
     }
 
     if (event.httpMethod === 'POST') {
@@ -214,6 +216,16 @@ exports.handler = async (event) => {
         });
         await replaceRows(db, statements);
         return ok({ ok: true, ...(await readSyncMeta(db)) });
+      }
+
+      if (entity === 'org-name') {
+        const name = body?.value;
+        if (!name?.trim()) return err('Organisation name required', 400);
+        await db.execute({
+          sql: "INSERT OR REPLACE INTO app_config (key, value) VALUES ('org_name', ?)",
+          args: [name.trim()],
+        });
+        return ok({ ok: true });
       }
 
       return err('Unsupported shared-state entity', 400);

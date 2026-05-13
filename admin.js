@@ -16,7 +16,7 @@ import {
   setPendingOverride,
   setOverride,
 } from './state.js';
-import { fetchActiveTraders, fetchTraders, updateTrader } from './api.js';
+import { fetchActiveTraders, fetchTraders, updateTrader, updateOrgName } from './api.js';
 import { resolveTemplate } from './pricing.js';
 
 // ── Filter state ──────────────────────────────────────────
@@ -709,4 +709,137 @@ function showAdminToast(msg) {
   toast.classList.add('visible');
   clearTimeout(toast._t);
   toast._t = setTimeout(() => toast.classList.remove('visible'), 3500);
+}
+
+// ── Operators panel ───────────────────────────────────────
+
+const ROLE_LABELS = { owner: 'Owner', senior: 'Senior', trader: 'Trader', monitor: 'Monitor' };
+
+function operatorRolePill(role) {
+  return `<span class="op-role-pill op-role-pill--${role}">${ROLE_LABELS[role] || role}</span>`;
+}
+
+function renderOperatorsRows(traders) {
+  if (!traders.length) return `<div class="op-empty">No operators found.</div>`;
+  const currentId = state.currentTraderId;
+  return traders.map(t => {
+    const isMe = t.id === currentId;
+    const canEdit = canDo('manage-traders') && t.role !== 'owner';
+    const roleCell = canEdit
+      ? `<select class="op-role-select" data-id="${escapeHtml(t.id)}" data-orig="${t.role}">
+           ${['trader','senior','monitor'].map(r =>
+             `<option value="${r}" ${t.role === r ? 'selected' : ''}>${ROLE_LABELS[r]}</option>`
+           ).join('')}
+         </select>`
+      : operatorRolePill(t.role);
+    return `
+      <div class="op-row">
+        <div class="op-row-avatar" style="background:${t.color}">${t.name.trim().charAt(0).toUpperCase()}</div>
+        <div class="op-row-name">${escapeHtml(t.name)}${isMe ? ' <span class="op-you">you</span>' : ''}</div>
+        <div class="op-row-role">${roleCell}</div>
+      </div>`;
+  }).join('');
+}
+
+export async function renderOperatorsPanel() {
+  const panel = document.getElementById('operators-panel');
+  if (!panel) return;
+
+  panel.innerHTML = `<div class="op-loading">Loading…</div>`;
+
+  let traders = [], orgName = localStorage.getItem('orgName') || '';
+  try {
+    const res = await fetchTraders();
+    traders = res.traders ?? res;
+    if (res.orgName) { orgName = res.orgName; localStorage.setItem('orgName', orgName); }
+  } catch { /* use cached */ }
+
+  const monogram = orgName ? orgName.trim().charAt(0).toUpperCase() : '?';
+  const isOwner = canDo('manage-traders');
+
+  panel.innerHTML = `
+    <div class="op-panel">
+
+      <div class="op-section">
+        <div class="op-section-head">
+          <h3 class="op-section-title">Organisation</h3>
+        </div>
+        <div class="op-org-row" id="op-org-row">
+          <div class="op-org-monogram">${monogram}</div>
+          <div class="op-org-info">
+            <div class="op-org-name">${escapeHtml(orgName || '—')}</div>
+            <div class="op-org-hint">Shown on the login page</div>
+          </div>
+          ${isOwner ? `<button class="op-edit-btn" id="op-org-edit">Edit</button>` : ''}
+        </div>
+        <div class="op-org-edit hidden" id="op-org-edit-form">
+          <input class="op-input" id="op-org-input" type="text" value="${escapeHtml(orgName)}" placeholder="e.g. Acme Sportsbook" maxlength="64">
+          <div class="op-org-edit-actions">
+            <button class="op-save-btn" id="op-org-save">Save</button>
+            <button class="op-cancel-btn" id="op-org-cancel">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="op-section">
+        <div class="op-section-head">
+          <h3 class="op-section-title">Operators <span class="op-count">${traders.length}</span></h3>
+        </div>
+        <div class="op-list" id="op-list">
+          ${renderOperatorsRows(traders)}
+        </div>
+      </div>
+
+    </div>
+  `;
+
+  if (!isOwner) return;
+
+  const editBtn   = panel.querySelector('#op-org-edit');
+  const editForm  = panel.querySelector('#op-org-edit-form');
+  const input     = panel.querySelector('#op-org-input');
+  const saveBtn   = panel.querySelector('#op-org-save');
+  const cancelBtn = panel.querySelector('#op-org-cancel');
+
+  editBtn?.addEventListener('click', () => {
+    editForm.classList.remove('hidden');
+    editBtn.classList.add('hidden');
+    input.focus(); input.select();
+  });
+
+  cancelBtn?.addEventListener('click', () => {
+    editForm.classList.add('hidden');
+    editBtn.classList.remove('hidden');
+  });
+
+  saveBtn?.addEventListener('click', async () => {
+    const newName = input.value.trim();
+    if (!newName) return;
+    saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+    try {
+      localStorage.setItem('orgName', newName);
+      const orgEl = document.getElementById('org-name');
+      if (orgEl) orgEl.textContent = newName;
+      await updateOrgName(newName);
+      renderOperatorsPanel();
+    } catch {
+      saveBtn.disabled = false; saveBtn.textContent = 'Save';
+      showToast('Failed to save organisation name.');
+    }
+  });
+
+  panel.querySelectorAll('.op-role-select').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      const id = sel.dataset.id;
+      const newRole = sel.value;
+      sel.disabled = true;
+      try {
+        await updateTrader(id, { role: newRole });
+      } catch {
+        sel.value = sel.dataset.orig;
+        showToast('Failed to update role.');
+      }
+      sel.disabled = false;
+    });
+  });
 }

@@ -269,6 +269,9 @@ export function hydrateSharedState(sharedState = {}) {
       state.sharedSyncStatus = 'saved';
       emitSyncStatus('saved', { lastSharedPushAt: state.sharedSyncLastPushedAt });
     }
+    if (sharedState.orgName) {
+      localStorage.setItem('orgName', sharedState.orgName);
+    }
   });
 }
 

@@ -1,7 +1,7 @@
 import { fetchLeagues, fetchSharedState, fetchTraderState, pushTraderPresence } from './api.js';
-import { state, hydrateSharedState, hydrateTraderState, getLeagueSetting } from './state.js';
+import { state, hydrateSharedState, hydrateTraderState, getLeagueSetting, canDo } from './state.js';
 import { renderLeagues, closeDrawer, loadOdds, filterAndRenderBoard } from './ui.js';
-import { renderAdminPanel } from './admin.js';
+import { renderAdminPanel, renderOperatorsPanel } from './admin.js';
 import { renderTemplatesSection, openTemplateById } from './templates-admin.js';
 import { renderAuditPanel } from './audit-admin.js';
 import { clearTraderSession, getSessionExpiresAt, getValidTraderSession } from './auth-session.js';
@@ -110,22 +110,21 @@ function showAdminSection(section) {
   document.querySelectorAll('.admin-section-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.section === section)
   );
-  const adminPanel    = document.getElementById('admin-panel');
-  const templatesPanel = document.getElementById('templates-panel');
-  const auditPanel = document.getElementById('audit-panel');
+  const adminPanel      = document.getElementById('admin-panel');
+  const templatesPanel  = document.getElementById('templates-panel');
+  const auditPanel      = document.getElementById('audit-panel');
+  const operatorsPanel  = document.getElementById('operators-panel');
+  [adminPanel, templatesPanel, auditPanel, operatorsPanel].forEach(p => p?.classList.add('hidden'));
   if (section === 'templates') {
-    adminPanel.classList.add('hidden');
     templatesPanel.classList.remove('hidden');
-    auditPanel.classList.add('hidden');
     renderTemplatesSection();
   } else if (section === 'audit') {
-    adminPanel.classList.add('hidden');
-    templatesPanel.classList.add('hidden');
     auditPanel.classList.remove('hidden');
     renderAuditPanel();
+  } else if (section === 'operators') {
+    operatorsPanel.classList.remove('hidden');
+    renderOperatorsPanel();
   } else {
-    templatesPanel.classList.add('hidden');
-    auditPanel.classList.add('hidden');
     adminPanel.classList.remove('hidden');
     renderAdminPanel();
   }
@@ -164,6 +163,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (orgName) {
     const orgEl = document.getElementById('org-name');
     if (orgEl) orgEl.textContent = orgName;
+  }
+
+  // Show Operators admin tab only for owners
+  if (canDo('manage-traders')) {
+    const operatorsBtn = document.querySelector('[data-section="operators"]');
+    if (operatorsBtn) operatorsBtn.classList.remove('hidden');
   }
 
   // Show active operator chip in header

@@ -64,6 +64,13 @@ export async function updateTrader(id, updates) {
   });
 }
 
+export async function updateOrgName(name) {
+  return await jsonRequest('/api/shared-state?entity=org-name', {
+    method: 'POST',
+    body: JSON.stringify({ value: name }),
+  });
+}
+
 export async function verifyTraderPin(id, pin) {
   return await jsonRequest('/api/traders?verify=1', {
     method: 'POST',
