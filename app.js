@@ -178,6 +178,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (chip) {
     chip.querySelector('.trader-chip-dot').style.background = traderColor;
     chip.querySelector('.trader-chip-name').textContent = traderName;
+    const roleEl = chip.querySelector('.trader-chip-role');
+    if (roleEl) {
+      const role = traderSession.role || 'trader';
+      roleEl.textContent = role.charAt(0).toUpperCase() + role.slice(1);
+      roleEl.dataset.role = role;
+    }
     chip.addEventListener('click', () => {
       if (confirm(`Sign out as ${traderName}?`)) {
         clearTraderSession();

@@ -10,6 +10,15 @@ import { getTeamNames } from './utils.js';
 import { calculateShinNoVig, applyMarginAndLadder } from './math.js';
 import { resolveActiveKey } from './pricing.js';
 
+// Markets where "Lines" (rangeLimit) is meaningful — OU and handicap markets with multiple lines
+const LINES_MARKETS = new Set([
+  'asian_hcp', 'asian_tot',
+  'team_total', 'h1_team_total', 'h2_team_total',
+  'corner_ou', 'corner_hdp', 'h1_corner_ou', 'h1_corner_hdp',
+  'booking_ou', 'booking_hdp', 'h1_booking_ou', 'h1_booking_hdp',
+  'h1_ou', 'h2_ou',
+]);
+
 // ── Filter state ──────────────────────────────────────────
 const tplFilters = { type: '', activeOnly: true };
 
@@ -353,12 +362,13 @@ function timelineHTML(config) {
 }
 
 function marketCardHTML(def, config, group) {
-  const tl       = config.timeline || {};
-  const setNodes = TIMELINE_NODES.filter(n => tl[n.id] != null);
-  const firstKey = setNodes.length ? tl[setNodes[0].id] : '—';
-  const lastKey  = setNodes.length ? tl[setNodes[setNodes.length - 1].id] : '—';
+  const tl        = config.timeline || {};
+  const setNodes  = TIMELINE_NODES.filter(n => tl[n.id] != null);
+  const firstKey  = setNodes.length ? tl[setNodes[0].id] : '—';
+  const lastKey   = setNodes.length ? tl[setNodes[setNodes.length - 1].id] : '—';
   const ladderLbl = config.ladder === 'template' ? 'Template Ladder' : 'EU Ladder';
-  const rangeLbl  = config.rangeLimit != null ? config.rangeLimit : 'None';
+  const hasLines  = LINES_MARKETS.has(config.id);
+  const linesLbl  = config.rangeLimit != null ? config.rangeLimit : 'All';
   const outTxt    = def.outcomes ? `Outcomes: ${def.outcomes}` : '';
 
   return `
@@ -369,8 +379,7 @@ function marketCardHTML(def, config, group) {
         ${outTxt ? `<span class="mkt-card-meta">${outTxt}</span>` : ''}
         <div class="mkt-cfg-bar">
           <span class="mkt-cfg-item">Ladder: <strong>${ladderLbl}</strong></span>
-          <span class="mkt-cfg-sep"></span>
-          <span class="mkt-cfg-item">Range Limitation: <strong>${rangeLbl}</strong></span>
+          ${hasLines ? `<span class="mkt-cfg-sep"></span><span class="mkt-cfg-item">Lines: <strong>${linesLbl}</strong></span>` : ''}
           <span class="mkt-cfg-sep"></span>
           <span class="mkt-cfg-item mkt-first-key">1st Key: <strong>${firstKey}</strong></span>
           <span class="mkt-cfg-item mkt-last-key">Last Key: <strong>${lastKey}</strong></span>
@@ -403,10 +412,12 @@ function marketCardHTML(def, config, group) {
                 <option value="template" ${config.ladder === 'template' ? 'selected' : ''}>Template Ladder</option>
               </select>
             </label>
-            <label class="mkt-inline-field">Range Limit
+            ${hasLines ? `
+            <label class="mkt-inline-field">Lines
               <input type="number" class="mkt-range-input mkt-cfg-num" data-id="${config.id}"
-                value="${config.rangeLimit ?? ''}" placeholder="None" min="1" max="5" step="0.001">
-            </label>
+                value="${config.rangeLimit ?? ''}" placeholder="All" min="1" max="20" step="1">
+              <span class="mkt-field-hint">Leave blank to show all</span>
+            </label>` : ''}
             <label class="mkt-inline-field mkt-approval-field" title="Overrides on this market require senior approval">
               <input type="checkbox" class="mkt-approval-cb" data-id="${config.id}" ${config.requiresApproval ? 'checked' : ''}>
               Requires approval

@@ -16,7 +16,7 @@ import {
   setPendingOverride,
   setOverride,
 } from './state.js';
-import { fetchActiveTraders, fetchTraders, updateTrader, updateOrgName } from './api.js';
+import { fetchActiveTraders, fetchTraders, createTrader, updateTrader, updateOrgName } from './api.js';
 import { resolveTemplate } from './pricing.js';
 
 // ── Filter state ──────────────────────────────────────────
@@ -713,17 +713,48 @@ function showAdminToast(msg) {
 
 // ── Operators panel ───────────────────────────────────────
 
-const ROLE_LABELS = { owner: 'Owner', senior: 'Senior', trader: 'Trader', monitor: 'Monitor' };
+const IS_LOCAL_ADMIN = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+const ROLE_LABELS    = { owner: 'Owner', senior: 'Senior', trader: 'Trader', monitor: 'Monitor' };
+const ADD_COLORS     = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#e11d48','#06b6d4'];
+
+async function sha256hex(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function mockCreateOperator(name, color, pin, role) {
+  const traders = JSON.parse(localStorage.getItem('_mock_traders') || '[]');
+  if (traders.find(t => t.name.toLowerCase() === name.toLowerCase())) {
+    throw new Error('An operator with this name already exists.');
+  }
+  const trader = {
+    id: crypto.randomUUID(), name, color,
+    pin_hash: await sha256hex(pin), role,
+    created_at: new Date().toISOString(), active: 1,
+  };
+  localStorage.setItem('_mock_traders', JSON.stringify([...traders, trader]));
+  return { id: trader.id, name: trader.name, color: trader.color, role: trader.role };
+}
+
+async function mockResetPin(id, pin) {
+  const traders = JSON.parse(localStorage.getItem('_mock_traders') || '[]');
+  const t = traders.find(x => x.id === id);
+  if (!t) throw new Error('Operator not found');
+  t.pin_hash = await sha256hex(pin);
+  t.failed_attempts = 0;
+  t.locked_until = null;
+  localStorage.setItem('_mock_traders', JSON.stringify(traders));
+}
 
 function operatorRolePill(role) {
   return `<span class="op-role-pill op-role-pill--${role}">${ROLE_LABELS[role] || role}</span>`;
 }
 
 function renderOperatorsRows(traders) {
-  if (!traders.length) return `<div class="op-empty">No operators found.</div>`;
+  if (!traders.length) return `<div class="op-empty">No operators yet.</div>`;
   const currentId = state.currentTraderId;
   return traders.map(t => {
-    const isMe = t.id === currentId;
+    const isMe    = t.id === currentId;
     const canEdit = canDo('manage-traders') && t.role !== 'owner';
     const roleCell = canEdit
       ? `<select class="op-role-select" data-id="${escapeHtml(t.id)}" data-orig="${t.role}">
@@ -733,11 +764,22 @@ function renderOperatorsRows(traders) {
          </select>`
       : operatorRolePill(t.role);
     return `
-      <div class="op-row">
+      <div class="op-row" data-id="${escapeHtml(t.id)}">
         <div class="op-row-avatar" style="background:${t.color}">${t.name.trim().charAt(0).toUpperCase()}</div>
         <div class="op-row-name">${escapeHtml(t.name)}${isMe ? ' <span class="op-you">you</span>' : ''}</div>
         <div class="op-row-role">${roleCell}</div>
-      </div>`;
+        ${canEdit ? `<button class="op-pin-btn" data-id="${escapeHtml(t.id)}" title="Reset PIN">🔑 Reset PIN</button>` : ''}
+      </div>
+      ${canEdit ? `
+      <div class="op-pin-form hidden" id="op-pin-form-${escapeHtml(t.id)}">
+        <input class="op-input op-pin-input" type="password" placeholder="New PIN (4–6 digits)" maxlength="6" inputmode="numeric" autocomplete="new-password">
+        <input class="op-input op-pin-input" type="password" placeholder="Confirm PIN" maxlength="6" inputmode="numeric" autocomplete="new-password">
+        <div class="op-pin-form-actions">
+          <button class="op-save-btn op-pin-save" data-id="${escapeHtml(t.id)}">Save</button>
+          <button class="op-cancel-btn op-pin-cancel" data-id="${escapeHtml(t.id)}">Cancel</button>
+        </div>
+        <p class="op-add-error hidden"></p>
+      </div>` : ''}`;
   }).join('');
 }
 
@@ -755,7 +797,7 @@ export async function renderOperatorsPanel() {
   } catch { /* use cached */ }
 
   const monogram = orgName ? orgName.trim().charAt(0).toUpperCase() : '?';
-  const isOwner = canDo('manage-traders');
+  const isOwner  = canDo('manage-traders');
 
   panel.innerHTML = `
     <div class="op-panel">
@@ -764,7 +806,7 @@ export async function renderOperatorsPanel() {
         <div class="op-section-head">
           <h3 class="op-section-title">Organisation</h3>
         </div>
-        <div class="op-org-row" id="op-org-row">
+        <div class="op-org-row">
           <div class="op-org-monogram">${monogram}</div>
           <div class="op-org-info">
             <div class="op-org-name">${escapeHtml(orgName || '—')}</div>
@@ -784,9 +826,41 @@ export async function renderOperatorsPanel() {
       <div class="op-section">
         <div class="op-section-head">
           <h3 class="op-section-title">Operators <span class="op-count">${traders.length}</span></h3>
+          ${isOwner ? `<button class="op-add-btn" id="op-add-btn">+ Add Operator</button>` : ''}
         </div>
+
         <div class="op-list" id="op-list">
           ${renderOperatorsRows(traders)}
+        </div>
+
+        <!-- Add Operator form -->
+        <div class="op-add-form hidden" id="op-add-form">
+          <div class="op-add-form-header">New Operator</div>
+          <div class="op-add-preview-row">
+            <div class="op-add-avatar" id="op-add-avatar">A</div>
+            <div class="op-add-swatches">
+              ${ADD_COLORS.map((c, i) =>
+                `<button type="button" class="op-swatch${i === 0 ? ' active' : ''}" data-color="${c}" style="background:${c}"></button>`
+              ).join('')}
+            </div>
+          </div>
+          <div class="op-add-fields">
+            <input class="op-input" type="text" id="op-add-name" placeholder="Display name" maxlength="32" autocomplete="off">
+            <select class="op-role-select op-add-role-select" id="op-add-role">
+              <option value="trader">Trader</option>
+              <option value="senior">Senior</option>
+              <option value="monitor">Monitor</option>
+            </select>
+          </div>
+          <div class="op-add-fields">
+            <input class="op-input" type="password" id="op-add-pin" placeholder="PIN (4–6 digits)" maxlength="6" inputmode="numeric" autocomplete="new-password">
+            <input class="op-input" type="password" id="op-add-pin2" placeholder="Confirm PIN" maxlength="6" inputmode="numeric" autocomplete="new-password">
+          </div>
+          <p class="op-add-error hidden" id="op-add-error"></p>
+          <div class="op-add-actions">
+            <button class="op-save-btn" id="op-add-save">Add Operator</button>
+            <button class="op-cancel-btn" id="op-add-cancel">Cancel</button>
+          </div>
         </div>
       </div>
 
@@ -795,51 +869,146 @@ export async function renderOperatorsPanel() {
 
   if (!isOwner) return;
 
-  const editBtn   = panel.querySelector('#op-org-edit');
-  const editForm  = panel.querySelector('#op-org-edit-form');
-  const input     = panel.querySelector('#op-org-input');
-  const saveBtn   = panel.querySelector('#op-org-save');
-  const cancelBtn = panel.querySelector('#op-org-cancel');
+  // ── Org name edit ──
+  const orgEditBtn  = panel.querySelector('#op-org-edit');
+  const orgEditForm = panel.querySelector('#op-org-edit-form');
+  const orgInput    = panel.querySelector('#op-org-input');
+  const orgSave     = panel.querySelector('#op-org-save');
+  const orgCancel   = panel.querySelector('#op-org-cancel');
 
-  editBtn?.addEventListener('click', () => {
-    editForm.classList.remove('hidden');
-    editBtn.classList.add('hidden');
-    input.focus(); input.select();
+  orgEditBtn?.addEventListener('click', () => {
+    orgEditForm.classList.remove('hidden');
+    orgEditBtn.classList.add('hidden');
+    orgInput.focus(); orgInput.select();
   });
-
-  cancelBtn?.addEventListener('click', () => {
-    editForm.classList.add('hidden');
-    editBtn.classList.remove('hidden');
+  orgCancel?.addEventListener('click', () => {
+    orgEditForm.classList.add('hidden');
+    orgEditBtn.classList.remove('hidden');
   });
-
-  saveBtn?.addEventListener('click', async () => {
-    const newName = input.value.trim();
-    if (!newName) return;
-    saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+  orgSave?.addEventListener('click', async () => {
+    const v = orgInput.value.trim();
+    if (!v) return;
+    orgSave.disabled = true; orgSave.textContent = 'Saving…';
     try {
-      localStorage.setItem('orgName', newName);
-      const orgEl = document.getElementById('org-name');
-      if (orgEl) orgEl.textContent = newName;
-      await updateOrgName(newName);
+      localStorage.setItem('orgName', v);
+      const h = document.getElementById('org-name');
+      if (h) h.textContent = v;
+      await updateOrgName(v);
       renderOperatorsPanel();
     } catch {
-      saveBtn.disabled = false; saveBtn.textContent = 'Save';
+      orgSave.disabled = false; orgSave.textContent = 'Save';
       showToast('Failed to save organisation name.');
     }
   });
 
-  panel.querySelectorAll('.op-role-select').forEach(sel => {
+  // ── Role selects ──
+  panel.querySelectorAll('.op-role-select:not(.op-add-role-select)').forEach(sel => {
     sel.addEventListener('change', async () => {
-      const id = sel.dataset.id;
-      const newRole = sel.value;
-      sel.disabled = true;
-      try {
-        await updateTrader(id, { role: newRole });
-      } catch {
-        sel.value = sel.dataset.orig;
-        showToast('Failed to update role.');
-      }
+      const id = sel.dataset.id; sel.disabled = true;
+      try { await updateTrader(id, { role: sel.value }); }
+      catch { sel.value = sel.dataset.orig; showToast('Failed to update role.'); }
       sel.disabled = false;
     });
+  });
+
+  // ── PIN reset ──
+  panel.querySelectorAll('.op-pin-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id   = btn.dataset.id;
+      const form = panel.querySelector(`#op-pin-form-${id}`);
+      form?.classList.toggle('hidden');
+      if (!form?.classList.contains('hidden')) form.querySelector('input')?.focus();
+    });
+  });
+  panel.querySelectorAll('.op-pin-cancel').forEach(btn => {
+    btn.addEventListener('click', () => {
+      panel.querySelector(`#op-pin-form-${btn.dataset.id}`)?.classList.add('hidden');
+    });
+  });
+  panel.querySelectorAll('.op-pin-save').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id    = btn.dataset.id;
+      const form  = panel.querySelector(`#op-pin-form-${id}`);
+      const [p1, p2] = [...form.querySelectorAll('.op-pin-input')].map(i => i.value.trim());
+      const err   = form.querySelector('.op-add-error');
+      if (!/^\d{4,6}$/.test(p1)) { err.textContent = 'PIN must be 4–6 digits.'; err.classList.remove('hidden'); return; }
+      if (p1 !== p2)              { err.textContent = 'PINs do not match.';      err.classList.remove('hidden'); return; }
+      err.classList.add('hidden');
+      btn.disabled = true; btn.textContent = 'Saving…';
+      try {
+        if (IS_LOCAL_ADMIN) await mockResetPin(id, p1);
+        else await updateTrader(id, { pin: p1 });
+        showToast('PIN updated.');
+        form.classList.add('hidden');
+      } catch (e) {
+        err.textContent = e.message || 'Failed to reset PIN.';
+        err.classList.remove('hidden');
+      }
+      btn.disabled = false; btn.textContent = 'Save';
+    });
+  });
+
+  // ── Add Operator form ──
+  let addColor = ADD_COLORS[0];
+  const addBtn    = panel.querySelector('#op-add-btn');
+  const addForm   = panel.querySelector('#op-add-form');
+  const addAvatar = panel.querySelector('#op-add-avatar');
+  const addName   = panel.querySelector('#op-add-name');
+  const addSave   = panel.querySelector('#op-add-save');
+  const addCancel = panel.querySelector('#op-add-cancel');
+  const addError  = panel.querySelector('#op-add-error');
+
+  addAvatar.style.background = addColor;
+
+  addBtn.addEventListener('click', () => {
+    addForm.classList.remove('hidden');
+    addBtn.classList.add('hidden');
+    addName.focus();
+  });
+
+  addCancel.addEventListener('click', () => {
+    addForm.classList.add('hidden');
+    addBtn.classList.remove('hidden');
+    addError.classList.add('hidden');
+    addName.value = '';
+    panel.querySelector('#op-add-pin').value  = '';
+    panel.querySelector('#op-add-pin2').value = '';
+  });
+
+  panel.querySelectorAll('.op-swatch').forEach(sw => {
+    sw.addEventListener('click', () => {
+      panel.querySelectorAll('.op-swatch').forEach(s => s.classList.remove('active'));
+      sw.classList.add('active');
+      addColor = sw.dataset.color;
+      addAvatar.style.background = addColor;
+    });
+  });
+
+  addName.addEventListener('input', () => {
+    const v = addName.value.trim();
+    addAvatar.textContent = v ? v.charAt(0).toUpperCase() : 'A';
+  });
+
+  addSave.addEventListener('click', async () => {
+    const name = addName.value.trim();
+    const role = panel.querySelector('#op-add-role').value;
+    const pin  = panel.querySelector('#op-add-pin').value.trim();
+    const pin2 = panel.querySelector('#op-add-pin2').value.trim();
+
+    addError.classList.add('hidden');
+    if (!name)                    { addError.textContent = 'Name is required.';         addError.classList.remove('hidden'); return; }
+    if (!/^\d{4,6}$/.test(pin))   { addError.textContent = 'PIN must be 4–6 digits.';   addError.classList.remove('hidden'); return; }
+    if (pin !== pin2)              { addError.textContent = 'PINs do not match.';        addError.classList.remove('hidden'); return; }
+
+    addSave.disabled = true; addSave.textContent = 'Adding…';
+    try {
+      if (IS_LOCAL_ADMIN) await mockCreateOperator(name, addColor, pin, role);
+      else await createTrader(name, addColor, pin, role);
+      renderOperatorsPanel();
+    } catch (e) {
+      addError.textContent = e.message || 'Failed to add operator.';
+      addError.classList.remove('hidden');
+      addSave.disabled = false; addSave.textContent = 'Add Operator';
+    }
   });
 }

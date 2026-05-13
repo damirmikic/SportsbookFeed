@@ -488,68 +488,66 @@ export const TIMELINE_NODES = [
 ];
 
 export const MARKET_DEFS = [
-  // Match Result
-  { id: '1x2',        group: 'Match Result', name: 'Match Result (1x2)', outcomes: 3,  defaultMargin: 5.5,  defaultMaxBet: 5000,  defaultEnabled: true  },
-  { id: 'dc',         group: 'Match Result', name: 'Double Chance',       outcomes: 3,  defaultMargin: 6.5,  defaultMaxBet: 2000,  defaultEnabled: true  },
-  { id: 'dnb',        group: 'Match Result', name: 'Draw No Bet',          outcomes: 2,  defaultMargin: 5.5,  defaultMaxBet: 3000,  defaultEnabled: true  },
-  // Asian Markets
-  { id: 'asian_hcp',  group: 'Asian Markets', name: 'Asian Handicap',      outcomes: 2,  defaultMargin: 3.5,  defaultMaxBet: 8000,  defaultEnabled: true  },
-  { id: 'asian_tot',  group: 'Asian Markets', name: 'Asian Totals',         outcomes: 2,  defaultMargin: 4.0,  defaultMaxBet: 5000,  defaultEnabled: false },
-  // Handicap
-  { id: '3way_hdp',   group: 'Handicap',     name: '3-Way Handicap',       outcomes: 3,  defaultMargin: 8.0,  defaultMaxBet: 1000,  defaultEnabled: false },
-  // Totals
-  { id: 'ou15',       group: 'Totals',        name: 'Over/Under 1.5',       outcomes: 2,  defaultMargin: 6.0,  defaultMaxBet: 2000,  defaultEnabled: false },
-  { id: 'ou25',       group: 'Totals',        name: 'Over/Under 2.5',       outcomes: 2,  defaultMargin: 5.0,  defaultMaxBet: 3000,  defaultEnabled: true  },
-  { id: 'ou35',       group: 'Totals',        name: 'Over/Under 3.5',       outcomes: 2,  defaultMargin: 6.0,  defaultMaxBet: 2000,  defaultEnabled: false },
-  // Goals
-  { id: 'btts',             group: 'Goals', name: 'Both Teams to Score',        outcomes: 2,  defaultMargin: 7.0,  defaultMaxBet: 2000,  defaultEnabled: true  },
-  { id: 'btts_ou',          group: 'Goals', name: 'BTTS & Over/Under',          outcomes: 4,  defaultMargin: 9.0,  defaultMaxBet: 1000,  defaultEnabled: false },
-  { id: 'cs',               group: 'Goals', name: 'Correct Score',              outcomes: 12, defaultMargin: 12.0, defaultMaxBet: 500,   defaultEnabled: true  },
-  { id: 'exact_goals',      group: 'Goals', name: 'Exact Goals',                outcomes: 6,  defaultMargin: 10.0, defaultMaxBet: 500,   defaultEnabled: false },
-  { id: 'win_nil',          group: 'Goals', name: 'Win to Nil',                 outcomes: 2,  defaultMargin: 10.0, defaultMaxBet: 1000,  defaultEnabled: false },
-  { id: 'goal_both_halves', group: 'Goals', name: 'Goal In Both Halves',        outcomes: 2,  defaultMargin: 8.0,  defaultMaxBet: 1500,  defaultEnabled: false },
-  { id: 'both_halves_over15',  group: 'Goals', name: 'Both Halves Over 1.5',   outcomes: 2,  defaultMargin: 9.0,  defaultMaxBet: 1000,  defaultEnabled: false },
-  { id: 'both_halves_under15', group: 'Goals', name: 'Both Halves Under 1.5',  outcomes: 2,  defaultMargin: 9.0,  defaultMaxBet: 1000,  defaultEnabled: false },
-  { id: 'h1h2_btts',        group: 'Goals', name: '1st/2nd Half BTTS',         outcomes: 4,  defaultMargin: 10.0, defaultMaxBet: 500,   defaultEnabled: false },
-  // Team Goals
-  { id: 'team_total',      group: 'Team Goals', name: 'Team Totals',      outcomes: 2, defaultMargin: 6.0,  defaultMaxBet: 2000, defaultEnabled: false },
-  { id: 'team_multigoals', group: 'Team Goals', name: 'Team Multigoals',  outcomes: 4, defaultMargin: 10.0, defaultMaxBet: 500,  defaultEnabled: false },
-  // 1st Half
-  { id: 'h1_1x2',        group: '1st Half', name: '1st Half 1x2',             outcomes: 3, defaultMargin: 7.0,  defaultMaxBet: 2000, defaultEnabled: false },
-  { id: 'h1_ou',         group: '1st Half', name: '1st Half Total',            outcomes: 2, defaultMargin: 6.0,  defaultMaxBet: 2000, defaultEnabled: false },
-  { id: 'h1_team_total', group: '1st Half', name: '1st Half Team Totals',      outcomes: 2, defaultMargin: 8.0,  defaultMaxBet: 1000, defaultEnabled: false },
-  { id: 'h1_btts',       group: '1st Half', name: '1st Half BTTS',             outcomes: 2, defaultMargin: 9.0,  defaultMaxBet: 1000, defaultEnabled: false },
-  { id: 'h1_result_btts',group: '1st Half', name: '1st Half Result & BTTS',    outcomes: 6, defaultMargin: 12.0, defaultMaxBet: 300,  defaultEnabled: false },
-  { id: 'h1_result_ou',  group: '1st Half', name: '1st Half Result & Total',   outcomes: 6, defaultMargin: 12.0, defaultMaxBet: 300,  defaultEnabled: false },
-  { id: 'h1_dc_total',   group: '1st Half', name: '1st Half DC & Total',       outcomes: 6, defaultMargin: 12.0, defaultMaxBet: 300,  defaultEnabled: false },
-  // 2nd Half
-  { id: 'h2_1x2',        group: '2nd Half', name: '2nd Half 1x2',         outcomes: 3, defaultMargin: 8.0, defaultMaxBet: 1500, defaultEnabled: false },
-  { id: 'h2_ou',         group: '2nd Half', name: '2nd Half Total',        outcomes: 2, defaultMargin: 7.0, defaultMaxBet: 1500, defaultEnabled: false },
-  { id: 'h2_team_total', group: '2nd Half', name: '2nd Half Team Totals',  outcomes: 2, defaultMargin: 9.0, defaultMaxBet: 1000, defaultEnabled: false },
-  // Corners
-  { id: 'corner_ou',         group: 'Corners', name: 'Corner Total',               outcomes: 2, defaultMargin: 6.0, defaultMaxBet: 2000, defaultEnabled: false },
-  { id: 'corner_hdp',        group: 'Corners', name: 'Corner Handicap',            outcomes: 2, defaultMargin: 5.0, defaultMaxBet: 3000, defaultEnabled: false },
-  { id: 'corner_team_total', group: 'Corners', name: 'Team Corners',               outcomes: 2, defaultMargin: 7.0, defaultMaxBet: 1500, defaultEnabled: false },
-  { id: 'h1_corner_ou',      group: 'Corners', name: '1st Half Corner Total',      outcomes: 2, defaultMargin: 7.0, defaultMaxBet: 1500, defaultEnabled: false },
-  { id: 'h1_corner_hdp',     group: 'Corners', name: '1st Half Corner Handicap',   outcomes: 2, defaultMargin: 6.0, defaultMaxBet: 2000, defaultEnabled: false },
-  // Bookings
-  { id: 'booking_ou',          group: 'Bookings', name: 'Total Bookings',              outcomes: 2, defaultMargin: 7.0, defaultMaxBet: 1500, defaultEnabled: false },
-  { id: 'booking_hdp',         group: 'Bookings', name: 'Bookings Handicap',           outcomes: 2, defaultMargin: 6.0, defaultMaxBet: 2000, defaultEnabled: false },
-  { id: 'booking_team_total',  group: 'Bookings', name: 'Team Bookings',               outcomes: 2, defaultMargin: 8.0, defaultMaxBet: 1000, defaultEnabled: false },
-  { id: 'h1_booking_ou',       group: 'Bookings', name: '1st Half Bookings Total',     outcomes: 2, defaultMargin: 8.0, defaultMaxBet: 1000, defaultEnabled: false },
-  { id: 'h1_booking_hdp',      group: 'Bookings', name: '1st Half Bookings Handicap',  outcomes: 2, defaultMargin: 7.0, defaultMaxBet: 1500, defaultEnabled: false },
-  // Team Props
-  { id: 'score_both_halves', group: 'Team Props', name: 'Score In Both Halves', outcomes: 2, defaultMargin: 10.0, defaultMaxBet: 500,  defaultEnabled: false },
-  { id: 'win_both_halves',   group: 'Team Props', name: 'Win Both Halves',      outcomes: 2, defaultMargin: 10.0, defaultMaxBet: 500,  defaultEnabled: false },
-  { id: 'win_either_half',   group: 'Team Props', name: 'Win Either Half',      outcomes: 2, defaultMargin: 9.0,  defaultMaxBet: 1000, defaultEnabled: false },
-  // Specials
-  { id: 'htft',            group: 'Specials', name: 'HT / Full Time',              outcomes: 9,  defaultMargin: 15.0, defaultMaxBet: 200, defaultEnabled: false },
-  { id: 'dc_total',        group: 'Specials', name: 'Double Chance & Total',       outcomes: 6,  defaultMargin: 12.0, defaultMaxBet: 300, defaultEnabled: false },
-  { id: 'dc_btts',         group: 'Specials', name: 'Double Chance & BTTS',        outcomes: 6,  defaultMargin: 12.0, defaultMaxBet: 300, defaultEnabled: false },
-  { id: 'result_or_btts',  group: 'Specials', name: 'Result or BTTS',             outcomes: 2,  defaultMargin: 9.0,  defaultMaxBet: 500, defaultEnabled: false },
-  { id: 'result_or_over25',group: 'Specials', name: 'Result or Over 2.5',         outcomes: 2,  defaultMargin: 9.0,  defaultMaxBet: 500, defaultEnabled: false },
-  { id: 'htft_total',      group: 'Specials', name: 'HT/FT & Total',              outcomes: 18, defaultMargin: 18.0, defaultMaxBet: 100, defaultEnabled: false },
-  { id: 'h1_or_ft',        group: 'Specials', name: '1st Half or FT Result',      outcomes: 3,  defaultMargin: 10.0, defaultMaxBet: 500, defaultEnabled: false },
+  // MATCH ODDS
+  { id: '1x2',        group: 'MATCH ODDS', name: 'Match Result',          outcomes: 3,  defaultMargin: 5.5,  defaultMaxBet: 5000,  defaultEnabled: true  },
+  { id: 'dc',         group: 'MATCH ODDS', name: 'Double Chance',         outcomes: 3,  defaultMargin: 6.5,  defaultMaxBet: 2000,  defaultEnabled: true  },
+  { id: 'dnb',        group: 'MATCH ODDS', name: 'Draw No Bet',           outcomes: 2,  defaultMargin: 5.5,  defaultMaxBet: 3000,  defaultEnabled: true  },
+  // HANDICAP
+  { id: 'asian_hcp',  group: 'HANDICAP',  name: 'Asian Handicap',        outcomes: 2,  defaultMargin: 3.5,  defaultMaxBet: 8000,  defaultEnabled: true  },
+  { id: 'asian_tot',  group: 'HANDICAP',  name: 'Asian Total O/U',       outcomes: 2,  defaultMargin: 4.0,  defaultMaxBet: 5000,  defaultEnabled: false },
+  { id: '3way_hdp',   group: 'HANDICAP',  name: '3-Way Handicap',        outcomes: 3,  defaultMargin: 8.0,  defaultMaxBet: 1000,  defaultEnabled: false },
+  // GOALS
+  { id: 'ou15',       group: 'GOALS',     name: 'Over/Under 1.5',        outcomes: 2,  defaultMargin: 6.0,  defaultMaxBet: 2000,  defaultEnabled: false },
+  { id: 'ou25',       group: 'GOALS',     name: 'Over/Under 2.5',        outcomes: 2,  defaultMargin: 5.0,  defaultMaxBet: 3000,  defaultEnabled: true  },
+  { id: 'ou35',       group: 'GOALS',     name: 'Over/Under 3.5',        outcomes: 2,  defaultMargin: 6.0,  defaultMaxBet: 2000,  defaultEnabled: false },
+  { id: 'btts',             group: 'GOALS', name: 'Both Teams to Score',         outcomes: 2,  defaultMargin: 7.0,  defaultMaxBet: 2000,  defaultEnabled: true  },
+  { id: 'btts_ou',          group: 'GOALS', name: 'BTTS & Over/Under',           outcomes: 4,  defaultMargin: 9.0,  defaultMaxBet: 1000,  defaultEnabled: false },
+  { id: 'cs',               group: 'GOALS', name: 'Correct Score',               outcomes: 12, defaultMargin: 12.0, defaultMaxBet: 500,   defaultEnabled: true  },
+  { id: 'exact_goals',      group: 'GOALS', name: 'Exact Goals',                 outcomes: 6,  defaultMargin: 10.0, defaultMaxBet: 500,   defaultEnabled: false },
+  { id: 'win_nil',          group: 'GOALS', name: 'Win to Nil',                  outcomes: 2,  defaultMargin: 10.0, defaultMaxBet: 1000,  defaultEnabled: false },
+  { id: 'goal_both_halves', group: 'GOALS', name: 'Goal In Both Halves',         outcomes: 2,  defaultMargin: 8.0,  defaultMaxBet: 1500,  defaultEnabled: false },
+  { id: 'both_halves_over15',  group: 'GOALS', name: 'Both Halves Over 1.5',    outcomes: 2,  defaultMargin: 9.0,  defaultMaxBet: 1000,  defaultEnabled: false },
+  { id: 'both_halves_under15', group: 'GOALS', name: 'Both Halves Under 1.5',   outcomes: 2,  defaultMargin: 9.0,  defaultMaxBet: 1000,  defaultEnabled: false },
+  { id: 'h1h2_btts',        group: 'GOALS', name: '1st/2nd Half BTTS',          outcomes: 4,  defaultMargin: 10.0, defaultMaxBet: 500,   defaultEnabled: false },
+  // TEAM GOALS
+  { id: 'team_total',      group: 'TEAM GOALS', name: 'Team Totals',      outcomes: 2, defaultMargin: 6.0,  defaultMaxBet: 2000, defaultEnabled: false },
+  { id: 'team_multigoals', group: 'TEAM GOALS', name: 'Team Multigoals',  outcomes: 4, defaultMargin: 10.0, defaultMaxBet: 500,  defaultEnabled: false },
+  // 1ST HALF
+  { id: 'h1_1x2',        group: '1ST HALF', name: '1st Half Result',              outcomes: 3, defaultMargin: 7.0,  defaultMaxBet: 2000, defaultEnabled: false },
+  { id: 'h1_ou',         group: '1ST HALF', name: '1st Half Total',               outcomes: 2, defaultMargin: 6.0,  defaultMaxBet: 2000, defaultEnabled: false },
+  { id: 'h1_team_total', group: '1ST HALF', name: '1st Half Team Totals',         outcomes: 2, defaultMargin: 8.0,  defaultMaxBet: 1000, defaultEnabled: false },
+  { id: 'h1_btts',       group: '1ST HALF', name: '1st Half Both Teams to Score', outcomes: 2, defaultMargin: 9.0,  defaultMaxBet: 1000, defaultEnabled: false },
+  { id: 'h1_result_btts',group: '1ST HALF', name: '1st Half Result & BTTS',       outcomes: 6, defaultMargin: 12.0, defaultMaxBet: 300,  defaultEnabled: false },
+  { id: 'h1_result_ou',  group: '1ST HALF', name: '1st Half Result & Total',      outcomes: 6, defaultMargin: 12.0, defaultMaxBet: 300,  defaultEnabled: false },
+  { id: 'h1_dc_total',   group: '1ST HALF', name: '1st Half Double Chance & Total', outcomes: 6, defaultMargin: 12.0, defaultMaxBet: 300, defaultEnabled: false },
+  // 2ND HALF
+  { id: 'h2_1x2',        group: '2ND HALF', name: '2nd Half Result',       outcomes: 3, defaultMargin: 8.0, defaultMaxBet: 1500, defaultEnabled: false },
+  { id: 'h2_ou',         group: '2ND HALF', name: '2nd Half Total',        outcomes: 2, defaultMargin: 7.0, defaultMaxBet: 1500, defaultEnabled: false },
+  { id: 'h2_team_total', group: '2ND HALF', name: '2nd Half Team Totals',  outcomes: 2, defaultMargin: 9.0, defaultMaxBet: 1000, defaultEnabled: false },
+  // CORNERS
+  { id: 'corner_ou',         group: 'CORNERS', name: 'Corner O/U',                    outcomes: 2, defaultMargin: 6.0, defaultMaxBet: 2000, defaultEnabled: false },
+  { id: 'corner_hdp',        group: 'CORNERS', name: 'Corner Handicap',               outcomes: 2, defaultMargin: 5.0, defaultMaxBet: 3000, defaultEnabled: false },
+  { id: 'corner_team_total', group: 'CORNERS', name: 'Team Corners',                  outcomes: 2, defaultMargin: 7.0, defaultMaxBet: 1500, defaultEnabled: false },
+  { id: 'h1_corner_ou',      group: 'CORNERS', name: '1st Half Corner O/U',           outcomes: 2, defaultMargin: 7.0, defaultMaxBet: 1500, defaultEnabled: false },
+  { id: 'h1_corner_hdp',     group: 'CORNERS', name: '1st Half Corner Handicap',      outcomes: 2, defaultMargin: 6.0, defaultMaxBet: 2000, defaultEnabled: false },
+  // BOOKINGS
+  { id: 'booking_ou',          group: 'BOOKINGS', name: 'Bookings O/U',                  outcomes: 2, defaultMargin: 7.0, defaultMaxBet: 1500, defaultEnabled: false },
+  { id: 'booking_hdp',         group: 'BOOKINGS', name: 'Bookings Handicap',             outcomes: 2, defaultMargin: 6.0, defaultMaxBet: 2000, defaultEnabled: false },
+  { id: 'booking_team_total',  group: 'BOOKINGS', name: 'Team Bookings',                 outcomes: 2, defaultMargin: 8.0, defaultMaxBet: 1000, defaultEnabled: false },
+  { id: 'h1_booking_ou',       group: 'BOOKINGS', name: '1st Half Bookings O/U',         outcomes: 2, defaultMargin: 8.0, defaultMaxBet: 1000, defaultEnabled: false },
+  { id: 'h1_booking_hdp',      group: 'BOOKINGS', name: '1st Half Bookings Handicap',    outcomes: 2, defaultMargin: 7.0, defaultMaxBet: 1500, defaultEnabled: false },
+  // TEAM PROPS
+  { id: 'score_both_halves', group: 'TEAM PROPS', name: 'Score In Both Halves', outcomes: 2, defaultMargin: 10.0, defaultMaxBet: 500,  defaultEnabled: false },
+  { id: 'win_both_halves',   group: 'TEAM PROPS', name: 'Win Both Halves',      outcomes: 2, defaultMargin: 10.0, defaultMaxBet: 500,  defaultEnabled: false },
+  { id: 'win_either_half',   group: 'TEAM PROPS', name: 'Win Either Half',      outcomes: 2, defaultMargin: 9.0,  defaultMaxBet: 1000, defaultEnabled: false },
+  // SPECIALS
+  { id: 'htft',            group: 'SPECIALS', name: 'Half Time / Full Time',        outcomes: 9,  defaultMargin: 15.0, defaultMaxBet: 200, defaultEnabled: false },
+  { id: 'dc_total',        group: 'SPECIALS', name: 'Double Chance & Total',        outcomes: 6,  defaultMargin: 12.0, defaultMaxBet: 300, defaultEnabled: false },
+  { id: 'dc_btts',         group: 'SPECIALS', name: 'Double Chance & BTTS',         outcomes: 6,  defaultMargin: 12.0, defaultMaxBet: 300, defaultEnabled: false },
+  { id: 'result_or_btts',  group: 'SPECIALS', name: 'Result or BTTS',              outcomes: 2,  defaultMargin: 9.0,  defaultMaxBet: 500, defaultEnabled: false },
+  { id: 'result_or_over25',group: 'SPECIALS', name: 'Result or Over 2.5',          outcomes: 2,  defaultMargin: 9.0,  defaultMaxBet: 500, defaultEnabled: false },
+  { id: 'htft_total',      group: 'SPECIALS', name: 'HT/FT & Total',               outcomes: 18, defaultMargin: 18.0, defaultMaxBet: 100, defaultEnabled: false },
+  { id: 'h1_or_ft',        group: 'SPECIALS', name: '1st Half or Full Time Result', outcomes: 3,  defaultMargin: 10.0, defaultMaxBet: 500, defaultEnabled: false },
 ];
 
 function mkMarkets(overrides = {}) {
@@ -574,7 +572,7 @@ const DEFAULT_TEMPLATES = [
     markets: mkMarkets({ '1x2': { margin: 8.0, maxBet: 2000 }, 'ou25': { margin: 8.0, maxBet: 2000 }, 'asian_hcp': { margin: 6.0, maxBet: 3000 }, 'cs': { enabled: false }, 'htft': { enabled: false }, 'exact_goals': { enabled: false }, 'win_nil': { enabled: false } }) },
 ];
 
-const TEMPLATE_VERSION = 5;
+const TEMPLATE_VERSION = 6;
 const _storedVersion = parseInt(localStorage.getItem('templateVersion') || '0', 10);
 const _storedTpl = readJson('templates', null);
 const _needsReset = !_storedTpl || !_storedTpl[0]?.markets || _storedVersion !== TEMPLATE_VERSION;

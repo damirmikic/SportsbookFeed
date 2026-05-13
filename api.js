@@ -50,10 +50,10 @@ export async function fetchTraders() {
   return await jsonRequest('/api/traders');
 }
 
-export async function createTrader(name, color, pin) {
+export async function createTrader(name, color, pin, role = 'trader') {
   return await jsonRequest('/api/traders', {
     method: 'POST',
-    body: JSON.stringify({ name, color, pin }),
+    body: JSON.stringify({ name, color, pin, role }),
   });
 }
 

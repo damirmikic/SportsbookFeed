@@ -5,6 +5,7 @@ const SESSION_KEYS = [
   'currentTraderId',
   'currentTraderName',
   'currentTraderColor',
+  'currentTraderRole',
   'currentTraderLoggedInAt',
   'currentTraderProfile',
 ];
@@ -34,12 +35,14 @@ export function setTraderSession(trader, loggedInAt = new Date().toISOString()) 
     id: trader.id,
     name: trader.name,
     color: trader.color || '#3b82f6',
+    role: trader.role || 'trader',
     loggedInAt,
   };
 
   localStorage.setItem('currentTraderId', profile.id);
   localStorage.setItem('currentTraderName', profile.name);
   localStorage.setItem('currentTraderColor', profile.color);
+  localStorage.setItem('currentTraderRole', profile.role);
   localStorage.setItem('currentTraderLoggedInAt', profile.loggedInAt);
   localStorage.setItem('currentTraderProfile', JSON.stringify(profile));
 
@@ -52,8 +55,9 @@ export function getTraderSession() {
 
   return {
     id,
-    name: localStorage.getItem('currentTraderName') || '?',
-    color: localStorage.getItem('currentTraderColor') || '#3b82f6',
+    name:      localStorage.getItem('currentTraderName')  || '?',
+    color:     localStorage.getItem('currentTraderColor') || '#3b82f6',
+    role:      localStorage.getItem('currentTraderRole')  || 'trader',
     loggedInAt: localStorage.getItem('currentTraderLoggedInAt'),
   };
 }
