@@ -163,16 +163,28 @@ const pinToggleConfirm  = document.getElementById('pin-toggle-confirm');
 function showScreen(name) {
   Object.values(screens).forEach(s => s.classList.remove('active'));
   screens[name].classList.add('active');
-  // Reset PIN state when leaving
   if (name !== 'pin') { pinBuffer = ''; renderPinDots(); }
   if (name !== 'create') clearCreateErrors();
   if (name === 'pin') pinError.classList.add('hidden');
+
+  const orgHeader = document.getElementById('card-org-header');
+  if (orgHeader) {
+    const showHeader = (name === 'select' || name === 'pin') && !!localStorage.getItem('orgName');
+    orgHeader.classList.toggle('hidden', !showHeader);
+  }
 }
 
 // ── Operator list ─────────────────────────────────────────────────────────────
 
 function getInitial(name) {
   return name.trim().charAt(0).toUpperCase();
+}
+
+function roleBadgeHtml(role) {
+  if (role === 'owner')   return `<div class="operator-role-badge owner">Owner</div>`;
+  if (role === 'senior')  return `<div class="operator-role-badge senior">Senior</div>`;
+  if (role === 'monitor') return `<div class="operator-role-badge monitor">Monitor</div>`;
+  return `<div class="operator-meta">PIN required</div>`;
 }
 
 function renderOperatorList(list) {
@@ -188,7 +200,7 @@ function renderOperatorList(list) {
       <div class="operator-avatar" style="background:${op.color}">${getInitial(op.name)}</div>
       <div class="operator-info">
         <div class="operator-name">${op.name}</div>
-        <div class="operator-meta">PIN required</div>
+        ${roleBadgeHtml(op.role)}
       </div>
       <span class="operator-arrow">›</span>
     `;
@@ -200,8 +212,18 @@ function renderOperatorList(list) {
 function applyOrgName(orgName) {
   if (!orgName) return;
   localStorage.setItem('orgName', orgName);
-  const badge = document.getElementById('org-badge');
-  if (badge) { badge.textContent = orgName; badge.classList.remove('hidden'); }
+  const nameEl    = document.getElementById('card-org-name');
+  const monogram  = document.getElementById('card-org-monogram');
+  const header    = document.getElementById('card-org-header');
+  if (nameEl)   nameEl.textContent    = orgName;
+  if (monogram) monogram.textContent  = orgName.trim().charAt(0).toUpperCase();
+  // Show header if already on a screen that should display it
+  if (header) {
+    const active = Object.entries(screens).find(([, el]) => el.classList.contains('active'));
+    if (active && (active[0] === 'select' || active[0] === 'pin')) {
+      header.classList.remove('hidden');
+    }
+  }
 }
 
 async function loadOperators() {
@@ -454,7 +476,7 @@ setupForm.addEventListener('submit', async e => {
     setupError.textContent = err.message || 'Failed to create administrator.';
     setupError.classList.remove('hidden');
     setupSubmit.disabled = false;
-    setupBtnLabel.textContent = 'Create Administrator';
+    setupBtnLabel.textContent = 'Get Started';
     setupSpinner.classList.add('hidden');
   }
 });

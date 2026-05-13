@@ -10,92 +10,104 @@
 </head>
 <body>
 
-  <!-- Background grid decoration -->
   <div class="bg-grid" aria-hidden="true"></div>
 
   <div class="login-root">
 
-    <!-- ── Brand ── -->
-    <div class="brand">
-      <div class="brand-icon">📈</div>
-      <h1 class="brand-title">Sportsbook Feed</h1>
-      <p class="brand-sub">Trading Terminal</p>
-      <p class="org-badge hidden" id="org-badge"></p>
+    <!-- ── App identity (small, above card) ── -->
+    <div class="app-brand">
+      <span class="app-brand-icon">📈</span>
+      <span class="app-brand-name">Sportsbook Feed</span>
+      <span class="app-brand-sep">·</span>
+      <span class="app-brand-desc">Trading Terminal</span>
     </div>
 
     <!-- ══ CARD ══ -->
     <div class="card" id="login-card">
 
-      <!-- ── Screen: First Time Setup ── -->
-    <div class="screen" id="screen-setup">
-      <div class="screen-header">
-        <div class="setup-first-run-badge">FIRST TIME SETUP</div>
-        <h2>Create Administrator</h2>
-        <p>No operators found. Create the first senior administrator to get started.</p>
+      <!-- Org identity header — visible on select / pin screens once org is loaded -->
+      <div class="card-org-header hidden" id="card-org-header">
+        <div class="card-org-monogram" id="card-org-monogram">S</div>
+        <div class="card-org-info">
+          <div class="card-org-name" id="card-org-name">Organisation</div>
+          <div class="card-org-sub">Trading Terminal</div>
+        </div>
       </div>
 
-      <form class="create-form" id="setup-form" autocomplete="off">
+      <!-- ── Screen: First Time Setup ── -->
+      <div class="screen" id="screen-setup">
 
-        <div class="avatar-preview-row">
-          <div class="operator-avatar-lg" id="setup-avatar">A</div>
-          <div class="color-swatches">
-            <button type="button" class="swatch setup-swatch active" data-color="#e11d48" title="Red"></button>
-            <button type="button" class="swatch setup-swatch" data-color="#3b82f6" title="Blue"></button>
-            <button type="button" class="swatch setup-swatch" data-color="#10b981" title="Emerald"></button>
-            <button type="button" class="swatch setup-swatch" data-color="#f59e0b" title="Amber"></button>
-            <button type="button" class="swatch setup-swatch" data-color="#8b5cf6" title="Violet"></button>
-            <button type="button" class="swatch setup-swatch" data-color="#ec4899" title="Pink"></button>
+        <div class="setup-welcome">
+          <div class="setup-welcome-graphic">📈</div>
+          <h2>Set up your organisation</h2>
+          <p>Create an owner account to get started with the trading terminal</p>
+        </div>
+
+        <form class="create-form" id="setup-form" autocomplete="off">
+
+          <div class="form-section-label">Organisation</div>
+
+          <div class="field">
+            <label for="setup-org">Name</label>
+            <input type="text" id="setup-org" placeholder="e.g. Acme Sportsbook" maxlength="64" autocomplete="off" spellcheck="false">
           </div>
-        </div>
 
-        <div class="field">
-          <label for="setup-org">Organisation Name</label>
-          <input type="text" id="setup-org" placeholder="e.g. Acme Sportsbook" maxlength="64" autocomplete="off" spellcheck="false">
-        </div>
+          <div class="form-section-label form-section-label--gap">Owner Account</div>
 
-        <div class="field">
-          <label for="setup-name">Your Name <span class="field-optional">(owner account)</span></label>
-          <input type="text" id="setup-name" placeholder="e.g. Alice" maxlength="32" autocomplete="off" spellcheck="false">
-        </div>
-
-        <div class="field">
-          <label for="setup-pin">PIN <span class="field-optional">(4–6 digits)</span></label>
-          <div class="pin-input-wrap">
-            <input type="password" id="setup-pin" placeholder="••••" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password">
-            <button type="button" class="pin-toggle" id="pin-toggle-setup" aria-label="Show PIN">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-            </button>
+          <div class="avatar-preview-row">
+            <div class="operator-avatar-lg" id="setup-avatar">A</div>
+            <div class="color-swatches">
+              <button type="button" class="swatch setup-swatch active" data-color="#e11d48" title="Red"></button>
+              <button type="button" class="swatch setup-swatch" data-color="#3b82f6" title="Blue"></button>
+              <button type="button" class="swatch setup-swatch" data-color="#10b981" title="Emerald"></button>
+              <button type="button" class="swatch setup-swatch" data-color="#f59e0b" title="Amber"></button>
+              <button type="button" class="swatch setup-swatch" data-color="#8b5cf6" title="Violet"></button>
+              <button type="button" class="swatch setup-swatch" data-color="#ec4899" title="Pink"></button>
+            </div>
           </div>
-        </div>
 
-        <div class="field">
-          <label for="setup-pin-confirm">Confirm PIN</label>
-          <div class="pin-input-wrap">
-            <input type="password" id="setup-pin-confirm" placeholder="••••" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password">
-            <button type="button" class="pin-toggle" id="pin-toggle-setup-confirm" aria-label="Show PIN">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-            </button>
+          <div class="field">
+            <label for="setup-name">Your Name</label>
+            <input type="text" id="setup-name" placeholder="e.g. Alice" maxlength="32" autocomplete="off" spellcheck="false">
           </div>
-        </div>
 
-        <p class="form-error hidden" id="setup-error"></p>
+          <div class="field">
+            <label for="setup-pin">PIN <span class="field-optional">(4–6 digits)</span></label>
+            <div class="pin-input-wrap">
+              <input type="password" id="setup-pin" placeholder="••••" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password">
+              <button type="button" class="pin-toggle" id="pin-toggle-setup" aria-label="Show PIN">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
 
-        <button type="submit" class="btn-primary" id="setup-submit">
-          <span id="setup-btn-label">Create Administrator</span>
-          <div class="btn-spinner hidden" id="setup-spinner"></div>
-        </button>
+          <div class="field">
+            <label for="setup-pin-confirm">Confirm PIN</label>
+            <div class="pin-input-wrap">
+              <input type="password" id="setup-pin-confirm" placeholder="••••" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password">
+              <button type="button" class="pin-toggle" id="pin-toggle-setup-confirm" aria-label="Show PIN">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
 
-      </form>
-    </div>
+          <p class="form-error hidden" id="setup-error"></p>
 
-    <!-- ── Screen: Select Operator ── -->
+          <button type="submit" class="btn-primary" id="setup-submit">
+            <span id="setup-btn-label">Get Started</span>
+            <div class="btn-spinner hidden" id="setup-spinner"></div>
+          </button>
+
+        </form>
+      </div>
+
+      <!-- ── Screen: Select Operator ── -->
       <div class="screen active" id="screen-select">
         <div class="screen-header">
-          <h2>Select Operator</h2>
-          <p>Choose your trading profile to continue</p>
+          <h2>Sign In</h2>
+          <p>Select your trading profile to continue</p>
         </div>
 
-        <!-- Operator list (populated by JS) -->
         <div class="operator-list" id="operator-list">
           <div class="loading-row">
             <div class="mini-spinner"></div>
@@ -107,7 +119,7 @@
 
         <button class="btn-outline" id="btn-go-create">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Create new operator
+          Add operator
         </button>
       </div>
 
@@ -160,12 +172,11 @@
 
         <div class="screen-header">
           <h2>New Operator</h2>
-          <p>Create your trading profile</p>
+          <p>Create a trading profile</p>
         </div>
 
         <form class="create-form" id="create-form" autocomplete="off">
 
-          <!-- Color pick + name preview -->
           <div class="avatar-preview-row">
             <div class="operator-avatar-lg" id="create-avatar">A</div>
             <div class="color-swatches">
@@ -180,29 +191,14 @@
 
           <div class="field">
             <label for="create-name">Display Name</label>
-            <input
-              type="text"
-              id="create-name"
-              placeholder="e.g. Alice"
-              maxlength="32"
-              autocomplete="off"
-              spellcheck="false"
-            >
+            <input type="text" id="create-name" placeholder="e.g. Alice" maxlength="32" autocomplete="off" spellcheck="false">
             <span class="field-hint">Shown to all operators on the desk</span>
           </div>
 
           <div class="field">
             <label for="create-pin">PIN <span class="field-optional">(4–6 digits)</span></label>
             <div class="pin-input-wrap">
-              <input
-                type="password"
-                id="create-pin"
-                placeholder="••••"
-                maxlength="6"
-                inputmode="numeric"
-                pattern="[0-9]*"
-                autocomplete="new-password"
-              >
+              <input type="password" id="create-pin" placeholder="••••" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password">
               <button type="button" class="pin-toggle" id="pin-toggle-create" aria-label="Show PIN">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
               </button>
@@ -212,15 +208,7 @@
           <div class="field">
             <label for="create-pin-confirm">Confirm PIN</label>
             <div class="pin-input-wrap">
-              <input
-                type="password"
-                id="create-pin-confirm"
-                placeholder="••••"
-                maxlength="6"
-                inputmode="numeric"
-                pattern="[0-9]*"
-                autocomplete="new-password"
-              >
+              <input type="password" id="create-pin-confirm" placeholder="••••" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password">
               <button type="button" class="pin-toggle" id="pin-toggle-confirm" aria-label="Show PIN">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
               </button>
@@ -240,7 +228,7 @@
     </div>
     <!-- /card -->
 
-    <p class="footer-note">Internal trading desk tool · Sportsbook Feed v1.0</p>
+    <p class="footer-note">Sportsbook Feed v1.0 · Internal trading desk tool</p>
 
   </div>
 
