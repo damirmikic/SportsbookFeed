@@ -34,6 +34,30 @@
         </div>
       </div>
 
+      <!-- ── Screen: Choose Login Type (landing) ── -->
+      <div class="screen active" id="screen-landing">
+        <div class="screen-header">
+          <h2>Welcome back</h2>
+          <p>How would you like to sign in?</p>
+        </div>
+        <div class="login-type-grid">
+          <button class="login-type-card" id="btn-login-org" type="button">
+            <div class="login-type-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="15" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/><line x1="12" y1="12" x2="12" y2="17"/><line x1="9.5" y1="14.5" x2="14.5" y2="14.5"/></svg>
+            </div>
+            <div class="login-type-label">Organisation</div>
+            <div class="login-type-desc">Owner &amp; admin access</div>
+          </button>
+          <button class="login-type-card" id="btn-login-op" type="button">
+            <div class="login-type-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+            </div>
+            <div class="login-type-label">Operator</div>
+            <div class="login-type-desc">Trading desk access</div>
+          </button>
+        </div>
+      </div>
+
       <!-- ── Screen: First Time Setup ── -->
       <div class="screen" id="screen-setup">
 
@@ -102,10 +126,14 @@
       </div>
 
       <!-- ── Screen: Select Operator ── -->
-      <div class="screen active" id="screen-select">
+      <div class="screen" id="screen-select">
+        <button type="button" class="back-btn" id="select-back">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          Back
+        </button>
         <div class="screen-header">
-          <h2>Sign In</h2>
-          <p>Select your trading profile to continue</p>
+          <h2 id="select-title">Sign In</h2>
+          <p id="select-subtitle">Select your profile to continue</p>
         </div>
 
         <div class="operator-list" id="operator-list">

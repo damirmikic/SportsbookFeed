@@ -631,6 +631,60 @@ body {
   text-align: center;
 }
 
+/* ── Login type selection (landing screen) ── */
+.login-type-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.login-type-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 1.5rem 1rem;
+  background: var(--surface-2);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-family: var(--font);
+  color: var(--text);
+  transition: border-color 0.15s, background 0.15s, transform 0.12s;
+  text-align: center;
+}
+
+.login-type-card:hover {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  transform: translateY(-2px);
+}
+
+.login-type-card:active { transform: translateY(0); }
+
+.login-type-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-sm);
+  background: rgba(16,185,129,0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.login-type-label {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.login-type-desc {
+  font-size: 0.75rem;
+  color: var(--text-sec);
+  line-height: 1.4;
+}
+
 /* ── Responsive ── */
 @media (max-width: 480px) {
   .login-root { padding: 1rem; gap: 1.25rem; }

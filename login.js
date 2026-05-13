@@ -115,18 +115,20 @@ async function verifyPin(id, pin) {
 
 // ── State ──────────────────────────────────────────────────────────────────────
 
-let operators   = [];  // full list loaded from backend
-let selectedOp  = null; // operator the user clicked
-let pinBuffer   = '';   // digits entered on the numpad
+let operators   = [];       // full list loaded from backend
+let selectedOp  = null;     // operator the user clicked
+let pinBuffer   = '';       // digits entered on the numpad
+let loginPath   = 'op';     // 'org' | 'op' — which type was chosen on landing
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 
 const card       = document.getElementById('login-card');
 const screens    = {
-  setup:  document.getElementById('screen-setup'),
-  select: document.getElementById('screen-select'),
-  pin:    document.getElementById('screen-pin'),
-  create: document.getElementById('screen-create'),
+  landing: document.getElementById('screen-landing'),
+  setup:   document.getElementById('screen-setup'),
+  select:  document.getElementById('screen-select'),
+  pin:     document.getElementById('screen-pin'),
+  create:  document.getElementById('screen-create'),
 };
 
 // select screen
@@ -169,7 +171,7 @@ function showScreen(name) {
 
   const orgHeader = document.getElementById('card-org-header');
   if (orgHeader) {
-    const showHeader = (name === 'select' || name === 'pin') && !!localStorage.getItem('orgName');
+    const showHeader = (name === 'landing' || name === 'select' || name === 'pin') && !!localStorage.getItem('orgName');
     orgHeader.classList.toggle('hidden', !showHeader);
   }
 }
@@ -226,6 +228,28 @@ function applyOrgName(orgName) {
   }
 }
 
+function renderFilteredOperators() {
+  const filtered = loginPath === 'org'
+    ? operators.filter(o => o.role === 'owner')
+    : operators.filter(o => o.role !== 'owner');
+  renderOperatorList(filtered);
+}
+
+function openLoginPath(path) {
+  loginPath = path;
+  const titleEl    = document.getElementById('select-title');
+  const subtitleEl = document.getElementById('select-subtitle');
+  if (path === 'org') {
+    if (titleEl)    titleEl.textContent    = 'Organisation Login';
+    if (subtitleEl) subtitleEl.textContent = 'Select an owner account to continue';
+  } else {
+    if (titleEl)    titleEl.textContent    = 'Operator Login';
+    if (subtitleEl) subtitleEl.textContent = 'Select your trading profile to continue';
+  }
+  renderFilteredOperators();
+  showScreen('select');
+}
+
 async function loadOperators() {
   try {
     const res = await fetchTraders();
@@ -235,9 +259,11 @@ async function loadOperators() {
       showScreen('setup');
       return;
     }
-    renderOperatorList(operators);
+    showScreen('landing');
   } catch (e) {
-    operatorList.innerHTML = `<div class="empty-operators" style="color:#f87171">Failed to load operators.<br>${e.message}</div>`;
+    showScreen('landing');
+    const grid = document.querySelector('.login-type-grid');
+    if (grid) grid.insertAdjacentHTML('beforebegin', `<p class="form-error" style="text-align:center">Failed to load — ${e.message}</p>`);
   }
 }
 
@@ -322,6 +348,12 @@ document.addEventListener('keydown', e => {
 });
 
 pinBack.addEventListener('click', () => showScreen('select'));
+
+// ── Landing screen ────────────────────────────────────────────────────────────
+
+document.getElementById('btn-login-org').addEventListener('click', () => openLoginPath('org'));
+document.getElementById('btn-login-op').addEventListener('click',  () => openLoginPath('op'));
+document.getElementById('select-back').addEventListener('click',   () => showScreen('landing'));
 
 // ── Create screen ─────────────────────────────────────────────────────────────
 
