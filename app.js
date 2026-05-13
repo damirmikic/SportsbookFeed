@@ -159,6 +159,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   scheduleSessionExpiry(traderSession);
 
+  // Show org name in header
+  const orgName = localStorage.getItem('orgName');
+  if (orgName) {
+    const orgEl = document.getElementById('org-name');
+    if (orgEl) orgEl.textContent = orgName;
+  }
+
   // Show active operator chip in header
   const traderName = traderSession.name;
   const traderColor = traderSession.color;

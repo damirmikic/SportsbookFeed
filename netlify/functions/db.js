@@ -139,6 +139,11 @@ const SCHEMA = `
 
   CREATE INDEX IF NOT EXISTS idx_trader_presence_last_seen
     ON trader_presence (last_seen);
+
+  CREATE TABLE IF NOT EXISTS app_config (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
 `;
 
 async function initSchema(db) {

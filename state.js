@@ -217,10 +217,11 @@ export function getCurrentTrader() {
 
 export function canDo(permission) {
   const role = state.currentTraderProfile?.role || 'trader';
+  if (role === 'owner') return true;
   if (permission === 'set-override') return role === 'trader' || role === 'senior';
   if (permission === 'manage-leagues') return role === 'senior';
   if (permission === 'manage-templates') return role === 'senior';
-  if (permission === 'manage-traders') return role === 'senior';
+  if (permission === 'manage-traders') return false; // owner-only
   return false;
 }
 
