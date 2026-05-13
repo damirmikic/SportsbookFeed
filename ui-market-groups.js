@@ -1068,21 +1068,30 @@ function getModelPriceForSpecial(marketName, selectionLabel, lambdaData, homeTea
     return prob > 0 ? (1 / prob).toFixed(3) : null;
   }
 
-  if (n.includes('goals')) {
-    const goalCount = parseInt(label);
-    if (!isNaN(goalCount) && !n.includes('over/under') && !n.includes('asian') && !label.includes('-')) {
-      const isHomeMarket = n.includes('home') || (homeTeam && n.includes(homeTeam.toLowerCase()));
-      const isAwayMarket = n.includes('away') || (awayTeam && n.includes(awayTeam.toLowerCase()));
-      const isPlus = label.includes('+');
-      let prob = 0;
-      grid.forEach(({ home, away, prob: p }) => {
-        let val = home + away;
-        if (isHomeMarket && !isAwayMarket) val = home;
-        else if (isAwayMarket && !isHomeMarket) val = away;
-        if (isPlus) { if (val >= goalCount) prob += p; }
-        else        { if (val === goalCount) prob += p; }
-      });
-      return prob > 0 ? (1 / prob).toFixed(3) : null;
+  if (n.includes('goals') && !n.includes('over/under') && !n.includes('asian')) {
+    const isHomeMarket = n.includes('home') || (homeTeam && n.includes(homeTeam.toLowerCase()));
+    const isAwayMarket = n.includes('away') || (awayTeam && n.includes(awayTeam.toLowerCase()));
+    const getVal = (home, away) => (isHomeMarket && !isAwayMarket) ? home : (isAwayMarket && !isHomeMarket) ? away : home + away;
+
+    if (label.includes('-')) {
+      const parts = label.split('-').map(s => parseInt(s.trim()));
+      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        let prob = 0;
+        grid.forEach(({ home, away, prob: p }) => { const v = getVal(home, away); if (v >= parts[0] && v <= parts[1]) prob += p; });
+        return prob > 0 ? (1 / prob).toFixed(3) : null;
+      }
+    } else {
+      const goalCount = parseInt(label);
+      if (!isNaN(goalCount)) {
+        const isPlus = label.includes('+');
+        let prob = 0;
+        grid.forEach(({ home, away, prob: p }) => {
+          const v = getVal(home, away);
+          if (isPlus) { if (v >= goalCount) prob += p; }
+          else        { if (v === goalCount) prob += p; }
+        });
+        return prob > 0 ? (1 / prob).toFixed(3) : null;
+      }
     }
   }
 
@@ -1101,16 +1110,19 @@ function getModelPriceForSpecial(marketName, selectionLabel, lambdaData, homeTea
   }
 
   if (n.includes('goals range') || n.includes('total goals range')) {
+    const isHomeRange = n.includes('home') || (homeTeam && n.includes(homeTeam.toLowerCase()));
+    const isAwayRange = n.includes('away') || (awayTeam && n.includes(awayTeam.toLowerCase()));
+    const getRangeVal = (home, away) => (isHomeRange && !isAwayRange) ? home : (isAwayRange && !isHomeRange) ? away : home + away;
     let prob = 0;
     if (label.includes('+')) {
       const minVal = parseInt(label);
-      grid.forEach(({ home, away, prob: p }) => { if ((home + away) >= minVal) prob += p; });
+      grid.forEach(({ home, away, prob: p }) => { if (getRangeVal(home, away) >= minVal) prob += p; });
     } else if (label.includes('-')) {
       const parts = label.split('-').map(p => parseInt(p.trim()));
       if (parts.length === 2) {
         grid.forEach(({ home, away, prob: p }) => {
-          const total = home + away;
-          if (total >= parts[0] && total <= parts[1]) prob += p;
+          const v = getRangeVal(home, away);
+          if (v >= parts[0] && v <= parts[1]) prob += p;
         });
       }
     }
