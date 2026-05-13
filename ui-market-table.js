@@ -282,7 +282,27 @@ export function renderMarketTable(market) {
     wrapper.appendChild(banner);
   }
 
-  const DRAWER_TO_TPL_ID = { ml: '1x2', hdp: 'asian_hcp', ou: 'ou25' };
+  const DRAWER_TO_TPL_ID = {
+    ml: '1x2', dc: 'dc', dnb: 'dnb',
+    hdp: 'asian_hcp', ou: 'ou25',
+    '3way_hdp_-3': '3way_hdp', '3way_hdp_-2': '3way_hdp', '3way_hdp_-1': '3way_hdp',
+    '3way_hdp_0': '3way_hdp', '3way_hdp_1': '3way_hdp', '3way_hdp_2': '3way_hdp', '3way_hdp_3': '3way_hdp',
+    tt_home: 'team_total', tt_away: 'team_total',
+    home_multigoals: 'team_multigoals', away_multigoals: 'team_multigoals',
+    h1_ml: 'h1_1x2', h1_tt_home: 'h1_team_total', h1_tt_away: 'h1_team_total',
+    h1_result_ou_15: 'h1_result_ou', h1_result_ou_25: 'h1_result_ou',
+    h1_dc_total_05: 'h1_dc_total', h1_dc_total_15: 'h1_dc_total', h1_dc_total_25: 'h1_dc_total',
+    h2_ml: 'h2_1x2', h2_tt_home: 'h2_team_total', h2_tt_away: 'h2_team_total',
+    corner_tt_home: 'corner_team_total', corner_tt_away: 'corner_team_total',
+    booking_tt_home: 'booking_team_total', booking_tt_away: 'booking_team_total',
+    home_score_both_halves: 'score_both_halves', away_score_both_halves: 'score_both_halves',
+    home_win_both_halves: 'win_both_halves', away_win_both_halves: 'win_both_halves',
+    home_win_either_half: 'win_either_half', away_win_either_half: 'win_either_half',
+    dc_total_15: 'dc_total', dc_total_25: 'dc_total', dc_total_35: 'dc_total',
+    home_or_btts: 'result_or_btts', away_or_btts: 'result_or_btts',
+    home_or_over25: 'result_or_over25', away_or_over25: 'result_or_over25',
+    htft_total_15: 'htft_total', htft_total_25: 'htft_total', htft_total_35: 'htft_total',
+  };
   const tplMarketId = DRAWER_TO_TPL_ID[market.id] ?? market.id;
 
   const drawerEvent  = state.activeEvents.find(e => e.id.toString() === state.drawerEventId?.toString());

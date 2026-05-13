@@ -9,17 +9,66 @@ import { getTeamNames } from './utils.js';
 
 // Maps drawer market IDs to MARKET_DEFS template IDs for template-assignment indicators
 const DRAWER_TO_TPL_ID = {
-  'ml':          '1x2',
+  // Match Result
+  'ml':  '1x2',
+  'dc':  'dc',
+  'dnb': 'dnb',
+  // Handicap
   'hdp':         'asian_hcp',
-  'ou':          'ou25',
-  'btts':        'btts',
-  'btts_ou':     'btts_ou',
-  'cs':          'cs',
-  'dc':          'dc',
-  'dnb':         'dnb',
-  'exact_goals': 'exact_goals',
-  'win_nil':     'win_nil',
-  'htft':        'htft',
+  '3way_hdp_-3': '3way_hdp', '3way_hdp_-2': '3way_hdp', '3way_hdp_-1': '3way_hdp',
+  '3way_hdp_0':  '3way_hdp',
+  '3way_hdp_1':  '3way_hdp', '3way_hdp_2':  '3way_hdp', '3way_hdp_3':  '3way_hdp',
+  // Totals
+  'ou': 'ou25',
+  // Goals
+  'btts':             'btts',
+  'btts_ou':          'btts_ou',
+  'cs':               'cs',
+  'exact_goals':      'exact_goals',
+  'win_nil':          'win_nil',
+  'goal_both_halves': 'goal_both_halves',
+  'both_halves_over15':  'both_halves_over15',
+  'both_halves_under15': 'both_halves_under15',
+  'h1h2_btts':        'h1h2_btts',
+  // Team Goals
+  'tt_home':         'team_total',      'tt_away':         'team_total',
+  'home_multigoals': 'team_multigoals', 'away_multigoals': 'team_multigoals',
+  // 1st Half
+  'h1_ml':           'h1_1x2',
+  'h1_ou':           'h1_ou',
+  'h1_tt_home':      'h1_team_total',   'h1_tt_away':      'h1_team_total',
+  'h1_btts':         'h1_btts',
+  'h1_result_btts':  'h1_result_btts',
+  'h1_result_ou_15': 'h1_result_ou',    'h1_result_ou_25': 'h1_result_ou',
+  'h1_dc_total_05':  'h1_dc_total',     'h1_dc_total_15':  'h1_dc_total',     'h1_dc_total_25': 'h1_dc_total',
+  // 2nd Half
+  'h2_ml':      'h2_1x2',
+  'h2_ou':      'h2_ou',
+  'h2_tt_home': 'h2_team_total',        'h2_tt_away': 'h2_team_total',
+  // Corners
+  'corner_ou':      'corner_ou',
+  'corner_hdp':     'corner_hdp',
+  'corner_tt_home': 'corner_team_total', 'corner_tt_away': 'corner_team_total',
+  'h1_corner_ou':   'h1_corner_ou',
+  'h1_corner_hdp':  'h1_corner_hdp',
+  // Bookings
+  'booking_ou':      'booking_ou',
+  'booking_hdp':     'booking_hdp',
+  'booking_tt_home': 'booking_team_total', 'booking_tt_away': 'booking_team_total',
+  'h1_booking_ou':   'h1_booking_ou',
+  'h1_booking_hdp':  'h1_booking_hdp',
+  // Team Props
+  'home_score_both_halves': 'score_both_halves', 'away_score_both_halves': 'score_both_halves',
+  'home_win_both_halves':   'win_both_halves',   'away_win_both_halves':   'win_both_halves',
+  'home_win_either_half':   'win_either_half',   'away_win_either_half':   'win_either_half',
+  // Specials
+  'htft':          'htft',
+  'dc_total_15':   'dc_total',    'dc_total_25':   'dc_total',    'dc_total_35':   'dc_total',
+  'dc_btts':       'dc_btts',
+  'home_or_btts':  'result_or_btts',  'away_or_btts':  'result_or_btts',
+  'home_or_over25':'result_or_over25','away_or_over25':'result_or_over25',
+  'htft_total_15': 'htft_total',  'htft_total_25': 'htft_total',  'htft_total_35': 'htft_total',
+  'h1_or_ft':      'h1_or_ft',
 };
 
 // Mirrors computeOffer logic: returns true if at least one row would produce a price.
