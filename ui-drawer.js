@@ -274,6 +274,8 @@ export async function renderDrawerMarkets(event) {
     state.activeMarketId = activeGroup[0].id;
   }
 
+  let mainContentRef = null;
+
   activeGroup.forEach(market => {
     const btn = document.createElement('button');
 
@@ -292,7 +294,13 @@ export async function renderDrawerMarkets(event) {
       : `<span>${market.name}</span>`;
     btn.onclick = () => {
       state.activeMarketId = market.id;
-      renderDrawerMarkets(event);
+      leftNav.querySelectorAll('.left-tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const newContent = document.createElement('div');
+      newContent.className = 'drawer-main-content';
+      newContent.appendChild(renderMarketTable(market));
+      if (mainContentRef) mainContentRef.replaceWith(newContent);
+      mainContentRef = newContent;
     };
     leftNav.appendChild(btn);
   });
@@ -300,6 +308,7 @@ export async function renderDrawerMarkets(event) {
 
   const mainContent   = document.createElement('div');
   mainContent.className = 'drawer-main-content';
+  mainContentRef = mainContent;
   const activeMarket  = activeGroup.find(m => m.id === state.activeMarketId);
   if (activeMarket) {
     mainContent.appendChild(renderMarketTable(activeMarket));
