@@ -81,7 +81,7 @@ function refreshAdminOverviewIfVisible() {
 }
 
 async function updateTraderPresence() {
-  if (!state.currentTraderId) return;
+  if (!state.currentTraderId || state.currentTraderId === 'default-trader') return;
   try {
     await pushTraderPresence(state.currentTraderId, state.currentLeagueCode, state.currentLeagueName);
   } catch (error) {

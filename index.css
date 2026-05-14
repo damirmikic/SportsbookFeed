@@ -4589,6 +4589,35 @@ button.dtpl-name-link:hover { color: var(--accent-color); }
   cursor: pointer;
 }
 
+/* ── Shared button utilities (used in admin panels) ─────────── */
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  padding: 0.5rem 1rem; background: var(--accent-color, #3b82f6);
+  border: none; border-radius: 6px; color: #fff;
+  font-size: 0.875rem; font-weight: 600; cursor: pointer;
+  transition: opacity 0.15s;
+}
+.btn-primary:hover    { opacity: 0.88; }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-secondary {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  padding: 0.5rem 1rem; background: var(--bg-secondary);
+  border: 1px solid var(--border-color); border-radius: 6px;
+  color: var(--text-primary); font-size: 0.875rem; font-weight: 500; cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-secondary:hover { background: var(--bg-tertiary, var(--bg-primary)); }
+
+.btn-ghost {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  padding: 0.4rem 0.75rem; background: transparent;
+  border: 1px solid var(--border-color); border-radius: 6px;
+  color: var(--text-secondary); font-size: 0.875rem; cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.btn-ghost:hover { background: var(--bg-secondary); color: var(--text-primary); }
+
 /* ── Custom Leagues admin panel ──────────────────────────────── */
 .ml-panel { padding: 1.5rem; max-width: 860px; }
 .ml-panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; }
