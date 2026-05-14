@@ -216,14 +216,8 @@ export function getCurrentTrader() {
   return state.currentTraderProfile;
 }
 
-export function canDo(permission) {
-  const role = state.currentTraderProfile?.role || 'trader';
-  if (role === 'owner') return true;
-  if (permission === 'set-override') return role === 'trader' || role === 'senior';
-  if (permission === 'manage-leagues') return role === 'senior';
-  if (permission === 'manage-templates') return role === 'senior';
-  if (permission === 'manage-traders') return false; // owner-only
-  return false;
+export function canDo(_permission) {
+  return true;
 }
 
 export function isManualLeague(code) {

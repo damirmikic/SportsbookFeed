@@ -5,7 +5,7 @@ import { renderAdminPanel, renderOperatorsPanel } from './admin.js';
 import { renderTemplatesSection, openTemplateById } from './templates-admin.js';
 import { renderAuditPanel } from './audit-admin.js';
 import { renderManualLeaguesPanel } from './manual-leagues-admin.js';
-import { clearTraderSession, getSessionExpiresAt, getValidTraderSession } from './auth-session.js';
+import { clearTraderSession, getSessionExpiresAt, getValidTraderSession, setTraderSession } from './auth-session.js';
 
 let refreshInterval = null;
 let sessionExpiryTimer = null;
@@ -156,11 +156,11 @@ function switchView(view) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-  // Guard: redirect to login if no operator is signed in or the session expired.
-  const traderSession = getValidTraderSession();
+  // Auto-create a default session if none exists (login is disabled).
+  let traderSession = getValidTraderSession();
   if (!traderSession) {
-    window.location.replace('login.html');
-    return;
+    traderSession = { id: 'default-trader', name: 'Trader', color: '#3b82f6', role: 'owner' };
+    setTraderSession(traderSession);
   }
   scheduleSessionExpiry(traderSession);
 
@@ -171,31 +171,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (orgEl) orgEl.textContent = orgName;
   }
 
-  // Show Operators admin tab only for owners
-  if (canDo('manage-traders')) {
-    const operatorsBtn = document.querySelector('[data-section="operators"]');
-    if (operatorsBtn) operatorsBtn.classList.remove('hidden');
-  }
+  // Show Operators admin tab (all users have access)
+  const operatorsBtn = document.querySelector('[data-section="operators"]');
+  if (operatorsBtn) operatorsBtn.classList.remove('hidden');
 
-  // Show active operator chip in header
-  const traderName = traderSession.name;
+  // Show active operator chip in header (role badge hidden)
+  const traderName  = traderSession.name;
   const traderColor = traderSession.color;
   const chip = document.getElementById('trader-chip');
   if (chip) {
     chip.querySelector('.trader-chip-dot').style.background = traderColor;
     chip.querySelector('.trader-chip-name').textContent = traderName;
-    const roleEl = chip.querySelector('.trader-chip-role');
-    if (roleEl) {
-      const role = traderSession.role || 'trader';
-      roleEl.textContent = role.charAt(0).toUpperCase() + role.slice(1);
-      roleEl.dataset.role = role;
-    }
-    chip.addEventListener('click', () => {
-      if (confirm(`Sign out as ${traderName}?`)) {
-        clearTraderSession();
-        window.location.replace('login.html');
-      }
-    });
+    chip.querySelector('.trader-chip-role')?.classList.add('hidden');
   }
 
   const leagueSearchInput = document.getElementById('league-search');

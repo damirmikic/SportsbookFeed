@@ -537,9 +537,8 @@ setupBack.addEventListener('click', () => { setupBack.classList.add('hidden'); s
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
-// If operator is already logged in, skip login page
-if (getValidTraderSession()) {
-  window.location.replace('index.html');
-} else {
-  loadOperators();
+// Login disabled — redirect straight to the app with a default session.
+if (!getValidTraderSession()) {
+  setTraderSession({ id: 'default-trader', name: 'Trader', color: '#3b82f6', role: 'owner' });
 }
+window.location.replace('index.html');
