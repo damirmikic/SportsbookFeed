@@ -460,7 +460,6 @@ btnGoCreate.addEventListener('click', () => {
 });
 
 createBack.addEventListener('click', () => showScreen('select'));
-setupBack.addEventListener('click', () => { setupBack.classList.add('hidden'); showScreen('select'); });
 
 // ── Setup screen (first-run: create senior administrator) ─────────────────────
 
@@ -533,6 +532,8 @@ setupForm.addEventListener('submit', async e => {
     setupSpinner.classList.add('hidden');
   }
 });
+
+setupBack.addEventListener('click', () => { setupBack.classList.add('hidden'); showScreen('select'); });
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
