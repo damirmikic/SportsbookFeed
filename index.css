@@ -245,6 +245,17 @@ body {
   border-color: var(--accent-color);
 }
 
+.search-team-hint {
+  font-size: 0.72rem;
+  color: var(--accent-color);
+  background: var(--accent-glow);
+  border: 1px solid var(--accent-color);
+  border-radius: var(--radius-sm);
+  padding: 0.3rem 0.6rem;
+  margin-bottom: 0.5rem;
+  letter-spacing: 0.2px;
+}
+
 .favorites-section {
   max-height: 150px;
   overflow-y: auto;

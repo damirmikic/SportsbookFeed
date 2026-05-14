@@ -1,15 +1,29 @@
 import { state, toggleFavorite, toggleGroup } from './state.js';
 import { loadOdds } from './ui-board.js';
 
+function leagueMatchesTerm(league, term) {
+  const fullName = (league.name || league.leagueName || '').toLowerCase();
+  if (fullName.includes(term)) return true;
+  // Also match the country part and league-name part independently
+  if (fullName.includes(' - ')) {
+    const [country, leaguePart] = fullName.split(' - ');
+    if (country.includes(term) || leaguePart.includes(term)) return true;
+  }
+  return false;
+}
+
 export function renderLeagues(leaguesToRender) {
   const leaguesContainer   = document.getElementById('leagues-container');
   const favoritesContainer = document.getElementById('favorites-container');
   const leagueSearchInput  = document.getElementById('league-search');
 
-  const searchTerm = (leagueSearchInput.value || '').toLowerCase();
-  const filtered   = leaguesToRender.filter(league =>
-    (league.name || league.leagueName || '').toLowerCase().includes(searchTerm)
-  );
+  const searchTerm    = (leagueSearchInput.value || '').toLowerCase().trim();
+  const leagueMatches = searchTerm
+    ? leaguesToRender.filter(l => leagueMatchesTerm(l, searchTerm))
+    : leaguesToRender;
+  // If nothing matches by league/country name the user is probably searching for a team in the
+  // board. Keep the full sidebar visible so they can still navigate.
+  const filtered = leagueMatches.length > 0 ? leagueMatches : leaguesToRender;
 
   leaguesContainer.innerHTML   = '';
   favoritesContainer.innerHTML = '';
@@ -37,10 +51,23 @@ export function renderLeagues(leaguesToRender) {
   });
 
   const sortedCountries = Object.keys(groups).sort();
+  const teamSearch = searchTerm && leagueMatches.length === 0;
   sortedCountries.forEach(country => {
-    const isExpanded = state.expandedGroups.includes(country) || (searchTerm !== '');
+    // Expand when: searching by league/country, or when there's an active league in this group
+    const hasActiveLeague = groups[country].some(l =>
+      (l.code || l.leagueCode || l.id) === state.currentLeagueCode
+    );
+    const isExpanded = state.expandedGroups.includes(country)
+      || (searchTerm !== '' && !teamSearch)
+      || hasActiveLeague;
     leaguesContainer.appendChild(createLeagueGroup(country, groups[country], isExpanded));
   });
+
+  if (teamSearch) {
+    leaguesContainer.insertAdjacentHTML('afterbegin',
+      `<div class="search-team-hint">Filtering board by team — select a league to narrow down</div>`
+    );
+  }
 }
 
 function createLeagueGroup(country, leagues, isExpanded) {

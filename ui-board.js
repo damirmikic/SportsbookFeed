@@ -343,9 +343,11 @@ function eventMatchesSearch(event, term) {
   const away = (event.away || event.awayTeam?.name || '').toLowerCase();
   if (home.includes(term) || away.includes(term)) return true;
   if (event.participants) {
-    return event.participants.some(p => (p.name || p.englishName || '').toLowerCase().includes(term));
+    if (event.participants.some(p => (p.name || p.englishName || '').toLowerCase().includes(term))) return true;
   }
-  return false;
+  // Fallback: event title / name fields (some sources carry these)
+  const title = (event.name || event.eventName || event.matchName || '').toLowerCase();
+  return title.includes(term);
 }
 
 function renderEventTable(eventsToRender, { alertMoves = false } = {}) {
