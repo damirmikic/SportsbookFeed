@@ -226,9 +226,11 @@ export function dcAsianTeamTotalOdds(grid, line, isOver, isAway = false) {
 // ρ seed: analytical formula from draw-probability discrepancy.
 //   pD_dc = pD_poisson - ρ*(P00*λh*λa + P11)  →  ρ = (pD_poisson - pD) / (P00*λh*λa + P11)
 function warmStart(pH, pD, pA, ouLines) {
-  // Pick the OU line closest to 2.5 for total goals estimation
+  // Pick the OU line at the market's information center (Shin-fair pOver
+  // closest to 0.5) for total-goals estimation. Anchoring to 2.5 puts the
+  // binary search far outside the consensus for high-total matches.
   const ref = ouLines.length
-    ? ouLines.reduce((b, o) => Math.abs(o.line - 2.5) < Math.abs(b.line - 2.5) ? o : b)
+    ? ouLines.reduce((b, o) => Math.abs(o.pOver - 0.5) < Math.abs(b.pOver - 0.5) ? o : b)
     : null;
 
   let lTotal = 2.5;
@@ -306,6 +308,9 @@ function solverLoss(params, pH, pD, pA, ouLines, hcpSpread, hcpPHome, maxG) {
     else pA_m += prob;
   }
 
+  // 1x2 contributes 3 squared terms; up-weight OU and HCP by 3× so totals
+  // and spread carry comparable weight to result in the joint loss.
+  const W_OU = 3, W_HCP = 3;
   let loss = (pH_m - pH) ** 2 + (pD_m - pD) ** 2 + (pA_m - pA) ** 2;
 
   for (const { line, pOver } of ouLines) {
@@ -313,12 +318,12 @@ function solverLoss(params, pH, pD, pA, ouLines, hcpSpread, hcpPHome, maxG) {
     for (const { home, away, prob } of grid) {
       if (home + away > line) pOver_m += prob;
     }
-    loss += (pOver_m - pOver) ** 2;
+    loss += W_OU * (pOver_m - pOver) ** 2;
   }
 
   if (hcpSpread !== null && hcpPHome !== null) {
     const hcpOdds = dcAsianHandicapOdds(grid, hcpSpread, false);
-    if (hcpOdds !== null && hcpOdds > 1) loss += (1 / hcpOdds - hcpPHome) ** 2;
+    if (hcpOdds !== null && hcpOdds > 1) loss += W_HCP * (1 / hcpOdds - hcpPHome) ** 2;
   }
   return loss;
 }
@@ -477,22 +482,34 @@ export function calculateTeamLambdas(matchPeriod, h1Period) {
   const s = pH + pD + pA;
   pH /= s; pD /= s; pA /= s;
 
-  // Collect OU 1.5, 2.5, 3.5 — deduped by actual line value to avoid double-counting.
+  // Pick OU lines centered on the market consensus (Shin-fair pOver closest
+  // to 0.5), then ±1 and ±2 around it. Hardcoded 1.5/2.5/3.5 collapses to a
+  // single line for high-total matches whose available lines start at 3.5+,
+  // leaving the upper tail unconstrained.
   const ouLines = [];
   if (Array.isArray(matchPeriod.overUnder) && matchPeriod.overUnder.length > 0) {
-    const seen = new Set();
-    for (const target of [1.5, 2.5, 3.5]) {
-      const ou = matchPeriod.overUnder.find(o => parseFloat(o.points) === target)
-        ?? matchPeriod.overUnder.reduce((b, o) =>
-          Math.abs(parseFloat(o.points) - target) < Math.abs(parseFloat(b.points) - target) ? o : b
-        );
-      if (!ou) continue;
+    const byLine = new Map();
+    for (const ou of matchPeriod.overUnder) {
+      if (ou.unavailable || ou.offline) continue;
       const line = parseFloat(ou.points);
-      if (seen.has(line)) continue;
-      seen.add(line);
+      if (isNaN(line) || byLine.has(line)) continue;
       const fair = calculateShinNoVig([ou.overOdds, ou.underOdds]);
       const fOver = parseFloat(fair[0]);
-      if (!isNaN(fOver) && fOver > 1) ouLines.push({ line, pOver: 1 / fOver });
+      if (isNaN(fOver) || fOver <= 1) continue;
+      byLine.set(line, { line, pOver: 1 / fOver });
+    }
+    const sorted = [...byLine.values()].sort((a, b) => a.line - b.line);
+    if (sorted.length) {
+      let centerIdx = 0;
+      for (let i = 1; i < sorted.length; i++) {
+        if (Math.abs(sorted[i].pOver - 0.5) < Math.abs(sorted[centerIdx].pOver - 0.5)) {
+          centerIdx = i;
+        }
+      }
+      for (const offset of [-2, -1, 0, 1, 2]) {
+        const idx = centerIdx + offset;
+        if (idx >= 0 && idx < sorted.length) ouLines.push(sorted[idx]);
+      }
     }
   }
 
