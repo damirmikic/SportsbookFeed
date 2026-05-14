@@ -302,6 +302,8 @@ export async function loadOdds(leagueCode, silent = false) {
       const rows = await fetchManualEvents(leagueCode);
       const events = rows.map(formatManualEvent);
       state.activeEvents = events;
+      const _mlName = state.allLeagues.find(l => (l.code || l.leagueCode || l.id) === String(leagueCode))?.name || String(leagueCode);
+      state.eventCache[leagueCode] = { leagueName: _mlName, events };
       document.dispatchEvent(new CustomEvent('odds:loaded', { detail: { count: events.length } }));
       renderOdds({ events }, { alertMoves: false });
       processOverrideExpiries(evaluateOverrides(state.activeEvents));
@@ -350,7 +352,7 @@ function eventMatchesSearch(event, term) {
   return title.includes(term);
 }
 
-function renderEventTable(eventsToRender, { alertMoves = false } = {}) {
+function renderEventTable(eventsToRender, { alertMoves = false, crossLeague = false } = {}) {
   const oddsContainer = document.getElementById('odds-container');
 
   if (!eventsToRender.length) {
@@ -505,10 +507,14 @@ function renderEventTable(eventsToRender, { alertMoves = false } = {}) {
     const suspBadge = anySusp && !evtSuspended ? '<span class="susp-badge">SUSP</span>' : '';
     const rowClass  = [isManual ? 'manual-row' : '', evtSuspended ? 'event-suspended' : '', hasMoveAlert ? 'move-alert-row' : ''].filter(Boolean).join(' ');
     const matchName = `${homeTeam} vs ${awayTeam}`;
+    const leagueAttr = event._leagueCode ? `data-league-code="${escapeAttr(event._leagueCode)}" data-league-name="${escapeAttr(event._leagueName || '')}"` : '';
+    const leagueBadge = crossLeague && event._leagueName
+      ? `<span class="cross-league-badge">${escapeAttr(event._leagueName)}</span>` : '';
 
-    html += `<tr data-event-id="${event.id}" data-match-name="${escapeAttr(matchName)}" class="${rowClass}" tabindex="0">
+    html += `<tr data-event-id="${event.id}" data-match-name="${escapeAttr(matchName)}" ${leagueAttr} class="${rowClass}" tabindex="0">
       <td>
         <div class="match-time">${time}${manualBadge}${suspBadge}</div>
+        ${leagueBadge}
         <div class="match-teams">${homeTeam} vs ${awayTeam}</div>
       </td>
       <td class="${mlSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${m1 ? ' manual-price' : t1}" data-history-market="moneyline" data-history-side="home" data-history-label="${escapeAttr(homeTeam)}">${evtSuspended || mlSuspended ? 'SUSP' : odds1}${!m1 && t1 === ' price-up' ? ' ▲' : !m1 && t1 === ' price-down' ? ' ▼' : ''}</button></td>
@@ -525,9 +531,19 @@ function renderEventTable(eventsToRender, { alertMoves = false } = {}) {
   installKeyboardShortcuts();
 
   oddsContainer.querySelectorAll('tr[data-event-id]').forEach(tr => {
-    tr.addEventListener('click', () => {
-      setFocusedEventRow(tr.getAttribute('data-event-id'), { scroll: false });
-      openDrawer(tr.getAttribute('data-event-id'));
+    tr.addEventListener('click', async () => {
+      const eventId = tr.getAttribute('data-event-id');
+      const leagueCode = tr.dataset.leagueCode;
+      if (leagueCode && leagueCode !== String(state.currentLeagueCode)) {
+        state.currentLeagueCode = leagueCode;
+        const leagueName = tr.dataset.leagueName || leagueCode;
+        document.getElementById('current-league').textContent = `– ${leagueName}`;
+        document.querySelectorAll('.league-item').forEach(i => i.classList.remove('active'));
+        document.querySelector(`.league-item[data-league-code="${leagueCode}"]`)?.classList.add('active');
+        await loadOdds(leagueCode);
+      }
+      setFocusedEventRow(eventId, { scroll: false });
+      openDrawer(eventId);
     });
     tr.addEventListener('focus', () => setFocusedEventRow(tr.getAttribute('data-event-id'), { scroll: false, focus: false }));
   });
@@ -561,6 +577,10 @@ export function renderOdds(data, options = {}) {
     events = data.events || data.matches || (Array.isArray(data) ? data : []);
   }
   state.activeEvents = events;
+  if (state.currentLeagueCode) {
+    const _ln = state.allLeagues.find(l => (l.code || l.leagueCode || l.id) === String(state.currentLeagueCode))?.name || String(state.currentLeagueCode);
+    state.eventCache[state.currentLeagueCode] = { leagueName: _ln, events };
+  }
   document.dispatchEvent(new CustomEvent('odds:loaded', { detail: { count: events.length } }));
 
   const matchTerm = (document.getElementById('league-search')?.value || '').toLowerCase().trim();
@@ -568,7 +588,26 @@ export function renderOdds(data, options = {}) {
 }
 
 export function filterAndRenderBoard() {
-  if (!state.activeEvents.length) return;
-  const matchTerm = (document.getElementById('league-search')?.value || '').toLowerCase().trim();
-  renderEventTable(matchTerm ? state.activeEvents.filter(ev => eventMatchesSearch(ev, matchTerm)) : state.activeEvents);
+  const term = (document.getElementById('league-search')?.value || '').toLowerCase().trim();
+
+  if (!term) {
+    if (state.activeEvents.length) renderEventTable(state.activeEvents);
+    return;
+  }
+
+  // Gather matching events from every cached league
+  const results = [];
+  for (const [code, { leagueName, events }] of Object.entries(state.eventCache)) {
+    events.filter(ev => eventMatchesSearch(ev, term))
+      .forEach(ev => results.push({ ...ev, _leagueCode: code, _leagueName: leagueName }));
+  }
+
+  if (results.length) {
+    results.sort((a, b) => new Date(a.starts || 0) - new Date(b.starts || 0));
+    renderEventTable(results, { crossLeague: true });
+    return;
+  }
+
+  // Nothing cached yet — filter whatever is currently loaded
+  renderEventTable(state.activeEvents.filter(ev => eventMatchesSearch(ev, term)));
 }

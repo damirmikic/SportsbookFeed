@@ -256,6 +256,23 @@ body {
   letter-spacing: 0.2px;
 }
 
+.cross-league-badge {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--accent-color);
+  background: var(--accent-glow);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  border-radius: 3px;
+  padding: 0.05rem 0.35rem;
+  margin-bottom: 0.15rem;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
 .favorites-section {
   max-height: 150px;
   overflow-y: auto;

@@ -51,6 +51,7 @@ export const state = {
   currentLeagueCode: null,
   currentLeagueName: null,
   previousOdds: {},
+  eventCache: {},        // { [leagueCode]: { leagueName, events[] } } — populated on each loadOdds
   drawerEventId: null,
   detailedOdds: {},
   activeCategory: 'MAIN MARKETS',

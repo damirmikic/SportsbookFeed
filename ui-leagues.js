@@ -103,6 +103,7 @@ function createLeagueGroup(country, leagues, isExpanded) {
 export function createLeagueElement(name, code, isFav, isManual = false) {
   const el = document.createElement('div');
   el.className = 'league-item';
+  el.dataset.leagueCode = code;
   const manualBadge = isManual ? `<span class="manual-league-badge" title="Custom league">✎</span>` : '';
   el.innerHTML = `
     <div style="display:flex;align-items:flex-start;gap:0.5rem;flex:1;">
