@@ -11,6 +11,8 @@ import { openOddsHistory } from './odds-history-ui.js';
 
 let focusedEventId = null;
 let shortcutsInstalled = false;
+let _bulkCacheInProgress = false;
+let _bulkCacheSearchTerm = null;
 
 function processOverrideExpiries(expiries) {
   if (!expiries.length) return;
@@ -587,10 +589,62 @@ export function renderOdds(data, options = {}) {
   renderEventTable(matchTerm ? events.filter(ev => eventMatchesSearch(ev, matchTerm)) : events, options);
 }
 
+function extractEvents(data) {
+  if (data.leagues && Array.isArray(data.leagues)) {
+    const evts = [];
+    data.leagues.forEach(l => { if (l.events) evts.push(...l.events); });
+    return evts;
+  }
+  return data.events || data.matches || (Array.isArray(data) ? data : []);
+}
+
+async function populateCacheForSearch(term) {
+  _bulkCacheInProgress = true;
+  _bulkCacheSearchTerm = term;
+
+  const oddsContainer = document.getElementById('odds-container');
+  if (oddsContainer) {
+    oddsContainer.innerHTML = `<div class="empty-state search-loading">Searching all leagues for "<strong>${term}</strong>"…</div>`;
+  }
+
+  const uncached = state.allLeagues.filter(l => {
+    const code = String(l.code || l.leagueCode || l.id);
+    return !l.isManual && !state.eventCache[code];
+  });
+
+  const BATCH = 5;
+  for (let i = 0; i < uncached.length; i += BATCH) {
+    const activeTerm = (document.getElementById('league-search')?.value || '').toLowerCase().trim();
+    if (!activeTerm || activeTerm !== _bulkCacheSearchTerm) break;
+
+    await Promise.allSettled(uncached.slice(i, i + BATCH).map(async (league) => {
+      const code = String(league.code || league.leagueCode || league.id);
+      try {
+        const data = await fetchOdds(code);
+        state.eventCache[code] = { leagueName: league.name || code, events: extractEvents(data) };
+      } catch { /* skip unreachable leagues */ }
+    }));
+
+    const currentTerm = (document.getElementById('league-search')?.value || '').toLowerCase().trim();
+    if (!currentTerm || currentTerm !== _bulkCacheSearchTerm) break;
+
+    const hasResults = Object.values(state.eventCache).some(({ events }) =>
+      events.some(ev => eventMatchesSearch(ev, currentTerm))
+    );
+    if (hasResults) filterAndRenderBoard();
+  }
+
+  _bulkCacheInProgress = false;
+
+  const finalTerm = (document.getElementById('league-search')?.value || '').toLowerCase().trim();
+  if (finalTerm === term) filterAndRenderBoard();
+}
+
 export function filterAndRenderBoard() {
   const term = (document.getElementById('league-search')?.value || '').toLowerCase().trim();
 
   if (!term) {
+    _bulkCacheSearchTerm = null;
     if (state.activeEvents.length) renderEventTable(state.activeEvents);
     return;
   }
@@ -608,6 +662,17 @@ export function filterAndRenderBoard() {
     return;
   }
 
-  // Nothing cached yet — filter whatever is currently loaded
+  // No cached results — check if we need to bulk-load uncached leagues
+  const uncachedCount = state.allLeagues.filter(l =>
+    !l.isManual && !state.eventCache[String(l.code || l.leagueCode || l.id)]
+  ).length;
+
+  if (uncachedCount > 0) {
+    if (_bulkCacheInProgress && _bulkCacheSearchTerm === term) return; // already loading
+    populateCacheForSearch(term);
+    return;
+  }
+
+  // All leagues cached, genuinely no results
   renderEventTable(state.activeEvents.filter(ev => eventMatchesSearch(ev, term)));
 }

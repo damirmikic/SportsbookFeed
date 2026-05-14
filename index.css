@@ -256,6 +256,17 @@ body {
   letter-spacing: 0.2px;
 }
 
+.search-loading {
+  color: var(--accent-color) !important;
+  opacity: 0.8;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 0.4; }
+}
+
 .cross-league-badge {
   display: inline-block;
   font-size: 0.68rem;
