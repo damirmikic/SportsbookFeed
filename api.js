@@ -127,3 +127,51 @@ export async function pushOddsHistory(data) {
 export async function fetchOddsHistory(eventId) {
   return await jsonRequest(`/api/odds-history?eventId=${encodeURIComponent(eventId)}`);
 }
+
+export async function fetchManualLeagues() {
+  return await jsonRequest('/api/manual-data?type=leagues');
+}
+
+export async function createManualLeague(name, createdBy) {
+  return await jsonRequest('/api/manual-data?type=leagues', {
+    method: 'POST',
+    body: JSON.stringify({ name, created_by: createdBy }),
+  });
+}
+
+export async function updateManualLeague(id, name) {
+  return await jsonRequest(`/api/manual-data?type=leagues&id=${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function deleteManualLeague(id) {
+  return await jsonRequest(`/api/manual-data?type=leagues&id=${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function fetchManualEvents(leagueCode) {
+  return await jsonRequest(`/api/manual-data?type=events&leagueCode=${encodeURIComponent(leagueCode)}`);
+}
+
+export async function createManualEvent(data) {
+  return await jsonRequest('/api/manual-data?type=events', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateManualEvent(id, data) {
+  return await jsonRequest(`/api/manual-data?type=events&id=${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteManualEvent(id) {
+  return await jsonRequest(`/api/manual-data?type=events&id=${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+}

@@ -51,3 +51,8 @@
   from   = "/api/odds-history"
   to     = "/.netlify/functions/odds-history"
   status = 200
+
+[[redirects]]
+  from   = "/api/manual-data"
+  to     = "/.netlify/functions/manual-data"
+  status = 200

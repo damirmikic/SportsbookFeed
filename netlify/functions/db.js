@@ -144,6 +144,35 @@ const SCHEMA = `
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS manual_leagues (
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    code       TEXT NOT NULL UNIQUE,
+    created_by TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS manual_events (
+    id          TEXT PRIMARY KEY,
+    league_code TEXT NOT NULL,
+    home        TEXT NOT NULL,
+    away        TEXT NOT NULL,
+    starts      TEXT NOT NULL,
+    input_mode  TEXT NOT NULL DEFAULT 'odds',
+    lh          REAL,
+    la          REAL,
+    rho         REAL DEFAULT 0,
+    home_odds   REAL,
+    draw_odds   REAL,
+    away_odds   REAL,
+    over_odds   REAL,
+    under_odds  REAL,
+    ou_line     REAL DEFAULT 2.5,
+    created_at  TEXT DEFAULT (datetime('now')),
+    updated_at  TEXT DEFAULT (datetime('now'))
+  );
 `;
 
 async function initSchema(db) {

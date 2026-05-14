@@ -1,5 +1,6 @@
-import { state, snapshotOdds, getOverride, getAllOverrideMeta, getTradingMode, isSuspended, hasAnySuspension, clearOverride, clearOverrideMetaSelection, hasAnyOverrideForEvent, setTradingMode, clearOverriddenLambdas, clearAllOverridesForEvent, setSuspension, getLeagueSetting } from './state.js';
-import { fetchOdds, pushOddsHistory } from './api.js';
+import { state, snapshotOdds, getOverride, getAllOverrideMeta, getTradingMode, isSuspended, hasAnySuspension, clearOverride, clearOverrideMetaSelection, hasAnyOverrideForEvent, setTradingMode, clearOverriddenLambdas, clearAllOverridesForEvent, setSuspension, getLeagueSetting, isManualLeague } from './state.js';
+import { fetchOdds, pushOddsHistory, fetchManualEvents } from './api.js';
+import { dcMatchProbs, dcOverProb } from './math.js';
 import { evaluateOverrides, resolveTemplate, getMarketConfig, resolveActiveKey } from './pricing.js';
 import { openDrawer, updateModeButton, updateSuspendButton, renderDrawerMarkets } from './ui-drawer.js';
 import { getTeamNames } from './utils.js';
@@ -248,11 +249,75 @@ function installKeyboardShortcuts() {
   });
 }
 
+function formatManualEvent(row) {
+  let homePrice, drawPrice, awayPrice, overOdds, underOdds;
+  const ouLine = parseFloat(row.ou_line ?? 2.5);
+
+  if (row.input_mode === 'lambdas') {
+    const lh = parseFloat(row.lh);
+    const la = parseFloat(row.la);
+    const rho = parseFloat(row.rho ?? 0);
+    if (!isNaN(lh) && !isNaN(la)) {
+      const { pH, pD, pA } = dcMatchProbs(lh, la, rho);
+      const pOver = dcOverProb(lh, la, rho, ouLine);
+      homePrice  = 1 / pH;
+      drawPrice  = 1 / pD;
+      awayPrice  = 1 / pA;
+      overOdds   = 1 / pOver;
+      underOdds  = 1 / (1 - pOver);
+    }
+  } else {
+    homePrice  = parseFloat(row.home_odds);
+    drawPrice  = parseFloat(row.draw_odds);
+    awayPrice  = parseFloat(row.away_odds);
+    overOdds   = parseFloat(row.over_odds);
+    underOdds  = parseFloat(row.under_odds);
+  }
+
+  return {
+    id:        row.id,
+    home:      row.home,
+    away:      row.away,
+    starts:    row.starts,
+    isManual:  true,
+    _manualRow: row,
+    periods: {
+      '0': {
+        moneyLine: { homePrice, drawPrice, awayPrice },
+        overUnder: [{ points: String(ouLine), overOdds, underOdds }],
+        spreads:   [],
+      },
+    },
+  };
+}
+
 export async function loadOdds(leagueCode, silent = false) {
   const oddsContainer = document.getElementById('odds-container');
   if (!silent) {
     oddsContainer.innerHTML = `<div class="loading-state"><div class="spinner"></div><p>Loading odds...</p></div>`;
   }
+
+  if (isManualLeague(leagueCode)) {
+    try {
+      const rows = await fetchManualEvents(leagueCode);
+      const events = rows.map(formatManualEvent);
+      state.activeEvents = events;
+      document.dispatchEvent(new CustomEvent('odds:loaded', { detail: { count: events.length } }));
+      renderOdds({ events }, { alertMoves: false });
+      processOverrideExpiries(evaluateOverrides(state.activeEvents));
+      if (state.drawerEventId) {
+        const freshEv = state.activeEvents.find(e => e.id.toString() === state.drawerEventId.toString());
+        if (freshEv) renderDrawerMarkets(freshEv);
+      }
+    } catch (error) {
+      console.error('Error loading manual events', error);
+      if (!silent) {
+        oddsContainer.innerHTML = `<div class="empty-state" style="color:#ef4444">Failed to load events.</div>`;
+      }
+    }
+    return;
+  }
+
   try {
     state.previousOdds = snapshotOdds();
     const data = await fetchOdds(leagueCode);
@@ -331,13 +396,16 @@ function renderEventTable(eventsToRender, { alertMoves = false } = {}) {
 
     let rawOver = '-', rawUnder = '-';
     let oddsOver = '-', oddsUnder = '-';
+    let ouLineLabel = '2.5';
     if (matchPeriod?.overUnder) {
-      const ou25 = matchPeriod.overUnder.find(ou => ou.points === '2.5' || ou.points === 2.5);
+      const ou25 = matchPeriod.overUnder.find(ou => ou.points === '2.5' || ou.points === 2.5)
+        ?? (event.isManual ? matchPeriod.overUnder[0] : null);
       if (ou25) {
         rawOver = ou25.overOdds || ou25.over || '-';
         rawUnder = ou25.underOdds || ou25.under || '-';
         oddsOver = rawOver;
         oddsUnder = rawUnder;
+        if (event.isManual && ou25.points != null) ouLineLabel = String(ou25.points);
       }
     }
 
@@ -365,7 +433,8 @@ function renderEventTable(eventsToRender, { alertMoves = false } = {}) {
         }
         const ouConf = getMarketConfig(offerTpl, 'ou25');
         if (ouConf?.enabled && Array.isArray(matchPeriod.overUnder)) {
-          const ou25 = matchPeriod.overUnder.find(ou => parseFloat(ou.points) === 2.5);
+          const ou25 = matchPeriod.overUnder.find(ou => parseFloat(ou.points) === 2.5)
+            ?? (event.isManual ? matchPeriod.overUnder[0] : null);
           if (ou25) {
             const shin = calculateShinNoVig([ou25.overOdds, ou25.underOdds]);
             let margin = ouConf.margin;
@@ -439,8 +508,8 @@ function renderEventTable(eventsToRender, { alertMoves = false } = {}) {
       <td class="${mlSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${m1 ? ' manual-price' : t1}" data-history-market="moneyline" data-history-side="home" data-history-label="${escapeAttr(homeTeam)}">${evtSuspended || mlSuspended ? 'SUSP' : odds1}${!m1 && t1 === ' price-up' ? ' ▲' : !m1 && t1 === ' price-down' ? ' ▼' : ''}</button></td>
       <td class="${mlSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${mX ? ' manual-price' : tX}" data-history-market="moneyline" data-history-side="draw" data-history-label="Draw">${evtSuspended || mlSuspended ? 'SUSP' : oddsX}${!mX && tX === ' price-up' ? ' ▲' : !mX && tX === ' price-down' ? ' ▼' : ''}</button></td>
       <td class="${mlSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${m2 ? ' manual-price' : t2}" data-history-market="moneyline" data-history-side="away" data-history-label="${escapeAttr(awayTeam)}">${evtSuspended || mlSuspended ? 'SUSP' : odds2}${!m2 && t2 === ' price-up' ? ' ▲' : !m2 && t2 === ' price-down' ? ' ▼' : ''}</button></td>
-      <td class="${ouSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${mOver ? ' manual-price' : ''}" data-history-market="total" data-history-side="over" data-history-points="2.5" data-history-label="Over 2.5" style="border-color:${mOver ? '#fbbf24' : 'var(--accent-color)'}">${evtSuspended || ouSuspended ? 'SUSP' : oddsOver}</button></td>
-      <td class="${ouSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${mUnder ? ' manual-price' : ''}" data-history-market="total" data-history-side="under" data-history-points="2.5" data-history-label="Under 2.5" style="border-color:${mUnder ? '#fbbf24' : 'var(--accent-color)'}">${evtSuspended || ouSuspended ? 'SUSP' : oddsUnder}</button></td>
+      <td class="${ouSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${mOver ? ' manual-price' : ''}" data-history-market="total" data-history-side="over" data-history-points="${ouLineLabel}" data-history-label="Over ${ouLineLabel}" style="border-color:${mOver ? '#fbbf24' : 'var(--accent-color)'}">${evtSuspended || ouSuspended ? 'SUSP' : oddsOver}${ouLineLabel !== '2.5' ? `<span class="ou-line-tag">${ouLineLabel}</span>` : ''}</button></td>
+      <td class="${ouSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${mUnder ? ' manual-price' : ''}" data-history-market="total" data-history-side="under" data-history-points="${ouLineLabel}" data-history-label="Under ${ouLineLabel}" style="border-color:${mUnder ? '#fbbf24' : 'var(--accent-color)'}">${evtSuspended || ouSuspended ? 'SUSP' : oddsUnder}${ouLineLabel !== '2.5' ? `<span class="ou-line-tag">${ouLineLabel}</span>` : ''}</button></td>
     </tr>`;
   });
 

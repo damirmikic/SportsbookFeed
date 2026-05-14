@@ -24,7 +24,7 @@ export function renderLeagues(leaguesToRender) {
     favoriteLeagues.forEach(league => {
       const name = league.name || league.leagueName || 'Unknown League';
       const code = league.code || league.leagueCode || league.id;
-      favoritesContainer.appendChild(createLeagueElement(name, code, true));
+      favoritesContainer.appendChild(createLeagueElement(name, code, true, !!league.isManual));
     });
   }
 
@@ -65,7 +65,7 @@ function createLeagueGroup(country, leagues, isExpanded) {
   leagues.forEach(league => {
     const name = league.name || league.leagueName || 'Unknown League';
     const code = league.code || league.leagueCode || league.id;
-    content.appendChild(createLeagueElement(name, code, state.favorites.includes(code)));
+    content.appendChild(createLeagueElement(name, code, state.favorites.includes(code), !!league.isManual));
   });
 
   group.appendChild(header);
@@ -73,13 +73,15 @@ function createLeagueGroup(country, leagues, isExpanded) {
   return group;
 }
 
-export function createLeagueElement(name, code, isFav) {
+export function createLeagueElement(name, code, isFav, isManual = false) {
   const el = document.createElement('div');
   el.className = 'league-item';
+  const manualBadge = isManual ? `<span class="manual-league-badge" title="Custom league">✎</span>` : '';
   el.innerHTML = `
     <div style="display:flex;align-items:flex-start;gap:0.5rem;flex:1;">
       <span class="favorite-star ${isFav ? 'active' : ''}" data-code="${code}" style="margin-top: 0.2rem;">★</span>
       <span class="league-name">${name}</span>
+      ${manualBadge}
     </div>
     <span style="font-size:0.8em;color:var(--text-secondary);margin-top: 0.3rem;">›</span>
   `;

@@ -45,6 +45,7 @@ const currentTraderProfile = getValidTraderSession();
 export const state = {
   activeEvents: [],
   allLeagues: [],
+  manualLeagues: [],
   activeTraders: [],
   favorites: readJson('favoriteLeagues', []),
   currentLeagueCode: null,
@@ -223,6 +224,10 @@ export function canDo(permission) {
   if (permission === 'manage-templates') return role === 'senior';
   if (permission === 'manage-traders') return false; // owner-only
   return false;
+}
+
+export function isManualLeague(code) {
+  return state.manualLeagues.some(l => l.code === String(code));
 }
 
 export function getPendingOverride(key) { return _pendingOverrides[key] ?? null; }

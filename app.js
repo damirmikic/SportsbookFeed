@@ -1,9 +1,10 @@
-import { fetchLeagues, fetchSharedState, fetchTraderState, pushTraderPresence } from './api.js';
-import { state, hydrateSharedState, hydrateTraderState, getLeagueSetting, canDo } from './state.js';
+import { fetchLeagues, fetchSharedState, fetchTraderState, pushTraderPresence, fetchManualLeagues } from './api.js';
+import { state, hydrateSharedState, hydrateTraderState, getLeagueSetting, canDo, isManualLeague } from './state.js';
 import { renderLeagues, closeDrawer, loadOdds, filterAndRenderBoard } from './ui.js';
 import { renderAdminPanel, renderOperatorsPanel } from './admin.js';
 import { renderTemplatesSection, openTemplateById } from './templates-admin.js';
 import { renderAuditPanel } from './audit-admin.js';
+import { renderManualLeaguesPanel } from './manual-leagues-admin.js';
 import { clearTraderSession, getSessionExpiresAt, getValidTraderSession } from './auth-session.js';
 
 let refreshInterval = null;
@@ -90,6 +91,7 @@ async function updateTraderPresence() {
 
 function startPolling(leagueCode) {
   if (refreshInterval) clearInterval(refreshInterval);
+  if (isManualLeague(leagueCode)) return; // manual leagues have no live feed
   refreshInterval = setInterval(async () => {
     try {
       await loadOdds(leagueCode, true);
@@ -110,11 +112,12 @@ function showAdminSection(section) {
   document.querySelectorAll('.admin-section-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.section === section)
   );
-  const adminPanel      = document.getElementById('admin-panel');
-  const templatesPanel  = document.getElementById('templates-panel');
-  const auditPanel      = document.getElementById('audit-panel');
-  const operatorsPanel  = document.getElementById('operators-panel');
-  [adminPanel, templatesPanel, auditPanel, operatorsPanel].forEach(p => p?.classList.add('hidden'));
+  const adminPanel        = document.getElementById('admin-panel');
+  const templatesPanel    = document.getElementById('templates-panel');
+  const auditPanel        = document.getElementById('audit-panel');
+  const operatorsPanel    = document.getElementById('operators-panel');
+  const manualLeaguesPanel = document.getElementById('manual-leagues-panel');
+  [adminPanel, templatesPanel, auditPanel, operatorsPanel, manualLeaguesPanel].forEach(p => p?.classList.add('hidden'));
   if (section === 'templates') {
     templatesPanel.classList.remove('hidden');
     renderTemplatesSection();
@@ -124,6 +127,9 @@ function showAdminSection(section) {
   } else if (section === 'operators') {
     operatorsPanel.classList.remove('hidden');
     renderOperatorsPanel();
+  } else if (section === 'custom-leagues') {
+    manualLeaguesPanel.classList.remove('hidden');
+    renderManualLeaguesPanel();
   } else {
     adminPanel.classList.remove('hidden');
     renderAdminPanel();
@@ -257,5 +263,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   } catch (error) {
     console.error('Error fetching leagues', error);
     leaguesContainer.innerHTML = `<div class="empty-state" style="color:#ef4444">Failed to load leagues. CORS issue or network error.</div>`;
+  }
+
+  try {
+    const manualLeagues = await fetchManualLeagues();
+    state.manualLeagues.splice(0, state.manualLeagues.length, ...manualLeagues);
+    const withFlag = manualLeagues.map(l => ({ ...l, isManual: true }));
+    state.allLeagues = [...state.allLeagues, ...withFlag];
+    renderLeagues(state.allLeagues);
+  } catch (error) {
+    console.warn('Failed to load custom leagues:', error);
   }
 });
