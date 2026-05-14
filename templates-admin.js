@@ -397,9 +397,10 @@ function marketCardHTML(def, config, group) {
           <div class="mkt-inline-row">
             <label class="mkt-inline-field">Margin %
               <input type="number" class="mkt-margin-input mkt-cfg-num" data-id="${config.id}"
-                value="${config.margin}" min="0" max="50" step="0.1">
+                value="${config.margin}" min="0" max="50" step="0.1"
+                title="Bookmaker margin applied over fair odds. e.g. 5 = offer at fair÷1.05. Typical range: 2–15%.">
               <span class="mkt-margin-suggest" data-suggest="${defaultsForMarket(config.id).margin}">
-                ★ Suggested: ${defaultsForMarket(config.id).margin}%
+                ★ Suggested: ${defaultsForMarket(config.id).margin}% &nbsp;·&nbsp; e.g. 5 = fair ÷ 1.05
               </span>
             </label>
             <label class="mkt-inline-field">Max Stake £
