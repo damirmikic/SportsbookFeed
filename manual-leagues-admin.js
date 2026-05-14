@@ -100,11 +100,10 @@ function eventFormHtml(ev = null) {
           <input type="radio" name="input_mode" value="lambdas" ${mode === 'lambdas' ? 'checked' : ''}>
           Enter lambdas (Dixon-Coles)
         </label>
-        <label class="ml-radio-label" style="margin-left:auto;">
+        <label class="ml-goals-line-wrap">
           Goals line
           <input name="ou_line" type="number" step="0.5" min="0.5" max="9.5" placeholder="2.5"
-            value="${escapeHtml(ev?.ou_line ?? '2.5')}"
-            style="width:60px;margin-left:0.3rem;">
+            value="${escapeHtml(ev?.ou_line ?? '2.5')}">
         </label>
       </div>
 

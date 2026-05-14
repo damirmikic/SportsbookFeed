@@ -4619,14 +4619,14 @@ button.dtpl-name-link:hover { color: var(--accent-color); }
 .btn-ghost:hover { background: var(--bg-secondary); color: var(--text-primary); }
 
 /* ── Custom Leagues admin panel ──────────────────────────────── */
-.ml-panel { padding: 1.5rem; max-width: 860px; }
+.ml-panel { padding: 1.5rem; max-width: 900px; }
 .ml-panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; }
 .ml-panel-header h3 { margin: 0; font-size: 1.1rem; }
 
 .ml-league-row {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 0.75rem 1rem; background: var(--bg-secondary);
-  border: 1px solid var(--border-color); border-radius: 6px; margin-bottom: 0.5rem;
+  padding: 0.75rem 1rem; background: var(--surface-color);
+  border: 1px solid var(--border-color); border-radius: var(--radius-sm); margin-bottom: 0.5rem;
 }
 .ml-league-info { display: flex; flex-direction: column; gap: 0.15rem; }
 .ml-league-name { font-weight: 600; font-size: 0.95rem; }
@@ -4634,8 +4634,8 @@ button.dtpl-name-link:hover { color: var(--accent-color); }
 .ml-league-actions { display: flex; gap: 0.4rem; }
 
 .ml-events-section {
-  background: var(--bg-tertiary, var(--bg-secondary));
-  border: 1px solid var(--border-color); border-radius: 6px;
+  background: var(--bg-color);
+  border: 1px solid var(--border-color); border-radius: var(--radius-sm);
   padding: 1rem; margin-top: 1.25rem;
 }
 .ml-events-header {
@@ -4645,50 +4645,147 @@ button.dtpl-name-link:hover { color: var(--accent-color); }
 
 .ml-events-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-bottom: 0.75rem; }
 .ml-events-table th {
-  text-align: left; padding: 0.35rem 0.6rem;
-  border-bottom: 1px solid var(--border-color); color: var(--text-secondary);
+  text-align: left; padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-secondary); font-size: 0.72rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.3px;
 }
-.ml-events-table td { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border-color); vertical-align: middle; }
+.ml-events-table td { padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--border-color); vertical-align: middle; }
 .ml-empty-cell { color: var(--text-secondary); font-style: italic; }
 .ml-actions { display: flex; gap: 0.3rem; }
 .ml-mode-chip {
   display: inline-block; font-size: 0.72rem; font-family: monospace;
-  background: var(--bg-secondary); border: 1px solid var(--border-color);
+  background: var(--surface-color); border: 1px solid var(--border-color);
   border-radius: 4px; padding: 0.1rem 0.35rem; color: var(--text-secondary);
 }
 
-.ml-edit-form-cell { padding: 0.75rem !important; background: var(--bg-secondary); }
-.ml-add-form-slot { margin-top: 0.5rem; }
-.ml-add-event-wrap { margin-top: 0.5rem; }
+.ml-edit-form-cell { padding: 0.75rem !important; background: var(--surface-color); }
+.ml-add-form-slot { margin-top: 0.75rem; }
+.ml-add-event-wrap { margin-top: 0.75rem; }
 
-.ml-event-form, .ml-new-league-form {
-  display: flex; flex-direction: column; gap: 0.75rem;
-  background: var(--bg-secondary); border: 1px solid var(--border-color);
-  border-radius: 6px; padding: 1rem;
+/* ── Form base ── */
+.ml-event-form,
+.ml-new-league-form {
+  display: flex; flex-direction: column; gap: 1rem;
+  background: var(--surface-color); border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm); padding: 1.25rem 1.5rem;
 }
-.ml-form-row { display: flex; gap: 0.75rem; flex-wrap: wrap; }
-.ml-form-row label {
-  display: flex; flex-direction: column; gap: 0.25rem;
-  font-size: 0.82rem; color: var(--text-secondary); flex: 1; min-width: 100px;
-}
-.ml-form-row input {
-  background: var(--bg-primary); border: 1px solid var(--border-color);
-  border-radius: 4px; padding: 0.35rem 0.5rem;
-  color: var(--text-primary); font-size: 0.85rem;
-}
-.ml-form-row input:focus { outline: none; border-color: var(--accent-color, #3b82f6); }
 
-.ml-mode-toggle { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
-.ml-mode-label { font-size: 0.82rem; color: var(--text-secondary); }
-.ml-radio-label { display: flex; align-items: center; gap: 0.3rem; font-size: 0.85rem; cursor: pointer; }
-.ml-radio-label input { cursor: pointer; }
+/* ── Field label wrapping input ── */
+.ml-event-form label:not(.ml-radio-label),
+.ml-new-league-form label {
+  display: flex; flex-direction: column; gap: 0.3rem;
+  font-size: 0.72rem; font-weight: 600;
+  letter-spacing: 0.3px; text-transform: uppercase;
+  color: var(--text-secondary);
+}
 
-.ml-odds-fields, .ml-lambda-fields { display: flex; flex-direction: column; gap: 0.5rem; }
+.ml-event-form label:not(.ml-radio-label) input,
+.ml-new-league-form label input {
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: 0.875rem; font-weight: 400;
+  letter-spacing: normal; text-transform: none;
+  padding: 0.45rem 0.7rem;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  width: 100%;
+}
+
+.ml-event-form label:not(.ml-radio-label) input:focus,
+.ml-new-league-form label input:focus {
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+/* ── Grid rows ── */
+.ml-form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.75rem;
+}
+
+/* ── Source + goals line row ── */
+.ml-mode-toggle {
+  display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+  padding: 0.55rem 0.75rem;
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+
+.ml-mode-label {
+  font-size: 0.72rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.3px;
+  color: var(--text-secondary); margin-right: 0.15rem;
+  white-space: nowrap;
+}
+
+/* Styled radio pill buttons */
+.ml-radio-label {
+  display: flex; align-items: center; gap: 0.35rem;
+  font-size: 0.82rem; font-weight: 500; cursor: pointer;
+  padding: 0.22rem 0.65rem;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  background: var(--surface-color);
+  color: var(--text-secondary);
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  white-space: nowrap; -webkit-user-select: none; user-select: none;
+}
+
+.ml-radio-label input[type="radio"] {
+  accent-color: var(--accent-color);
+  cursor: pointer;
+}
+
+.ml-radio-label:has(input:checked) {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+  background: var(--accent-glow);
+}
+
+/* Goals line inline control */
+.ml-goals-line-wrap {
+  margin-left: auto;
+  display: flex; align-items: center; gap: 0.5rem;
+  font-size: 0.72rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.3px;
+  color: var(--text-secondary); white-space: nowrap;
+}
+
+.ml-goals-line-wrap input {
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: 0.875rem; font-weight: 600;
+  padding: 0.2rem 0.4rem;
+  outline: none; width: 58px;
+  text-align: center;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.ml-goals-line-wrap input:focus {
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+/* ── Odds / lambda sub-sections ── */
+.ml-odds-fields, .ml-lambda-fields { display: flex; flex-direction: column; gap: 0.75rem; }
+
 .ml-odds-preview {
-  font-size: 0.78rem; color: var(--text-secondary); font-family: monospace; min-height: 1.1rem;
+  font-size: 0.8rem; color: var(--accent-color); font-family: monospace;
+  min-height: 1.2rem; padding: 0.4rem 0.65rem;
+  background: var(--bg-color); border-radius: var(--radius-sm);
 }
 
-.ml-form-actions { display: flex; gap: 0.5rem; }
+/* ── Form actions ── */
+.ml-form-actions { display: flex; gap: 0.5rem; padding-top: 0.25rem; }
 
 .btn-sm { padding: 0.25rem 0.6rem !important; font-size: 0.8rem !important; }
 .btn-danger { color: #ef4444 !important; border-color: #ef4444 !important; }
