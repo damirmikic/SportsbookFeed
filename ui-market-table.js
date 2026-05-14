@@ -180,7 +180,7 @@ function getOfferHistoryRequest(market, row, drawerEvent) {
 
 const DRAWER_TO_TPL = {
   ml: '1x2', dc: 'dc', dnb: 'dnb', hdp: 'asian_hcp', ou: 'asian_tot',
-  ou15: 'ou15', ou25: 'ou25', ou35: 'ou35', btts: 'btts',
+  ou05: 'ou05', ou15: 'ou15', ou25: 'ou25', ou35: 'ou35', ou45: 'ou45', ou55: 'ou55', ou65: 'ou65', btts: 'btts',
   btts_ou: 'btts_ou', cs: 'cs', exact_goals: 'exact_goals', win_nil: 'win_nil', htft: 'htft',
 };
 

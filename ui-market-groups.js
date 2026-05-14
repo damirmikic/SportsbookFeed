@@ -142,7 +142,7 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
     groups['GOALS'].push({ id: 'ou', name: 'Total (All Lines)', rows });
   } else if (lambdaData) {
     const ouRows = [];
-    [0.5, 1.5, 2.5, 3.5, 4.5].forEach(line => {
+    [0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5].forEach(line => {
       const mOver  = dcAsianTotalOdds(lambdaData.ft.grid, line, true);
       const mUnder = dcAsianTotalOdds(lambdaData.ft.grid, line, false);
       if (mOver)  ouRows.push({ label: `Over ${line}`,  value: null, shinFair: null, modelFair: mOver.toFixed(3) });

@@ -785,47 +785,20 @@ function computePreviewHTML(tpl, event) {
   }
 
   if (Array.isArray(matchPeriod.overUnder)) {
-    const ou25 = matchPeriod.overUnder.find(ou => parseFloat(ou.points) === 2.5);
-    if (ou25) {
-      const conf = (tpl.markets || []).find(m => m.id === 'ou25');
-      if (conf?.enabled) {
-        const tl     = eventStart ? resolveActiveKey(conf, eventStart) : null;
-        const margin = tl ? tl.key : conf.margin;
-        const shin   = calculateShinNoVig([ou25.overOdds || ou25.over, ou25.underOdds || ou25.under]);
-        rows.push({ name: 'Over/Under 2.5', margin, selections: [
-          { label: 'Over 2.5',  fair: shin[0], offer: applyMarginAndLadder(shin[0], margin, conf.ladder) },
-          { label: 'Under 2.5', fair: shin[1], offer: applyMarginAndLadder(shin[1], margin, conf.ladder) },
-        ]});
-      }
-    }
-
-    const ou15 = matchPeriod.overUnder.find(ou => parseFloat(ou.points) === 1.5);
-    if (ou15) {
-      const conf = (tpl.markets || []).find(m => m.id === 'ou15');
-      if (conf?.enabled) {
-        const tl     = eventStart ? resolveActiveKey(conf, eventStart) : null;
-        const margin = tl ? tl.key : conf.margin;
-        const shin   = calculateShinNoVig([ou15.overOdds || ou15.over, ou15.underOdds || ou15.under]);
-        rows.push({ name: 'Over/Under 1.5', margin, selections: [
-          { label: 'Over 1.5',  fair: shin[0], offer: applyMarginAndLadder(shin[0], margin, conf.ladder) },
-          { label: 'Under 1.5', fair: shin[1], offer: applyMarginAndLadder(shin[1], margin, conf.ladder) },
-        ]});
-      }
-    }
-
-    const ou35 = matchPeriod.overUnder.find(ou => parseFloat(ou.points) === 3.5);
-    if (ou35) {
-      const conf = (tpl.markets || []).find(m => m.id === 'ou35');
-      if (conf?.enabled) {
-        const tl     = eventStart ? resolveActiveKey(conf, eventStart) : null;
-        const margin = tl ? tl.key : conf.margin;
-        const shin   = calculateShinNoVig([ou35.overOdds || ou35.over, ou35.underOdds || ou35.under]);
-        rows.push({ name: 'Over/Under 3.5', margin, selections: [
-          { label: 'Over 3.5',  fair: shin[0], offer: applyMarginAndLadder(shin[0], margin, conf.ladder) },
-          { label: 'Under 3.5', fair: shin[1], offer: applyMarginAndLadder(shin[1], margin, conf.ladder) },
-        ]});
-      }
-    }
+    [0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5].forEach(line => {
+      const ouData = matchPeriod.overUnder.find(ou => parseFloat(ou.points) === line);
+      if (!ouData) return;
+      const id   = `ou${String(line * 10).padStart(2, '0')}`;
+      const conf = (tpl.markets || []).find(m => m.id === id);
+      if (!conf?.enabled) return;
+      const tl     = eventStart ? resolveActiveKey(conf, eventStart) : null;
+      const margin = tl ? tl.key : conf.margin;
+      const shin   = calculateShinNoVig([ouData.overOdds || ouData.over, ouData.underOdds || ouData.under]);
+      rows.push({ name: `Over/Under ${line}`, margin, selections: [
+        { label: `Over ${line}`,  fair: shin[0], offer: applyMarginAndLadder(shin[0], margin, conf.ladder) },
+        { label: `Under ${line}`, fair: shin[1], offer: applyMarginAndLadder(shin[1], margin, conf.ladder) },
+      ]});
+    });
   }
 
   if (Array.isArray(matchPeriod.handicap) && matchPeriod.handicap.length) {

@@ -497,9 +497,13 @@ export const MARKET_DEFS = [
   { id: 'asian_tot',  group: 'HANDICAP',  name: 'Asian Total O/U',       outcomes: 2,  defaultMargin: 4.0,  defaultMaxBet: 5000,  defaultEnabled: false },
   { id: '3way_hdp',   group: 'HANDICAP',  name: '3-Way Handicap',        outcomes: 3,  defaultMargin: 8.0,  defaultMaxBet: 1000,  defaultEnabled: false },
   // GOALS
+  { id: 'ou05',       group: 'GOALS',     name: 'Over/Under 0.5',        outcomes: 2,  defaultMargin: 7.0,  defaultMaxBet: 1500,  defaultEnabled: false },
   { id: 'ou15',       group: 'GOALS',     name: 'Over/Under 1.5',        outcomes: 2,  defaultMargin: 6.0,  defaultMaxBet: 2000,  defaultEnabled: false },
   { id: 'ou25',       group: 'GOALS',     name: 'Over/Under 2.5',        outcomes: 2,  defaultMargin: 5.0,  defaultMaxBet: 3000,  defaultEnabled: true  },
   { id: 'ou35',       group: 'GOALS',     name: 'Over/Under 3.5',        outcomes: 2,  defaultMargin: 6.0,  defaultMaxBet: 2000,  defaultEnabled: false },
+  { id: 'ou45',       group: 'GOALS',     name: 'Over/Under 4.5',        outcomes: 2,  defaultMargin: 6.5,  defaultMaxBet: 1500,  defaultEnabled: false },
+  { id: 'ou55',       group: 'GOALS',     name: 'Over/Under 5.5',        outcomes: 2,  defaultMargin: 8.0,  defaultMaxBet: 1000,  defaultEnabled: false },
+  { id: 'ou65',       group: 'GOALS',     name: 'Over/Under 6.5',        outcomes: 2,  defaultMargin: 9.0,  defaultMaxBet: 500,   defaultEnabled: false },
   { id: 'btts',             group: 'GOALS', name: 'Both Teams to Score',         outcomes: 2,  defaultMargin: 7.0,  defaultMaxBet: 2000,  defaultEnabled: true  },
   { id: 'btts_ou',          group: 'GOALS', name: 'BTTS & Over/Under',           outcomes: 4,  defaultMargin: 9.0,  defaultMaxBet: 1000,  defaultEnabled: false },
   { id: 'cs',               group: 'GOALS', name: 'Correct Score',               outcomes: 12, defaultMargin: 12.0, defaultMaxBet: 500,   defaultEnabled: true  },
@@ -574,7 +578,7 @@ const DEFAULT_TEMPLATES = [
     markets: mkMarkets({ '1x2': { margin: 8.0, maxBet: 2000 }, 'ou25': { margin: 8.0, maxBet: 2000 }, 'asian_hcp': { margin: 6.0, maxBet: 3000 }, 'cs': { enabled: false }, 'htft': { enabled: false }, 'exact_goals': { enabled: false }, 'win_nil': { enabled: false } }) },
 ];
 
-const TEMPLATE_VERSION = 6;
+const TEMPLATE_VERSION = 7;
 const _storedVersion = parseInt(localStorage.getItem('templateVersion') || '0', 10);
 const _storedTpl = readJson('templates', null);
 const _needsReset = !_storedTpl || !_storedTpl[0]?.markets || _storedVersion !== TEMPLATE_VERSION;
