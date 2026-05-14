@@ -370,6 +370,8 @@ function marketCardHTML(def, config, group) {
   const hasLines  = LINES_MARKETS.has(config.id);
   const linesLbl  = config.rangeLimit != null ? config.rangeLimit : 'All';
   const outTxt    = def.outcomes ? `Outcomes: ${def.outcomes}` : '';
+  const hasOddsCap = config.minOdds != null || config.maxOdds != null;
+  const capLbl    = hasOddsCap ? `${config.minOdds ?? '—'} – ${config.maxOdds ?? '—'}` : null;
 
   return `
     <div class="mkt-card${config.enabled ? '' : ' mkt-card-off'}" data-mid="${config.id}" data-group="${group}">
@@ -381,6 +383,7 @@ function marketCardHTML(def, config, group) {
           <span class="mkt-cfg-item">Ladder: <strong>${ladderLbl}</strong></span>
           ${hasLines ? `<span class="mkt-cfg-sep"></span><span class="mkt-cfg-item">Lines: <strong>${linesLbl}</strong></span>` : ''}
           <span class="mkt-cfg-sep"></span>
+          ${capLbl ? `<span class="mkt-cfg-sep"></span><span class="mkt-cfg-item mkt-cap-lbl">Cap: <strong>${capLbl}</strong></span>` : ''}
           <span class="mkt-cfg-item mkt-first-key">1st Key: <strong>${firstKey}</strong></span>
           <span class="mkt-cfg-item mkt-last-key">Last Key: <strong>${lastKey}</strong></span>
           <button class="mkt-open-cfg-btn" data-mid="${config.id}">OPEN MARKET CONFIG</button>
@@ -419,6 +422,18 @@ function marketCardHTML(def, config, group) {
                 value="${config.rangeLimit ?? ''}" placeholder="All" min="1" max="20" step="1">
               <span class="mkt-field-hint">Leave blank to show all</span>
             </label>` : ''}
+            <label class="mkt-inline-field">Min Odds
+              <input type="number" class="mkt-min-odds-input mkt-cfg-num" data-id="${config.id}"
+                value="${config.minOdds ?? ''}" placeholder="None" min="1.01" step="0.01"
+                title="Floor: offered price for this market will never go below this value. Overrides template global.">
+              <span class="mkt-field-hint">Overrides global</span>
+            </label>
+            <label class="mkt-inline-field">Max Odds
+              <input type="number" class="mkt-max-odds-input mkt-cfg-num" data-id="${config.id}"
+                value="${config.maxOdds ?? ''}" placeholder="None" min="1.01" step="0.01"
+                title="Ceiling: offered price for this market will never exceed this value. Overrides template global.">
+              <span class="mkt-field-hint">Overrides global</span>
+            </label>
             <label class="mkt-inline-field mkt-approval-field" title="Overrides on this market require senior approval">
               <input type="checkbox" class="mkt-approval-cb" data-id="${config.id}" ${config.requiresApproval ? 'checked' : ''}>
               Requires approval
@@ -456,6 +471,8 @@ function marketConfigHTML(existingMarkets, marketDefs) {
         rangeLimit:       existing?.rangeLimit       ?? null,
         timeline:         existing?.timeline         ?? {},
         requiresApproval: existing?.requiresApproval ?? false,
+        minOdds:          existing?.minOdds          ?? null,
+        maxOdds:          existing?.maxOdds          ?? null,
       },
     });
   });
@@ -491,6 +508,8 @@ function collectMarketsFromForm(backdrop) {
     card.querySelectorAll('.mkt-tl-node.mkt-tl-active').forEach(n => {
       if (n.dataset.key != null && n.dataset.key !== '') timeline[n.dataset.node] = parseInt(n.dataset.key, 10);
     });
+    const minOddsVal = parseFloat(card.querySelector('.mkt-min-odds-input')?.value);
+    const maxOddsVal = parseFloat(card.querySelector('.mkt-max-odds-input')?.value);
     markets.push({
       id,
       enabled:          cb ? cb.checked : false,
@@ -499,6 +518,8 @@ function collectMarketsFromForm(backdrop) {
       ladder:           card.querySelector('.mkt-ladder-sel')?.value || 'eu',
       rangeLimit:       parseFloat(card.querySelector('.mkt-range-input')?.value) || null,
       requiresApproval: card.querySelector('.mkt-approval-cb')?.checked ?? false,
+      minOdds:          (!isNaN(minOddsVal) && minOddsVal > 1) ? minOddsVal : null,
+      maxOdds:          (!isNaN(maxOddsVal) && maxOddsVal > 1) ? maxOddsVal : null,
       timeline,
     });
   });
@@ -554,6 +575,24 @@ function formModalHTML(tpl) {
                   <span class="tpl-status-track"></span>
                   <span class="tpl-status-label" id="tf-active-label">${(!tpl || tpl.active) ? 'Active' : 'Inactive'}</span>
                 </label>
+              </div>
+              <div class="tpl-field">
+                <label class="tpl-label">Global Min Odds
+                  <span class="tpl-field-hint">Floor for all markets</span>
+                </label>
+                <input type="number" class="tpl-text-input" id="tf-min-odds"
+                  placeholder="None" min="1.01" step="0.01"
+                  value="${tpl?.minOdds ?? ''}"
+                  title="Offered prices across all markets will never go below this value">
+              </div>
+              <div class="tpl-field">
+                <label class="tpl-label">Global Max Odds
+                  <span class="tpl-field-hint">Ceiling for all markets</span>
+                </label>
+                <input type="number" class="tpl-text-input" id="tf-max-odds"
+                  placeholder="None" min="1.01" step="0.01"
+                  value="${tpl?.maxOdds ?? ''}"
+                  title="Offered prices across all markets will never exceed this value">
               </div>
             </div>
           </section>
@@ -1281,11 +1320,15 @@ function wireFormEvents(backdrop, editingTpl) {
 
     const markets = collectMarketsFromForm(backdrop);
 
+    const tplMinVal = parseFloat(backdrop.querySelector('#tf-min-odds')?.value);
+    const tplMaxVal = parseFloat(backdrop.querySelector('#tf-max-odds')?.value);
     const data = {
       name,
-      sport:   backdrop.querySelector('#tf-sport-sel').value,
-      type:    backdrop.querySelector('#tf-type-sel').value,
-      active:  backdrop.querySelector('#tf-active-toggle').checked,
+      sport:    backdrop.querySelector('#tf-sport-sel').value,
+      type:     backdrop.querySelector('#tf-type-sel').value,
+      active:   backdrop.querySelector('#tf-active-toggle').checked,
+      minOdds:  (!isNaN(tplMinVal) && tplMinVal > 1) ? tplMinVal : null,
+      maxOdds:  (!isNaN(tplMaxVal) && tplMaxVal > 1) ? tplMaxVal : null,
       markets,
     };
 

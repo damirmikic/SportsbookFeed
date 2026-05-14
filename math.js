@@ -390,6 +390,21 @@ export function applyMarginAndLadder(fairOdds, marginPct, ladder = 'eu') {
   return snapEu(margined);
 }
 
+/**
+ * Clamp an offered price to [minOdds, maxOdds]. Null/undefined caps are ignored.
+ * @param {number|null} offered
+ * @param {number|null} minOdds
+ * @param {number|null} maxOdds
+ * @returns {number|null}
+ */
+export function clampOdds(offered, minOdds, maxOdds) {
+  if (offered == null || offered <= 1) return offered;
+  let v = offered;
+  if (minOdds != null && minOdds > 1 && v < minOdds) v = minOdds;
+  if (maxOdds != null && maxOdds > 1 && v > maxOdds) v = maxOdds;
+  return v;
+}
+
 // ── Off-thread solver ─────────────────────────────────────────────────────────
 
 let _solverWorker = null;

@@ -1,6 +1,6 @@
 import { state, getOverride, setOverride, getOverrideMeta, setOverrideWithMeta, updateOverrideAlertState, setTradingMode, getOverriddenLambdas, setOverriddenLambdas, isSuspended, isSelectionSuspended, setSuspension, clearOverride, clearOverrideMetaSelection, hasAnyOverrideForEvent, clearOverriddenLambdas, canDo, getPendingOverride, setPendingOverride, removePendingOverride, getLeagueSetting } from './state.js';
 import { resolveTemplate, getMarketConfig, resolveActiveKey } from './pricing.js';
-import { calculateShinNoVig, solveLambdasAsync, applyMarginAndLadder } from './math.js';
+import { calculateShinNoVig, solveLambdasAsync, applyMarginAndLadder, clampOdds } from './math.js';
 import { calcMargin, marginBadgeHTML } from './ui-helpers.js';
 import { updateModeButton, renderDrawerMarkets } from './ui-drawer.js';
 import { openOddsHistory } from './odds-history-ui.js';
@@ -325,7 +325,9 @@ export function renderMarketTable(market) {
             if (tl?.key != null) marginPct = tl.key;
           }
           if (marginPct != null) {
-            const offered = applyMarginAndLadder(modelFair, marginPct, offerMktConf.ladder ?? 'eu');
+            const effMin = offerMktConf.minOdds ?? offerTpl?.minOdds ?? null;
+            const effMax = offerMktConf.maxOdds ?? offerTpl?.maxOdds ?? null;
+            const offered = clampOdds(applyMarginAndLadder(modelFair, marginPct, offerMktConf.ladder ?? 'eu'), effMin, effMax);
             if (offered) return offered;
           }
         }
@@ -357,7 +359,9 @@ export function renderMarketTable(market) {
                     : (!isNaN(model) && model > 1) ? model
                     : NaN;
         if (!isNaN(fair)) {
-          const offered = applyMarginAndLadder(fair, marginPct, offerMktConf.ladder ?? 'eu');
+          const effMin = offerMktConf.minOdds ?? offerTpl?.minOdds ?? null;
+          const effMax = offerMktConf.maxOdds ?? offerTpl?.maxOdds ?? null;
+          const offered = clampOdds(applyMarginAndLadder(fair, marginPct, offerMktConf.ladder ?? 'eu'), effMin, effMax);
           if (offered) return offered;
           // applyMarginAndLadder returned null (margined ≤ 1) — fall through to api
         }

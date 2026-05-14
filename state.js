@@ -558,6 +558,8 @@ function mkMarkets(overrides = {}) {
     ladder: overrides[m.id]?.ladder ?? 'eu',
     rangeLimit: overrides[m.id]?.rangeLimit ?? null,
     timeline: overrides[m.id]?.timeline ?? {},
+    minOdds: overrides[m.id]?.minOdds ?? null,
+    maxOdds: overrides[m.id]?.maxOdds ?? null,
   }));
 }
 

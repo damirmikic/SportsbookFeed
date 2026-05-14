@@ -4,7 +4,7 @@ import { dcMatchProbs, dcOverProb } from './math.js';
 import { evaluateOverrides, resolveTemplate, getMarketConfig, resolveActiveKey } from './pricing.js';
 import { openDrawer, updateModeButton, updateSuspendButton, renderDrawerMarkets } from './ui-drawer.js';
 import { getTeamNames } from './utils.js';
-import { calculateShinNoVig, applyMarginAndLadder } from './math.js';
+import { calculateShinNoVig, applyMarginAndLadder, clampOdds } from './math.js';
 import { openOddsHistory } from './odds-history-ui.js';
 
 // ── Override expiry processing ────────────────────────────────────────────────
@@ -424,9 +424,11 @@ function renderEventTable(eventsToRender, { alertMoves = false } = {}) {
           const tl = eventStart ? resolveActiveKey(mlConf, eventStart) : null;
           if (tl?.key != null) margin = tl.key;
           const ladder = mlConf.ladder || 'eu';
-          const o1 = applyMarginAndLadder(parseFloat(shin[0]), margin, ladder);
-          const oX = applyMarginAndLadder(parseFloat(shin[1]), margin, ladder);
-          const o2 = applyMarginAndLadder(parseFloat(shin[2]), margin, ladder);
+          const mlMin = mlConf.minOdds ?? offerTpl.minOdds ?? null;
+          const mlMax = mlConf.maxOdds ?? offerTpl.maxOdds ?? null;
+          const o1 = clampOdds(applyMarginAndLadder(parseFloat(shin[0]), margin, ladder), mlMin, mlMax);
+          const oX = clampOdds(applyMarginAndLadder(parseFloat(shin[1]), margin, ladder), mlMin, mlMax);
+          const o2 = clampOdds(applyMarginAndLadder(parseFloat(shin[2]), margin, ladder), mlMin, mlMax);
           if (o1 > 1) odds1 = o1.toFixed(2);
           if (oX > 1) oddsX = oX.toFixed(2);
           if (o2 > 1) odds2 = o2.toFixed(2);
@@ -441,8 +443,10 @@ function renderEventTable(eventsToRender, { alertMoves = false } = {}) {
             const tl = eventStart ? resolveActiveKey(ouConf, eventStart) : null;
             if (tl?.key != null) margin = tl.key;
             const ladder = ouConf.ladder || 'eu';
-            const oOver = applyMarginAndLadder(parseFloat(shin[0]), margin, ladder);
-            const oUnd  = applyMarginAndLadder(parseFloat(shin[1]), margin, ladder);
+            const ouMin = ouConf.minOdds ?? offerTpl.minOdds ?? null;
+            const ouMax = ouConf.maxOdds ?? offerTpl.maxOdds ?? null;
+            const oOver = clampOdds(applyMarginAndLadder(parseFloat(shin[0]), margin, ladder), ouMin, ouMax);
+            const oUnd  = clampOdds(applyMarginAndLadder(parseFloat(shin[1]), margin, ladder), ouMin, ouMax);
             if (oOver > 1) oddsOver  = oOver.toFixed(2);
             if (oUnd  > 1) oddsUnder = oUnd.toFixed(2);
           }
