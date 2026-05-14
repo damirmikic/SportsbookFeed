@@ -344,6 +344,15 @@ function tableHTML(templates, canManage = true) {
 
 function timelineHTML(config) {
   const tl = config.timeline || {};
+
+  // Propagate set keys left→right (PREMATCH→KICKOFF) so unset nodes show the effective margin
+  let running = null;
+  const effective = {};
+  for (const node of TIMELINE_NODES) {
+    if (tl[node.id] != null) running = tl[node.id];
+    effective[node.id] = running;
+  }
+
   return `
     <div class="mkt-tl-wrap">
       <span class="mkt-tl-edge">PREMATCH</span>
@@ -351,8 +360,10 @@ function timelineHTML(config) {
         ${TIMELINE_NODES.map(node => {
           const key = tl[node.id];
           const has = key != null;
+          const eff = effective[node.id];
+          const inherited = !has && eff != null;
           return `<div class="mkt-tl-node${has ? ' mkt-tl-active' : ''}" data-mid="${config.id}" data-node="${node.id}"${has ? ` data-key="${key}"` : ''}>
-              <div class="mkt-tl-circle">${has ? key : ''}</div>
+              <div class="mkt-tl-circle${inherited ? ' mkt-tl-inherited' : ''}">${has ? key : (inherited ? eff : '')}</div>
               <div class="mkt-tl-lbl">${node.label}</div>
             </div>`;
         }).join('')}

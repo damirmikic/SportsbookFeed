@@ -4025,6 +4025,12 @@ body {
 }
 .mkt-tl-active .mkt-tl-lbl { color: var(--text-secondary); }
 
+.mkt-tl-inherited {
+  font-size: 8px;
+  color: #4a637a;
+  border-color: #1e3a52;
+}
+
 /* ── Card footer ──────────────────────────────────────── */
 .mkt-card-foot {
   display: flex; justify-content: flex-end; align-items: center;
