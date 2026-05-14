@@ -242,9 +242,11 @@ function openLoginPath(path) {
   if (path === 'org') {
     if (titleEl)    titleEl.textContent    = 'Organisation Login';
     if (subtitleEl) subtitleEl.textContent = 'Select an owner account to continue';
+    btnGoCreate.lastChild.textContent = ' Create owner account';
   } else {
     if (titleEl)    titleEl.textContent    = 'Operator Login';
     if (subtitleEl) subtitleEl.textContent = 'Select your trading profile to continue';
+    btnGoCreate.lastChild.textContent = ' Add operator';
   }
   renderFilteredOperators();
   showScreen('select');
@@ -256,6 +258,8 @@ async function loadOperators() {
     operators = res.traders ?? res;
     applyOrgName(res.orgName);
     if (res.firstRun) {
+      setupBtnLabel.textContent = 'Get Started';
+      setupBack.classList.add('hidden');
       showScreen('setup');
       return;
     }
@@ -429,6 +433,21 @@ createForm.addEventListener('submit', async e => {
 });
 
 btnGoCreate.addEventListener('click', () => {
+  if (loginPath === 'org') {
+    // Pre-fill org name if already known so the user doesn't have to re-type it
+    const knownOrg = localStorage.getItem('orgName') || localStorage.getItem('_mock_org_name') || '';
+    setupOrg.value = knownOrg;
+    setupName.value = '';
+    setupPin.value = '';
+    setupPinConfirm.value = '';
+    setupAvatar.textContent = 'A';
+    setupAvatar.style.background = setupColor;
+    setupError.classList.add('hidden');
+    setupBack.classList.remove('hidden');
+    setupBtnLabel.textContent = 'Create Owner Account';
+    showScreen('setup');
+    return;
+  }
   createName.value = '';
   createPin.value = '';
   createPinConfirm.value = '';
@@ -441,9 +460,11 @@ btnGoCreate.addEventListener('click', () => {
 });
 
 createBack.addEventListener('click', () => showScreen('select'));
+setupBack.addEventListener('click', () => { setupBack.classList.add('hidden'); showScreen('select'); });
 
 // ── Setup screen (first-run: create senior administrator) ─────────────────────
 
+const setupBack           = document.getElementById('setup-back');
 const setupForm           = document.getElementById('setup-form');
 const setupAvatar         = document.getElementById('setup-avatar');
 const setupSwatches       = document.querySelectorAll('.setup-swatch');
