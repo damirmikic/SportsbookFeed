@@ -393,8 +393,6 @@ export function renderMarketTable(market) {
       <th style="text-align: right;">Shin (Fair)</th>
       <th style="text-align: right;">Model (Fair)</th>
       <th style="text-align: right;">Pinnacle (API)</th>
-      <th style="text-align: right;">Bet365</th>
-      <th style="text-align: right;">Dafabet</th>
       ${isOverridable ? '<th style="text-align: right; width: 130px;">Override</th>' : ''}
     </tr>
   `;
@@ -482,21 +480,11 @@ export function renderMarketTable(market) {
     tdPin.className   = pinVal !== '-' ? 'price-cell' : 'empty-cell';
     tdPin.textContent = pinVal;
 
-    const tdBet365 = document.createElement('td');
-    tdBet365.className   = 'empty-cell';
-    tdBet365.textContent = '-';
-
-    const tdDafabet = document.createElement('td');
-    tdDafabet.className   = 'empty-cell';
-    tdDafabet.textContent = '-';
-
     tr.appendChild(tdLabel);
     tr.appendChild(tdOffer);
     tr.appendChild(tdShin);
     tr.appendChild(tdModel);
     tr.appendChild(tdPin);
-    tr.appendChild(tdBet365);
-    tr.appendChild(tdDafabet);
 
     if (isOverridable) {
       const tdOverride = document.createElement('td');
