@@ -3578,6 +3578,42 @@ body {
 }
 .tpl-save-btn:hover { background: #059669; }
 
+/* Clone modal */
+.tpl-clone-modal {
+  max-width: 480px;
+  min-height: unset;
+}
+.tpl-clone-adj-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.75rem;
+  row-gap: 0.6rem;
+  align-items: center;
+}
+.tpl-clone-adj-label {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.tpl-clone-adj-input {
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  padding: 0.3rem 0.5rem;
+  width: 100%;
+  outline: none;
+}
+.tpl-clone-adj-input:focus { border-color: var(--accent-color); }
+.tpl-clone-adj-hint {
+  grid-column: 2;
+  font-size: 0.75rem;
+  color: var(--text-muted, var(--text-secondary));
+  margin-top: -0.3rem;
+  margin-bottom: 0.2rem;
+}
+
 /* ═══════════════════════════════════════════════════════════
    INLINE RENAME  (name column in template listing)
 ════════════════════════════════════════════════════════════ */

@@ -718,6 +718,98 @@ function wireCompareModal(backdrop, templates) {
   );
 }
 
+// ── Clone modal ───────────────────────────────────────────
+function cloneModalHTML(tpl) {
+  return `
+    <div class="tpl-modal-backdrop" id="tpl-clone-backdrop">
+      <div class="tpl-modal tpl-clone-modal" role="dialog" aria-modal="true">
+        <div class="tpl-modal-header">
+          <h3>Clone — ${tpl.name}</h3>
+          <button class="tpl-modal-close" id="tpl-clone-close">&times;</button>
+        </div>
+        <div class="tpl-modal-body">
+          <section class="tpl-form-section">
+            <h4 class="tpl-form-section-title">New Template Name</h4>
+            <input type="text" class="tpl-text-input" id="tpl-clone-name" value="${tpl.name} (copy)" />
+          </section>
+          <section class="tpl-form-section">
+            <h4 class="tpl-form-section-title">Quick Adjustments <span class="tpl-form-hint">(optional — applied to all markets)</span></h4>
+            <div class="tpl-clone-adj-grid">
+              <label class="tpl-clone-adj-label">Margin offset (pp)</label>
+              <input type="number" class="tpl-clone-adj-input" id="tpl-clone-margin" step="0.5" placeholder="e.g. −2 or +1.5" />
+              <span class="tpl-clone-adj-hint">Add / subtract percentage points from each market's margin</span>
+              <label class="tpl-clone-adj-label">Max stake change (%)</label>
+              <input type="number" class="tpl-clone-adj-input" id="tpl-clone-maxbet" step="5" placeholder="e.g. −50 or +25" />
+              <span class="tpl-clone-adj-hint">Scale each market's max stake by this percentage</span>
+            </div>
+          </section>
+        </div>
+        <div class="tpl-modal-footer">
+          <button class="tpl-cancel-btn" id="tpl-clone-cancel">Cancel</button>
+          <button class="tpl-save-btn"   id="tpl-clone-confirm">Clone Template</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function openCloneModal(tpl) {
+  document.getElementById('tpl-clone-backdrop')?.remove();
+  document.body.insertAdjacentHTML('beforeend', cloneModalHTML(tpl));
+  const backdrop = document.getElementById('tpl-clone-backdrop');
+  requestAnimationFrame(() => backdrop.classList.add('visible'));
+
+  const nameInput   = backdrop.querySelector('#tpl-clone-name');
+  const marginInput = backdrop.querySelector('#tpl-clone-margin');
+  const maxBetInput = backdrop.querySelector('#tpl-clone-maxbet');
+
+  const close = () => {
+    backdrop.classList.remove('visible');
+    setTimeout(() => backdrop.remove(), 200);
+  };
+
+  const confirm = () => {
+    const name = nameInput.value.trim();
+    if (!name) { nameInput.classList.add('tpl-input-error'); nameInput.focus(); return; }
+
+    const marginOffset = parseFloat(marginInput.value) || 0;
+    const maxBetPct    = parseFloat(maxBetInput.value)  || 0;
+
+    const clone = {
+      ...JSON.parse(JSON.stringify(tpl)),
+      id:        uid(),
+      name,
+      locked:    false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      updatedBy: null,
+    };
+
+    if (marginOffset !== 0 || maxBetPct !== 0) {
+      clone.markets = (clone.markets || []).map(m => ({
+        ...m,
+        margin: marginOffset !== 0
+          ? Math.max(0, Math.min(50, parseFloat((m.margin + marginOffset).toFixed(2))))
+          : m.margin,
+        maxBet: maxBetPct !== 0
+          ? Math.max(1, Math.round(m.maxBet * (1 + maxBetPct / 100)))
+          : m.maxBet,
+      }));
+    }
+
+    addTemplate(clone);
+    renderTemplatesSection();
+    showTplToast(`Cloned as "${clone.name}".`);
+    close();
+  };
+
+  backdrop.querySelector('#tpl-clone-close').addEventListener('click', close);
+  backdrop.querySelector('#tpl-clone-cancel').addEventListener('click', close);
+  backdrop.querySelector('#tpl-clone-confirm').addEventListener('click', confirm);
+  backdrop.addEventListener('click', e => { if (e.target === backdrop) close(); });
+  nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') confirm(); });
+  nameInput.select();
+}
+
 // ── Preview modal ─────────────────────────────────────────
 function openPreviewModal(tpl) {
   document.getElementById('tpl-prev-backdrop')?.remove();
@@ -1224,21 +1316,7 @@ function wireSectionEvents(panel, canManage = true) {
     btn.addEventListener('click', () => {
       if (!canManage) { showTplToast('Senior access required to clone templates.'); return; }
       const tpl = getTemplates().find(t => t.id === btn.dataset.id);
-      if (!tpl) return;
-      const newName = prompt(`Clone "${tpl.name}" — enter a name for the copy:`, `${tpl.name} (copy)`);
-      if (!newName?.trim()) return;
-      const clone = {
-        ...JSON.parse(JSON.stringify(tpl)),
-        id: uid(),
-        name: newName.trim(),
-        locked: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        updatedBy: null,
-      };
-      addTemplate(clone);
-      renderTemplatesSection();
-      showTplToast(`Cloned as "${clone.name}".`);
+      if (tpl) openCloneModal(tpl);
     })
   );
 
