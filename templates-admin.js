@@ -785,15 +785,24 @@ function openCloneModal(tpl) {
     };
 
     if (marginOffset !== 0 || maxBetPct !== 0) {
-      clone.markets = (clone.markets || []).map(m => ({
-        ...m,
-        margin: marginOffset !== 0
-          ? Math.max(0, Math.min(50, parseFloat((m.margin + marginOffset).toFixed(2))))
-          : m.margin,
-        maxBet: maxBetPct !== 0
-          ? Math.max(1, Math.round(m.maxBet * (1 + maxBetPct / 100)))
-          : m.maxBet,
-      }));
+      const adjMargin = v => Math.max(0, Math.min(50, parseFloat((v + marginOffset).toFixed(2))));
+      const adjMaxBet = v => Math.max(1, Math.round(v * (1 + maxBetPct / 100)));
+      clone.markets = (clone.markets || []).map(m => {
+        const timeline = {};
+        for (const [nodeId, node] of Object.entries(m.timeline || {})) {
+          timeline[nodeId] = {
+            ...node,
+            ...(marginOffset !== 0 && { margin: adjMargin(node.margin) }),
+            ...(maxBetPct   !== 0 && { maxBet: adjMaxBet(node.maxBet) }),
+          };
+        }
+        return {
+          ...m,
+          ...(marginOffset !== 0 && { margin: adjMargin(m.margin) }),
+          ...(maxBetPct   !== 0 && { maxBet: adjMaxBet(m.maxBet) }),
+          timeline,
+        };
+      });
     }
 
     addTemplate(clone);
