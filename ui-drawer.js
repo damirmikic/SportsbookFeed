@@ -8,7 +8,7 @@ import { renderMarketTable, createLambdaSection } from './ui-market-table.js';
 import { getTeamNames } from './utils.js';
 
 // Maps drawer market IDs to MARKET_DEFS template IDs for template-assignment indicators
-const DRAWER_TO_TPL_ID = {
+export const DRAWER_TO_TPL_ID = {
   // Match Result
   'ml':  '1x2',
   'dc':  'dc',

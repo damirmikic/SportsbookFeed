@@ -175,3 +175,12 @@ export async function deleteManualEvent(id) {
     method: 'DELETE',
   });
 }
+
+export async function pushOfferSnapshot(snapshot) {
+  const url = IS_LOCAL ? 'http://localhost:8888/.netlify/functions/offer' : '/api/offer';
+  await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(snapshot),
+  });
+}

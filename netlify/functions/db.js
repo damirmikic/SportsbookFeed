@@ -173,6 +173,12 @@ const SCHEMA = `
     created_at  TEXT DEFAULT (datetime('now')),
     updated_at  TEXT DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS offer_snapshot (
+    league_code TEXT PRIMARY KEY,
+    data        TEXT NOT NULL,
+    updated_at  TEXT DEFAULT (datetime('now'))
+  );
 `;
 
 async function initSchema(db) {

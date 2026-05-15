@@ -1,10 +1,10 @@
-import { state, snapshotOdds, getOverride, getAllOverrideMeta, getTradingMode, isSuspended, hasAnySuspension, clearOverride, clearOverrideMetaSelection, hasAnyOverrideForEvent, setTradingMode, clearOverriddenLambdas, clearAllOverridesForEvent, setSuspension, getLeagueSetting, isManualLeague } from './state.js';
-import { fetchOdds, pushOddsHistory, fetchManualEvents } from './api.js';
-import { dcMatchProbs, dcOverProb } from './math.js';
+import { state, snapshotOdds, getOverride, getAllOverrideMeta, getTradingMode, isSuspended, hasAnySuspension, clearOverride, clearOverrideMetaSelection, hasAnyOverrideForEvent, setTradingMode, clearOverriddenLambdas, clearAllOverridesForEvent, setSuspension, getLeagueSetting, isManualLeague, getOverriddenLambdas } from './state.js';
+import { fetchOdds, pushOddsHistory, fetchManualEvents, pushOfferSnapshot } from './api.js';
+import { dcMatchProbs, dcOverProb, calculateShinNoVig, applyMarginAndLadder, clampOdds, calculateTeamLambdasAsync } from './math.js';
 import { evaluateOverrides, resolveTemplate, getMarketConfig, resolveActiveKey } from './pricing.js';
-import { openDrawer, updateModeButton, updateSuspendButton, renderDrawerMarkets } from './ui-drawer.js';
+import { openDrawer, updateModeButton, updateSuspendButton, renderDrawerMarkets, DRAWER_TO_TPL_ID } from './ui-drawer.js';
 import { getTeamNames } from './utils.js';
-import { calculateShinNoVig, applyMarginAndLadder, clampOdds } from './math.js';
+import { groupMarketsByCategory } from './ui-market-groups.js';
 import { openOddsHistory } from './odds-history-ui.js';
 
 // ── Override expiry processing ────────────────────────────────────────────────
@@ -309,6 +309,7 @@ export async function loadOdds(leagueCode, silent = false) {
       document.dispatchEvent(new CustomEvent('odds:loaded', { detail: { count: events.length } }));
       renderOdds({ events }, { alertMoves: false });
       processOverrideExpiries(evaluateOverrides(state.activeEvents));
+      buildOfferSnapshot().then(pushOfferSnapshot).catch(() => {});
       if (state.drawerEventId) {
         const freshEv = state.activeEvents.find(e => e.id.toString() === state.drawerEventId.toString());
         if (freshEv) renderDrawerMarkets(freshEv);
@@ -328,6 +329,7 @@ export async function loadOdds(leagueCode, silent = false) {
     persistOddsHistory(data);
     renderOdds(data, { alertMoves: true });
     processOverrideExpiries(evaluateOverrides(state.activeEvents));
+    buildOfferSnapshot().then(pushOfferSnapshot).catch(() => {});
     if (state.drawerEventId) {
       const freshEv = state.activeEvents.find(e => e.id.toString() === state.drawerEventId.toString());
       if (freshEv) renderDrawerMarkets(freshEv);
@@ -569,6 +571,133 @@ function renderEventTable(eventsToRender, { alertMoves = false, crossLeague = fa
     const nextFocus = rows.find(r => r.dataset.eventId === String(focusedEventId))?.dataset.eventId || rows[0].dataset.eventId;
     setFocusedEventRow(nextFocus, { scroll: false, focus: false });
   }
+}
+
+function getPeriodsForSnapshot(event) {
+  let matchPeriod = null, h1Period = null;
+  if (event.periods && !Array.isArray(event.periods)) {
+    matchPeriod = event.periods['0'];
+    h1Period    = event.periods['1'];
+  } else if (event.periodOdds && !Array.isArray(event.periodOdds)) {
+    matchPeriod = event.periodOdds['0'];
+  } else {
+    const arr = Array.isArray(event.periods) ? event.periods : Object.values(event.periods || {});
+    matchPeriod = arr.find(p => p.num === 0 || p.periodNumber === 0) || arr[0];
+    h1Period    = arr.find(p => p.num === 1 || p.periodNumber === 1);
+  }
+  return { matchPeriod, h1Period };
+}
+
+function applyOffer(fairStr, tplConf, offerTpl, eventStart) {
+  const fair = parseFloat(fairStr);
+  if (!fair || fair <= 1 || !tplConf?.enabled) return null;
+  const tl     = eventStart ? resolveActiveKey(tplConf, eventStart) : null;
+  const margin = tl?.key != null ? tl.key : tplConf.margin;
+  const ladder = tplConf.ladder || 'eu';
+  const min    = tplConf.minOdds ?? offerTpl?.minOdds ?? null;
+  const max    = tplConf.maxOdds ?? offerTpl?.maxOdds ?? null;
+  return clampOdds(applyMarginAndLadder(fair, margin, ladder), min, max);
+}
+
+export async function buildOfferSnapshot() {
+  const leagueCode = state.currentLeagueCode;
+
+  const results = await Promise.allSettled(
+    state.activeEvents.map(async (event) => {
+      if (isSuspended(event.id, 'event')) return null;
+      const { matchPeriod, h1Period } = getPeriodsForSnapshot(event);
+      if (!matchPeriod) return null;
+
+      const { home: homeTeam, away: awayTeam } = getTeamNames(event);
+      const eventStart = event.starts || event.startTime || event.time;
+      const isManual   = getTradingMode(event.id) === 'manual';
+      const { template: offerTpl } = resolveTemplate(event.id, leagueCode);
+
+      // ── Manual mode: use stored overrides for board-visible markets only ──
+      if (isManual) {
+        const markets = [];
+        if (!isSuspended(event.id, 'ml')) {
+          const h = getOverride(`${event.id}|ml|${homeTeam}`);
+          const d = getOverride(`${event.id}|ml|Draw`);
+          const a = getOverride(`${event.id}|ml|${awayTeam}`);
+          if (h && d && a) {
+            markets.push({ id: '1x2', name: '1x2', selections: [
+              { label: homeTeam, price: parseFloat(h) },
+              { label: 'Draw',   price: parseFloat(d) },
+              { label: awayTeam, price: parseFloat(a) },
+            ] });
+          }
+        }
+        if (!isSuspended(event.id, 'ou')) {
+          const ouEntry = Array.isArray(matchPeriod.overUnder)
+            ? (matchPeriod.overUnder.find(ou => parseFloat(ou.points) === 2.5) ?? (event.isManual ? matchPeriod.overUnder[0] : null))
+            : null;
+          if (ouEntry) {
+            const lineLabel = String(ouEntry.points ?? 2.5);
+            const ov = getOverride(`${event.id}|ou|Over ${lineLabel}`);
+            const un = getOverride(`${event.id}|ou|Under ${lineLabel}`);
+            if (ov && un) {
+              markets.push({ id: 'ou25', name: `Over/Under ${lineLabel}`, line: parseFloat(lineLabel), selections: [
+                { label: `Over ${lineLabel}`,  price: parseFloat(ov) },
+                { label: `Under ${lineLabel}`, price: parseFloat(un) },
+              ] });
+            }
+          }
+        }
+        if (!markets.length) return null;
+        return { id: String(event.id), home: homeTeam, away: awayTeam, starts: eventStart || null, markets };
+      }
+
+      // ── Auto mode: run solver then price all template markets via groupMarketsByCategory ──
+      if (!offerTpl) return null;
+
+      let lambdaData = null;
+      try {
+        lambdaData = await calculateTeamLambdasAsync(matchPeriod, h1Period);
+        const ovLambdas = getOverriddenLambdas(event.id);
+        if (ovLambdas && lambdaData) {
+          lambdaData = { ...lambdaData, ft: { lh: ovLambdas.lh, la: ovLambdas.la, rho: ovLambdas.rho, grid: ovLambdas.grid } };
+        }
+      } catch { /* model unavailable — proceed with Pinnacle-only fair prices */ }
+
+      const grouped = groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData, {}, homeTeam, awayTeam);
+      const markets = [];
+
+      for (const marketList of Object.values(grouped)) {
+        for (const market of marketList) {
+          // Skip Pinnacle-only specials (no template config) and suspended markets
+          if (market.id.startsWith('special_')) continue;
+          if (isSuspended(event.id, market.id)) continue;
+
+          const tplMarketId = DRAWER_TO_TPL_ID[market.id] ?? market.id;
+          const tplConf     = getMarketConfig(offerTpl, tplMarketId);
+          if (!tplConf?.enabled) continue;
+
+          const selections = [];
+          for (const row of market.rows) {
+            if (!row.label) continue;
+            // Prefer Shin fair (devigged from Pinnacle prices); fall back to model fair from grid
+            const fair = (parseFloat(row.shinFair) > 1 ? row.shinFair : null) ?? row.modelFair;
+            const price = applyOffer(fair, tplConf, offerTpl, eventStart);
+            if (price && price > 1) selections.push({ label: row.label, price });
+          }
+
+          if (selections.length > 0) {
+            markets.push({ id: tplMarketId, name: market.name, selections });
+          }
+        }
+      }
+
+      if (!markets.length) return null;
+      return { id: String(event.id), home: homeTeam, away: awayTeam, starts: eventStart || null, markets };
+    })
+  );
+
+  const snapshotEvents = results
+    .filter(r => r.status === 'fulfilled' && r.value)
+    .map(r => r.value);
+
+  return { leagueCode: String(leagueCode), events: snapshotEvents };
 }
 
 export function renderOdds(data, options = {}) {
