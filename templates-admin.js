@@ -804,11 +804,17 @@ function openCloneModal(tpl) {
       clone.markets = (clone.markets || []).map(m => {
         const timeline = {};
         for (const [nodeId, node] of Object.entries(m.timeline || {})) {
-          timeline[nodeId] = {
-            ...node,
-            ...(marginOffset !== 0 && { margin: adjMargin(node.margin) }),
-            ...(maxBetPct   !== 0 && { maxBet: adjMaxBet(node.maxBet) }),
-          };
+          const isObj = node !== null && typeof node === 'object';
+          const nodeMargin = isObj ? node.margin : node;
+          if (isObj) {
+            timeline[nodeId] = {
+              ...node,
+              ...(marginOffset !== 0 && { margin: adjMargin(nodeMargin) }),
+              ...(maxBetPct   !== 0 && { maxBet: adjMaxBet(node.maxBet) }),
+            };
+          } else {
+            timeline[nodeId] = marginOffset !== 0 ? adjMargin(nodeMargin) : node;
+          }
         }
         return {
           ...m,
