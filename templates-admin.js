@@ -342,6 +342,8 @@ function tableHTML(templates, canManage = true) {
 
 // ── Market card timeline UI ───────────────────────────────
 
+const tlMargin = v => (v != null && typeof v === 'object' ? v.margin : v);
+
 function timelineHTML(config) {
   const tl = config.timeline || {};
 
@@ -349,7 +351,7 @@ function timelineHTML(config) {
   let running = null;
   const effective = {};
   for (const node of TIMELINE_NODES) {
-    if (tl[node.id] != null) running = tl[node.id];
+    if (tl[node.id] != null) running = tlMargin(tl[node.id]);
     effective[node.id] = running;
   }
 
@@ -358,8 +360,9 @@ function timelineHTML(config) {
       <span class="mkt-tl-edge">PREMATCH</span>
       <div class="mkt-tl-track">
         ${TIMELINE_NODES.map(node => {
-          const key = tl[node.id];
-          const has = key != null;
+          const raw = tl[node.id];
+          const key = tlMargin(raw);
+          const has = raw != null;
           const eff = effective[node.id];
           const inherited = !has && eff != null;
           return `<div class="mkt-tl-node${has ? ' mkt-tl-active' : ''}" data-mid="${config.id}" data-node="${node.id}"${has ? ` data-key="${key}"` : ''}>
@@ -375,8 +378,8 @@ function timelineHTML(config) {
 function marketCardHTML(def, config, group) {
   const tl        = config.timeline || {};
   const setNodes  = TIMELINE_NODES.filter(n => tl[n.id] != null);
-  const firstKey  = setNodes.length ? tl[setNodes[0].id] : '—';
-  const lastKey   = setNodes.length ? tl[setNodes[setNodes.length - 1].id] : '—';
+  const firstKey  = setNodes.length ? (tlMargin(tl[setNodes[0].id]) ?? '—') : '—';
+  const lastKey   = setNodes.length ? (tlMargin(tl[setNodes[setNodes.length - 1].id]) ?? '—') : '—';
   const ladderLbl = config.ladder === 'template' ? 'Template Ladder' : 'EU Ladder';
   const hasLines  = LINES_MARKETS.has(config.id);
   const linesLbl  = config.rangeLimit != null ? config.rangeLimit : 'All';
@@ -885,7 +888,7 @@ function computePreviewHTML(tpl, event) {
     const conf = (tpl.markets || []).find(m => m.id === '1x2');
     if (conf?.enabled) {
       const tl     = eventStart ? resolveActiveKey(conf, eventStart) : null;
-      const margin = tl ? tl.key : conf.margin;
+      const margin = tl ? tl.key.margin : conf.margin;
       const shin   = calculateShinNoVig([ml.homePrice || ml.home, ml.drawPrice || ml.draw, ml.awayPrice || ml.away]);
       const { home, away } = getTeamNames(event);
       rows.push({ name: '1x2', margin, selections: [
@@ -904,7 +907,7 @@ function computePreviewHTML(tpl, event) {
       const conf = (tpl.markets || []).find(m => m.id === id);
       if (!conf?.enabled) return;
       const tl     = eventStart ? resolveActiveKey(conf, eventStart) : null;
-      const margin = tl ? tl.key : conf.margin;
+      const margin = tl ? tl.key.margin : conf.margin;
       const shin   = calculateShinNoVig([ouData.overOdds || ouData.over, ouData.underOdds || ouData.under]);
       rows.push({ name: `Over/Under ${line}`, margin, selections: [
         { label: `Over ${line}`,  fair: shin[0], offer: applyMarginAndLadder(shin[0], margin, conf.ladder) },
@@ -919,7 +922,7 @@ function computePreviewHTML(tpl, event) {
       const line   = matchPeriod.handicap.find(h => parseFloat(h.hdp) === 0) || matchPeriod.handicap[Math.floor(matchPeriod.handicap.length / 2)];
       if (line) {
         const tl     = eventStart ? resolveActiveKey(conf, eventStart) : null;
-        const margin = tl ? tl.key : conf.margin;
+        const margin = tl ? tl.key.margin : conf.margin;
         const shin   = calculateShinNoVig([line.homePrice || line.home, line.awayPrice || line.away]);
         const { home, away } = getTeamNames(event);
         const hdp    = parseFloat(line.hdp || 0);
