@@ -343,6 +343,7 @@ function tableHTML(templates, canManage = true) {
 // ── Market card timeline UI ───────────────────────────────
 
 const tlMargin = v => (v != null && typeof v === 'object' ? v.margin : v);
+const tlValid = v => { const m = tlMargin(v); return v != null && m != null && Number.isFinite(m); };
 
 function timelineHTML(config) {
   const tl = config.timeline || {};
@@ -351,7 +352,7 @@ function timelineHTML(config) {
   let running = null;
   const effective = {};
   for (const node of TIMELINE_NODES) {
-    if (tl[node.id] != null) running = tlMargin(tl[node.id]);
+    if (tlValid(tl[node.id])) running = tlMargin(tl[node.id]);
     effective[node.id] = running;
   }
 
@@ -362,7 +363,7 @@ function timelineHTML(config) {
         ${TIMELINE_NODES.map(node => {
           const raw = tl[node.id];
           const key = tlMargin(raw);
-          const has = raw != null;
+          const has = tlValid(raw);
           const eff = effective[node.id];
           const inherited = !has && eff != null;
           return `<div class="mkt-tl-node${has ? ' mkt-tl-active' : ''}" data-mid="${config.id}" data-node="${node.id}"${has ? ` data-key="${key}"` : ''}>
@@ -520,7 +521,8 @@ function collectMarketsFromForm(backdrop) {
     if (!id) return;
     const timeline = {};
     card.querySelectorAll('.mkt-tl-node.mkt-tl-active').forEach(n => {
-      if (n.dataset.key != null && n.dataset.key !== '') timeline[n.dataset.node] = parseInt(n.dataset.key, 10);
+      const k = parseInt(n.dataset.key, 10);
+      if (Number.isFinite(k)) timeline[n.dataset.node] = k;
     });
     const minOddsVal = parseFloat(card.querySelector('.mkt-min-odds-input')?.value);
     const maxOddsVal = parseFloat(card.querySelector('.mkt-max-odds-input')?.value);
@@ -799,13 +801,15 @@ function openCloneModal(tpl) {
     };
 
     if (marginOffset !== 0 || maxBetPct !== 0) {
-      const adjMargin = v => Math.max(0, Math.min(50, parseFloat((v + marginOffset).toFixed(2))));
+      const adjMargin = v => Math.max(0, Math.min(50, parseFloat((+v + marginOffset).toFixed(2))));
       const adjMaxBet = v => Math.max(1, Math.round(v * (1 + maxBetPct / 100)));
       clone.markets = (clone.markets || []).map(m => {
         const timeline = {};
         for (const [nodeId, node] of Object.entries(m.timeline || {})) {
-          const isObj = node !== null && typeof node === 'object';
+          if (node == null) continue;
+          const isObj = typeof node === 'object';
           const nodeMargin = isObj ? node.margin : node;
+          if (!Number.isFinite(nodeMargin)) continue;
           if (isObj) {
             timeline[nodeId] = {
               ...node,
@@ -813,7 +817,7 @@ function openCloneModal(tpl) {
               ...(maxBetPct   !== 0 && { maxBet: adjMaxBet(node.maxBet) }),
             };
           } else {
-            timeline[nodeId] = marginOffset !== 0 ? adjMargin(nodeMargin) : node;
+            timeline[nodeId] = marginOffset !== 0 ? adjMargin(nodeMargin) : nodeMargin;
           }
         }
         return {
@@ -1099,7 +1103,8 @@ function refreshKeyLabels(card) {
 function copyMarketTimeline(card, container) {
   const timeline = {};
   card.querySelectorAll('.mkt-tl-node.mkt-tl-active').forEach(n => {
-    if (n.dataset.key) timeline[n.dataset.node] = parseInt(n.dataset.key, 10);
+    const k = parseInt(n.dataset.key, 10);
+    if (Number.isFinite(k)) timeline[n.dataset.node] = k;
   });
   _copiedConfig = {
     ladder:     card.querySelector('.mkt-ladder-sel')?.value || 'eu',
