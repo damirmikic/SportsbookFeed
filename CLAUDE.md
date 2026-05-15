@@ -37,6 +37,7 @@ Pure browser ES module app. No framework, no build tool. Entry points: `login.ht
 
 ```
 app.js                          ← bootstrap, polling, view switching
+├── auth-session.js             ← session read/write/expiry helpers (localStorage only)
 ├── api.js                      ← all fetch calls (Pinnacle + Turso + manual-data)
 ├── state.js                    ← singleton state, localStorage, Turso sync
 ├── ui.js                       ← barrel: re-exports from ui-* modules
@@ -124,7 +125,7 @@ All mutable state lives in `state.js`. The `state` object holds transient runtim
 
 **Hydration guard**: `isHydrating = true` during `hydrateSharedState()` / `hydrateTraderState()` — prevents `scheduleSync()` from firing during startup population.
 
-**Template versioning**: `TEMPLATE_VERSION` constant in `state.js` (currently `6`). If the stored version doesn't match, `_templates` resets to `DEFAULT_TEMPLATES`. **Bump this constant whenever `DEFAULT_TEMPLATES` or `MARKET_DEFS` change.**
+**Template versioning**: `TEMPLATE_VERSION` constant in `state.js` (currently `7`). If the stored version doesn't match, `_templates` resets to `DEFAULT_TEMPLATES`. **Bump this constant whenever `DEFAULT_TEMPLATES` or `MARKET_DEFS` change.**
 
 ---
 
