@@ -592,7 +592,10 @@ function applyOffer(fairStr, tplConf, offerTpl, eventStart) {
   const fair = parseFloat(fairStr);
   if (!fair || fair <= 1 || !tplConf?.enabled) return null;
   const tl     = eventStart ? resolveActiveKey(tplConf, eventStart) : null;
-  const margin = tl?.key != null ? tl.key : tplConf.margin;
+  const tlKey  = tl?.key;
+  const margin = tlKey != null
+    ? (typeof tlKey === 'object' ? tlKey.margin : tlKey)
+    : tplConf.margin;
   const ladder = tplConf.ladder || 'eu';
   const min    = tplConf.minOdds ?? offerTpl?.minOdds ?? null;
   const max    = tplConf.maxOdds ?? offerTpl?.maxOdds ?? null;
@@ -676,8 +679,8 @@ export async function buildOfferSnapshot() {
           const selections = [];
           for (const row of market.rows) {
             if (!row.label) continue;
-            // Prefer Shin fair (devigged from Pinnacle prices); fall back to model fair from grid
-            const fair = (parseFloat(row.shinFair) > 1 ? row.shinFair : null) ?? row.modelFair;
+            // Prefer DC model fair (independent of Pinnacle); fall back to Shin devig when model has no data
+            const fair = (parseFloat(row.modelFair) > 1 ? row.modelFair : null) ?? row.shinFair;
             const price = applyOffer(fair, tplConf, offerTpl, eventStart);
             if (price && price > 1) selections.push({ label: row.label, price });
           }
