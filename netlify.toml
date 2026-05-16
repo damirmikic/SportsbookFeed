@@ -61,3 +61,10 @@
   from   = "/api/offer"
   to     = "/.netlify/functions/offer"
   status = 200
+
+[[headers]]
+  for = "/api/*"
+  [headers.values]
+    Access-Control-Allow-Origin  = "http://localhost:5173"
+    Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"
+    Access-Control-Allow-Headers = "Content-Type"
