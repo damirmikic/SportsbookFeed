@@ -367,11 +367,12 @@ function renderEventTable(eventsToRender, { alertMoves = false, crossLeague = fa
     return;
   }
 
-  let html = `<table class="market-table">
+  const isBasketball = state.currentSportId === 4;
+  let html = `<table class="market-table ${isBasketball ? 'basketball-active' : ''}">
     <thead><tr>
       <th style="width:30%">Match</th>
       <th>1</th><th>X</th><th>2</th>
-      <th>Over 2.5</th><th>Under 2.5</th>
+      <th>Over${isBasketball ? '' : ' 2.5'}</th><th>Under${isBasketball ? '' : ' 2.5'}</th>
     </tr></thead><tbody>`;
 
   eventsToRender.forEach(event => {
@@ -404,16 +405,17 @@ function renderEventTable(eventsToRender, { alertMoves = false, crossLeague = fa
 
     let rawOver = '-', rawUnder = '-';
     let oddsOver = '-', oddsUnder = '-';
-    let ouLineLabel = '2.5';
+    let ouLineLabel = isBasketball ? '220.5' : '2.5';
     if (matchPeriod?.overUnder) {
-      const ou25 = matchPeriod.overUnder.find(ou => ou.points === '2.5' || ou.points === 2.5)
-        ?? (event.isManual ? matchPeriod.overUnder[0] : null);
-      if (ou25) {
-        rawOver = ou25.overOdds || ou25.over || '-';
-        rawUnder = ou25.underOdds || ou25.under || '-';
+      const ouMain = matchPeriod.overUnder.find(ou => ou.isMain)
+        || matchPeriod.overUnder.find(ou => ou.points === '2.5' || ou.points === 2.5)
+        || matchPeriod.overUnder[0];
+      if (ouMain) {
+        rawOver = ouMain.overOdds || ouMain.over || '-';
+        rawUnder = ouMain.underOdds || ouMain.under || '-';
         oddsOver = rawOver;
         oddsUnder = rawUnder;
-        if (event.isManual && ou25.points != null) ouLineLabel = String(ou25.points);
+        if (ouMain.points != null) ouLineLabel = String(ouMain.points);
       }
     }
 
@@ -441,12 +443,13 @@ function renderEventTable(eventsToRender, { alertMoves = false, crossLeague = fa
           if (oX > 1) oddsX = oX.toFixed(2);
           if (o2 > 1) odds2 = o2.toFixed(2);
         }
-        const ouConf = getMarketConfig(offerTpl, 'ou25');
+        const ouConf = getMarketConfig(offerTpl, 'ou25') || getMarketConfig(offerTpl, 'asian_tot');
         if (ouConf?.enabled && Array.isArray(matchPeriod.overUnder)) {
-          const ou25 = matchPeriod.overUnder.find(ou => parseFloat(ou.points) === 2.5)
-            ?? (event.isManual ? matchPeriod.overUnder[0] : null);
-          if (ou25) {
-            const shin = calculateShinNoVig([ou25.overOdds, ou25.underOdds]);
+          const ouMain = matchPeriod.overUnder.find(ou => ou.isMain)
+            || matchPeriod.overUnder.find(ou => parseFloat(ou.points) === 2.5)
+            || matchPeriod.overUnder[0];
+          if (ouMain) {
+            const shin = calculateShinNoVig([ouMain.overOdds, ouMain.underOdds]);
             let margin = ouConf.margin;
             const tl = eventStart ? resolveActiveKey(ouConf, eventStart) : null;
             if (tl?.key != null) margin = tl.key;
@@ -467,8 +470,8 @@ function renderEventTable(eventsToRender, { alertMoves = false, crossLeague = fa
       const o1    = getOverride(`${event.id}|ml|${homeTeam}`);
       const oX    = getOverride(`${event.id}|ml|Draw`);
       const o2    = getOverride(`${event.id}|ml|${awayTeam}`);
-      const oOver = getOverride(`${event.id}|ou|Over 2.5`);
-      const oUnd  = getOverride(`${event.id}|ou|Under 2.5`);
+      const oOver = getOverride(`${event.id}|ou|Over ${ouLineLabel}`);
+      const oUnd  = getOverride(`${event.id}|ou|Under ${ouLineLabel}`);
       if (o1)    { odds1     = o1;    m1     = true; }
       if (oX)    { oddsX     = oX;    mX     = true; }
       if (o2)    { odds2     = o2;    m2     = true; }
@@ -655,13 +658,15 @@ export async function buildOfferSnapshot() {
       if (!offerTpl) return null;
 
       let lambdaData = null;
-      try {
-        lambdaData = await calculateTeamLambdasAsync(matchPeriod, h1Period);
-        const ovLambdas = getOverriddenLambdas(event.id);
-        if (ovLambdas && lambdaData) {
-          lambdaData = { ...lambdaData, ft: { lh: ovLambdas.lh, la: ovLambdas.la, rho: ovLambdas.rho, grid: ovLambdas.grid } };
-        }
-      } catch { /* model unavailable — proceed with Pinnacle-only fair prices */ }
+      if (state.currentSportId !== 4) {
+        try {
+          lambdaData = await calculateTeamLambdasAsync(matchPeriod, h1Period);
+          const ovLambdas = getOverriddenLambdas(event.id);
+          if (ovLambdas && lambdaData) {
+            lambdaData = { ...lambdaData, ft: { lh: ovLambdas.lh, la: ovLambdas.la, rho: ovLambdas.rho, grid: ovLambdas.grid } };
+          }
+        } catch { /* model unavailable — proceed with Pinnacle-only fair prices */ }
+      }
 
       const grouped = groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData, {}, homeTeam, awayTeam);
       const markets = [];

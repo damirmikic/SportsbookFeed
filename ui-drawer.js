@@ -266,11 +266,13 @@ export async function renderDrawerMarkets(event) {
     : matchPeriod;
   let lambdaData = null;
   let modelUnavailable = false;
-  try {
-    lambdaData = await calculateTeamLambdasAsync(effectivePeriod, h1Period);
-  } catch (error) {
-    console.warn('Model calculation failed:', error);
-    modelUnavailable = true;
+  if (state.currentSportId !== 4) {
+    try {
+      lambdaData = await calculateTeamLambdasAsync(effectivePeriod, h1Period);
+    } catch (error) {
+      console.warn('Model calculation failed:', error);
+      modelUnavailable = true;
+    }
   }
 
   const ovLambdas          = getOverriddenLambdas(event.id);

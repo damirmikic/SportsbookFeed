@@ -8,6 +8,7 @@ import { openOddsHistory } from './odds-history-ui.js';
 // ── Lambda back-solve ─────────────────────────────────────────────────────────
 
 async function solveLambdasFromOverrides(eventId, changedMarketId, changedRows, drawerEvent) {
+  if (state.currentSportId === 4) return;
   let pH = null, pD = null, pA = null;
   const ouLines = [];
 

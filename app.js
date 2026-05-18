@@ -242,23 +242,66 @@ document.addEventListener('DOMContentLoaded', async () => {
     showSyncFailureBanner();
   }
 
-  const leaguesContainer = document.getElementById('leagues-container');
-  try {
-    const leaguesData = await fetchLeagues();
-    state.allLeagues = leaguesData;
-    renderLeagues(state.allLeagues);
-  } catch (error) {
-    console.error('Error fetching leagues', error);
-    leaguesContainer.innerHTML = `<div class="empty-state" style="color:#ef4444">Failed to load leagues. CORS issue or network error.</div>`;
+  async function loadSportLeagues(sportId) {
+    const leaguesContainer = document.getElementById('leagues-container');
+    leaguesContainer.innerHTML = `<div class="loading-state"><div class="spinner"></div><p>Loading leagues...</p></div>`;
+    
+    let leaguesData = [];
+    try {
+      leaguesData = await fetchLeagues(sportId);
+    } catch (error) {
+      console.error('Error fetching leagues', error);
+      leaguesContainer.innerHTML = `<div class="empty-state" style="color:#ef4444">Failed to load leagues. CORS issue or network error.</div>`;
+      return;
+    }
+
+    try {
+      const manualLeagues = await fetchManualLeagues();
+      state.manualLeagues.splice(0, state.manualLeagues.length, ...manualLeagues);
+      const filteredManual = manualLeagues
+        .filter(l => {
+          if (sportId === 4) {
+            return l.sport === 'basketball' || String(l.name).toLowerCase().includes('basketball') || String(l.name).toLowerCase().includes('nba');
+          } else {
+            return !l.sport || l.sport === 'soccer' || l.sport === 'football' || (!String(l.name).toLowerCase().includes('basketball') && !String(l.name).toLowerCase().includes('nba'));
+          }
+        })
+        .map(l => ({ ...l, isManual: true }));
+      state.allLeagues = [...leaguesData, ...filteredManual];
+      renderLeagues(state.allLeagues);
+    } catch (error) {
+      console.warn('Failed to load custom leagues:', error);
+      state.allLeagues = leaguesData;
+      renderLeagues(state.allLeagues);
+    }
   }
 
-  try {
-    const manualLeagues = await fetchManualLeagues();
-    state.manualLeagues.splice(0, state.manualLeagues.length, ...manualLeagues);
-    const withFlag = manualLeagues.map(l => ({ ...l, isManual: true }));
-    state.allLeagues = [...state.allLeagues, ...withFlag];
-    renderLeagues(state.allLeagues);
-  } catch (error) {
-    console.warn('Failed to load custom leagues:', error);
-  }
+  // Sport tabs switching
+  document.querySelectorAll('.sport-tab').forEach(tab => {
+    tab.addEventListener('click', async () => {
+      if (tab.classList.contains('active')) return;
+      
+      document.querySelectorAll('.sport-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      
+      const sportId = parseInt(tab.dataset.sportId, 10);
+      state.currentSportId = sportId;
+      
+      // Clear league selections
+      state.currentLeagueCode = null;
+      state.currentLeagueName = null;
+      document.getElementById('current-league').textContent = '';
+      document.getElementById('odds-container').innerHTML = '<div class="empty-state">Select a league to view odds</div>';
+      
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+        refreshInterval = null;
+      }
+      
+      await loadSportLeagues(sportId);
+    });
+  });
+
+  // Initial load
+  await loadSportLeagues(state.currentSportId || 29);
 });

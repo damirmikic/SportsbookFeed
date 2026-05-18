@@ -4881,3 +4881,72 @@ button.dtpl-name-link:hover { color: var(--accent-color); }
   display: block; font-size: 0.65rem; color: var(--text-secondary);
   line-height: 1; margin-top: 1px;
 }
+
+/* ── Multi-sport Tabs Selector ── */
+.leagues-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.leagues-title-row h2 {
+  margin: 0 !important;
+  padding: 0 !important;
+  border-bottom: none !important;
+}
+
+.sport-selector {
+  display: flex;
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  padding: 3px;
+  border-radius: 24px;
+  gap: 4px;
+}
+
+.sport-tab {
+  background: transparent;
+  border: none;
+  font-size: 1.1rem;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 0.45;
+  filter: grayscale(100%);
+  padding: 0;
+  outline: none;
+}
+
+.sport-tab:hover {
+  opacity: 0.85;
+  filter: grayscale(30%);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.sport-tab.active {
+  opacity: 1;
+  filter: grayscale(0%);
+  background: var(--surface-color-hover);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* ── Adaptive Basketball columns layout ── */
+.market-table.basketball-active th:nth-child(3),
+.market-table.basketball-active td:nth-child(3) {
+  display: none !important; /* Hide the X (Draw) column when basketball is active */
+}
+
+.market-table.basketball-active th {
+  width: 17.5%;
+}
+.market-table.basketball-active th:first-child {
+  width: 30%;
+}
+

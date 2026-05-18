@@ -1,7 +1,187 @@
 import { calculateShinNoVig, dcAsianHandicapOdds, dcAsianTotalOdds, dcAsianTeamTotalOdds, dcThreeWayHandicapOdds } from './math.js';
 import { buildAllMarkets } from './markets.js';
+import { state } from './state.js';
 
 export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData, detailedAll, homeTeam, awayTeam) {
+  const getPeriodData = (num) => {
+    if (event.periods && !Array.isArray(event.periods)) return event.periods[String(num)];
+    if (event.periodOdds && !Array.isArray(event.periodOdds)) return event.periodOdds[String(num)];
+    const arr = Array.isArray(event.periods) ? event.periods : Object.values(event.periods || {});
+    return arr.find(p => p.num === num || p.periodNumber === num);
+  };
+
+  // --- Basketball (sportId=4) Specific Market Grouping ---
+  if (state.currentSportId === 4) {
+    const bGroups = {
+      'MATCH ODDS': [],
+      'HANDICAP': [],
+      'TOTALS': [],
+      'TEAM TOTALS': [],
+      'HALVES': [],
+      'QUARTERS': []
+    };
+
+    const p0 = getPeriodData(0); // Full Game
+    const p1 = getPeriodData(1); // 1st Half
+    const p2 = getPeriodData(2); // 2nd Half
+
+    // 1. MATCH ODDS (2-way Moneyline)
+    if (p0?.moneyLine || p0?.moneyline) {
+      const ml = p0.moneyLine || p0.moneyline;
+      const odds = [ml.homePrice || ml.home, ml.awayPrice || ml.away];
+      const shin = calculateShinNoVig(odds);
+      bGroups['MATCH ODDS'].push({
+        id: 'ml',
+        name: 'Moneyline',
+        rows: [
+          { label: homeTeam, value: odds[0] || '-', shinFair: shin[0], modelFair: null },
+          { label: awayTeam, value: odds[1] || '-', shinFair: shin[1], modelFair: null }
+        ]
+      });
+    }
+
+    // 2. HANDICAP (Spread)
+    if (p0?.handicap && Array.isArray(p0.handicap)) {
+      const fmt = s => { const n = parseFloat(s); return (n === 0 || isNaN(n)) ? '0' : (n > 0 ? `+${n}` : `${n}`); };
+      let hdps = [...p0.handicap].sort((a, b) => parseFloat(a.homeSpread) - parseFloat(b.homeSpread));
+      // Display best 5 lines
+      let minDiff = Infinity, balancedIdx = 0;
+      hdps.forEach((h, i) => {
+        const diff = Math.abs(parseFloat(h.homeOdds) - parseFloat(h.awayOdds));
+        if (diff < minDiff) { minDiff = diff; balancedIdx = i; }
+      });
+      let startIdx = Math.max(0, balancedIdx - 2);
+      let endIdx = Math.min(hdps.length - 1, startIdx + 4);
+      if (endIdx - startIdx < 4) startIdx = Math.max(0, endIdx - 4);
+      const selected = hdps.slice(startIdx, endIdx + 1);
+
+      const rows = [];
+      selected.forEach(h => {
+        const shin = calculateShinNoVig([h.homeOdds, h.awayOdds]);
+        rows.push({ label: `Home ${fmt(h.homeSpread)}`, value: h.homeOdds, shinFair: shin[0], modelFair: null });
+        rows.push({ label: `Away ${fmt(h.awaySpread)}`, value: h.awayOdds, shinFair: shin[1], modelFair: null });
+      });
+      bGroups['HANDICAP'].push({ id: 'hdp', name: 'Handicap (Best 5)', rows });
+    }
+
+    // 3. TOTALS
+    if (p0?.overUnder && Array.isArray(p0.overUnder)) {
+      let ous = [...p0.overUnder].sort((a, b) => parseFloat(a.points) - parseFloat(b.points));
+      // Display best 5 lines
+      let minDiff = Infinity, balancedIdx = 0;
+      ous.forEach((ou, i) => {
+        const diff = Math.abs(parseFloat(ou.overOdds) - parseFloat(ou.underOdds));
+        if (diff < minDiff) { minDiff = diff; balancedIdx = i; }
+      });
+      let startIdx = Math.max(0, balancedIdx - 2);
+      let endIdx = Math.min(ous.length - 1, startIdx + 4);
+      if (endIdx - startIdx < 4) startIdx = Math.max(0, endIdx - 4);
+      const selected = ous.slice(startIdx, endIdx + 1);
+
+      const rows = [];
+      selected.forEach(ou => {
+        const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
+        rows.push({ label: `Over ${ou.points}`, value: ou.overOdds, shinFair: shin[0], modelFair: null });
+        rows.push({ label: `Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: null });
+      });
+      bGroups['TOTALS'].push({ id: 'ou', name: 'Over/Under (Best 5)', rows });
+    }
+
+    // 4. TEAM TOTALS
+    if (p0?.teamTotal) {
+      const tt = p0.teamTotal;
+      const rows = [];
+      if (tt.home && Array.isArray(tt.home.overUnder)) {
+        tt.home.overUnder.forEach(ou => {
+          const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
+          rows.push({ label: `Home Over ${ou.points}`, value: ou.overOdds, shinFair: shin[0], modelFair: null });
+          rows.push({ label: `Home Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: null });
+        });
+      }
+      if (tt.away && Array.isArray(tt.away.overUnder)) {
+        tt.away.overUnder.forEach(ou => {
+          const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
+          rows.push({ label: `Away Over ${ou.points}`, value: ou.overOdds, shinFair: shin[0], modelFair: null });
+          rows.push({ label: `Away Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: null });
+        });
+      }
+      if (rows.length) {
+        bGroups['TEAM TOTALS'].push({ id: 'tt', name: 'Team Totals', rows });
+      }
+    }
+
+    // 5. HALVES (1st Half / 2nd Half)
+    const addHalfMarkets = (p, halfName, idPrefix) => {
+      if (!p) return;
+      const rows = [];
+      if (p.moneyLine || p.moneyline) {
+        const ml = p.moneyLine || p.moneyline;
+        const shin = calculateShinNoVig([ml.homePrice || ml.home, ml.awayPrice || ml.away]);
+        rows.push({ label: `${halfName} Home`, value: ml.homePrice || ml.home || '-', shinFair: shin[0], modelFair: null });
+        rows.push({ label: `${halfName} Away`, value: ml.awayPrice || ml.away || '-', shinFair: shin[1], modelFair: null });
+      }
+      if (p.handicap && Array.isArray(p.handicap)) {
+        const h = p.handicap[0]; // pick main
+        if (h) {
+          const shin = calculateShinNoVig([h.homeOdds, h.awayOdds]);
+          rows.push({ label: `${halfName} Home Spread ${h.homeSpread > 0 ? '+' : ''}${h.homeSpread}`, value: h.homeOdds, shinFair: shin[0], modelFair: null });
+          rows.push({ label: `${halfName} Away Spread ${h.awaySpread > 0 ? '+' : ''}${h.awaySpread}`, value: h.awayOdds, shinFair: shin[1], modelFair: null });
+        }
+      }
+      if (p.overUnder && Array.isArray(p.overUnder)) {
+        const ou = p.overUnder[0]; // pick main
+        if (ou) {
+          const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
+          rows.push({ label: `${halfName} Over ${ou.points}`, value: ou.overOdds, shinFair: shin[0], modelFair: null });
+          rows.push({ label: `${halfName} Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: null });
+        }
+      }
+      if (rows.length) {
+        bGroups['HALVES'].push({ id: `${idPrefix}_main`, name: `${halfName} Markets`, rows });
+      }
+    };
+    addHalfMarkets(p1, '1st Half', 'h1');
+    addHalfMarkets(p2, '2nd Half', 'h2');
+
+    // 6. QUARTERS (Q1 - Q4)
+    const addQuarterMarkets = (pNum, qName, idPrefix) => {
+      const p = getPeriodData(pNum);
+      if (!p) return;
+      const rows = [];
+      if (p.moneyLine || p.moneyline) {
+        const ml = p.moneyLine || p.moneyline;
+        const shin = calculateShinNoVig([ml.homePrice || ml.home, ml.awayPrice || ml.away]);
+        rows.push({ label: `${qName} Home`, value: ml.homePrice || ml.home || '-', shinFair: shin[0], modelFair: null });
+        rows.push({ label: `${qName} Away`, value: ml.awayPrice || ml.away || '-', shinFair: shin[1], modelFair: null });
+      }
+      if (p.handicap && Array.isArray(p.handicap)) {
+        const h = p.handicap[0];
+        if (h) {
+          const shin = calculateShinNoVig([h.homeOdds, h.awayOdds]);
+          rows.push({ label: `${qName} Home Spread ${h.homeSpread > 0 ? '+' : ''}${h.homeSpread}`, value: h.homeOdds, shinFair: shin[0], modelFair: null });
+          rows.push({ label: `${qName} Away Spread ${h.awaySpread > 0 ? '+' : ''}${h.awaySpread}`, value: h.awayOdds, shinFair: shin[1], modelFair: null });
+        }
+      }
+      if (p.overUnder && Array.isArray(p.overUnder)) {
+        const ou = p.overUnder[0];
+        if (ou) {
+          const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
+          rows.push({ label: `${qName} Over ${ou.points}`, value: ou.overOdds, shinFair: shin[0], modelFair: null });
+          rows.push({ label: `${qName} Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: null });
+        }
+      }
+      if (rows.length) {
+        bGroups['QUARTERS'].push({ id: `${idPrefix}_main`, name: `${qName} Markets`, rows });
+      }
+    };
+    addQuarterMarkets(3, '1st Quarter', 'q1');
+    addQuarterMarkets(4, '2nd Quarter', 'q2');
+    addQuarterMarkets(5, '3rd Quarter', 'q3');
+    addQuarterMarkets(6, '4th Quarter', 'q4');
+
+    return bGroups;
+  }
+
   const groups = {
     'MATCH ODDS': [],
     'HANDICAP': [],

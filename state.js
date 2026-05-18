@@ -48,6 +48,7 @@ export const state = {
   manualLeagues: [],
   activeTraders: [],
   favorites: readJson('favoriteLeagues', []),
+  currentSportId: 29,
   currentLeagueCode: null,
   currentLeagueName: null,
   previousOdds: {},
