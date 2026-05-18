@@ -88,27 +88,62 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
     }
 
     // 4. TEAM TOTALS
-    if (p0?.teamTotal) {
-      const tt = p0.teamTotal;
-      const rows = [];
-      if (tt.home && Array.isArray(tt.home.overUnder)) {
-        tt.home.overUnder.forEach(ou => {
+    const detailedP0 = detailedAll?.normal?.periods?.['0'];
+    const detailedP1 = detailedAll?.normal?.periods?.['1'];
+    const detailedP2 = detailedAll?.normal?.periods?.['2'];
+
+    const tt = p0?.teamTotals || p0?.teamTotal || detailedP0?.teamTotals || detailedP0?.teamTotal;
+    if (tt) {
+      const processTeamTotal = (teamTT, labelPrefix, teamName) => {
+        let ousArray = null;
+        if (Array.isArray(teamTT)) ousArray = teamTT;
+        else if (teamTT?.overUnder) ousArray = teamTT.overUnder;
+        else if (teamTT?.points !== undefined) ousArray = [teamTT];
+        if (!ousArray || !Array.isArray(ousArray)) return;
+
+        const rows = [];
+        const ous = [...ousArray].sort((a, b) => parseFloat(a.points) - parseFloat(b.points));
+        ous.forEach(ou => {
           const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
-          rows.push({ label: `Home Over ${ou.points}`, value: ou.overOdds, shinFair: shin[0], modelFair: null });
-          rows.push({ label: `Home Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: null });
+          rows.push({ label: `Over ${ou.points}`,  value: ou.overOdds,  shinFair: shin[0], modelFair: null });
+          rows.push({ label: `Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: null });
         });
-      }
-      if (tt.away && Array.isArray(tt.away.overUnder)) {
-        tt.away.overUnder.forEach(ou => {
-          const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
-          rows.push({ label: `Away Over ${ou.points}`, value: ou.overOdds, shinFair: shin[0], modelFair: null });
-          rows.push({ label: `Away Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: null });
-        });
-      }
-      if (rows.length) {
-        bGroups['TEAM TOTALS'].push({ id: 'tt', name: 'Team Totals', rows });
-      }
+        if (rows.length > 0) {
+          bGroups['TEAM TOTALS'].push({ id: `tt_${labelPrefix}`, name: `${teamName} Totals`, rows });
+        }
+      };
+      processTeamTotal(tt.homeLines || tt.home, 'home', homeTeam);
+      processTeamTotal(tt.awayLines || tt.away, 'away', awayTeam);
     }
+
+    // Add Half-level Team Totals if present
+    const addHalfTeamTotals = (p, detailedP, halfName, idPrefix) => {
+      const ttHalf = p?.teamTotals || p?.teamTotal || detailedP?.teamTotals || detailedP?.teamTotal;
+      if (ttHalf) {
+        const processHalfTeamTotal = (teamTT, labelPrefix, teamName) => {
+          let ousArray = null;
+          if (Array.isArray(teamTT)) ousArray = teamTT;
+          else if (teamTT?.overUnder) ousArray = teamTT.overUnder;
+          else if (teamTT?.points !== undefined) ousArray = [teamTT];
+          if (!ousArray || !Array.isArray(ousArray)) return;
+
+          const rows = [];
+          const ous = [...ousArray].sort((a, b) => parseFloat(a.points) - parseFloat(b.points));
+          ous.forEach(ou => {
+            const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
+            rows.push({ label: `${halfName} Over ${ou.points}`,  value: ou.overOdds,  shinFair: shin[0], modelFair: null });
+            rows.push({ label: `${halfName} Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: null });
+          });
+          if (rows.length > 0) {
+            bGroups['TEAM TOTALS'].push({ id: `tt_${idPrefix}_${labelPrefix}`, name: `${teamName} ${halfName} Totals`, rows });
+          }
+        };
+        processHalfTeamTotal(ttHalf.homeLines || ttHalf.home, 'home', homeTeam);
+        processHalfTeamTotal(ttHalf.awayLines || ttHalf.away, 'away', awayTeam);
+      }
+    };
+    addHalfTeamTotals(p1, detailedP1, '1st Half', 'h1');
+    addHalfTeamTotals(p2, detailedP2, '2nd Half', 'h2');
 
     // 5. HALVES (1st Half / 2nd Half)
     const addHalfMarkets = (p, halfName, idPrefix) => {
