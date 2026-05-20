@@ -18,9 +18,10 @@ export async function fetchLeagues(sportId = (state.currentSportId || 29)) {
 }
 
 export async function fetchOdds(leagueCode, sportId = (state.currentSportId || 29)) {
+  const encodedLeagueCode = encodeURIComponent(leagueCode);
   const url = IS_LOCAL
-    ? `${PINNACLE_BASE}/odds/league?sportId=${sportId}&oddsType=1&version=0&periodNum=-1&locale=en_US&leagueCode=${leagueCode}&isHlE=true&isLive=false&eventType=0&withCredentials=true`
-    : `/api/odds/${leagueCode}?sportId=${sportId}&oddsType=1&version=0&periodNum=-1&locale=en_US&isHlE=true&isLive=false&eventType=0&withCredentials=true`;
+    ? `${PINNACLE_BASE}/odds/league?sportId=${sportId}&oddsType=1&version=0&periodNum=-1&locale=en_US&leagueCode=${encodedLeagueCode}&isHlE=true&isLive=false&eventType=0&withCredentials=true`
+    : `/api/odds?leagueCode=${encodedLeagueCode}&sportId=${sportId}&oddsType=1&version=0&periodNum=-1&locale=en_US&isHlE=true&isLive=false&eventType=0&withCredentials=true`;
   const response = await fetch(url);
   if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
   const text = await response.text();

@@ -15,13 +15,20 @@ function json(statusCode, body) {
   };
 }
 
+function leagueCodeFromPath(path = '') {
+  const marker = '/.netlify/functions/odds/';
+  if (!path.includes(marker)) return null;
+  const code = path.slice(path.indexOf(marker) + marker.length).split('/')[0];
+  return code ? decodeURIComponent(code) : null;
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 204, headers: DEFAULT_HEADERS, body: '' };
   }
 
   const params = event.queryStringParameters || {};
-  const leagueCode = params.leagueCode || params.code;
+  const leagueCode = params.leagueCode || params.code || leagueCodeFromPath(event.path);
 
   if (!leagueCode) {
     return json(400, { error: 'leagueCode required' });

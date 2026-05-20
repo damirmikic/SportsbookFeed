@@ -17,8 +17,14 @@
   force  = true
 
 [[redirects]]
+  from   = "/api/odds"
+  to     = "/.netlify/functions/odds"
+  status = 200
+  force  = true
+
+[[redirects]]
   from   = "/api/odds/:code"
-  to     = "/.netlify/functions/odds?leagueCode=:code"
+  to     = "/.netlify/functions/odds/:code"
   status = 200
   force  = true
 
