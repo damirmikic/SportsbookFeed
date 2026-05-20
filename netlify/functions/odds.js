@@ -22,6 +22,10 @@ function leagueCodeFromPath(path = '') {
   return code ? decodeURIComponent(code) : null;
 }
 
+function emptyOddsResponse(leagueCode, extra = {}) {
+  return json(200, { events: [], leagueCode, ...extra });
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 204, headers: DEFAULT_HEADERS, body: '' };
@@ -58,8 +62,8 @@ exports.handler = async (event) => {
 
     if (!response.ok) {
       console.warn(`Pinnacle odds returned ${response.status} for league ${leagueCode}: ${text.slice(0, 300)}`);
-      if (response.status >= 500) {
-        return json(200, { events: [], upstreamStatus: response.status, leagueCode });
+      if ([403, 404, 429].includes(response.status) || response.status >= 500) {
+        return emptyOddsResponse(leagueCode, { upstreamStatus: response.status });
       }
       return {
         statusCode: response.status,
@@ -75,6 +79,6 @@ exports.handler = async (event) => {
     };
   } catch (error) {
     console.error('Pinnacle odds proxy failed:', error);
-    return json(200, { events: [], upstreamError: error.message, leagueCode });
+    return emptyOddsResponse(leagueCode, { upstreamError: error.message });
   }
 };
