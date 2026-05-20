@@ -6,36 +6,51 @@ const IS_LOCAL = location.hostname === 'localhost' || location.hostname === '127
 
 const PINNACLE_BASE = 'https://www.pinnacle888.com/sports-service/sv/euro';
 
+async function fetchJson(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+  const text = await response.text();
+  return text ? JSON.parse(text) : {};
+}
+
 export async function fetchLeagues(sportId = (state.currentSportId || 29)) {
   const url = IS_LOCAL
     ? `${PINNACLE_BASE}/leagues?sportId=${sportId}&locale=en_US&withCredentials=true`
     : `/api/leagues?sportId=${sportId}&locale=en_US&withCredentials=true`;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-  const text = await response.text();
-  const leaguesData = text ? JSON.parse(text) : {};
+  const leaguesData = await fetchJson(url);
   return leaguesData.leagues || leaguesData;
 }
 
 export async function fetchOdds(leagueCode, sportId = (state.currentSportId || 29)) {
   const encodedLeagueCode = encodeURIComponent(leagueCode);
-  const url = IS_LOCAL
-    ? `${PINNACLE_BASE}/odds/league?sportId=${sportId}&oddsType=1&version=0&periodNum=-1&locale=en_US&leagueCode=${encodedLeagueCode}&isHlE=true&isLive=false&eventType=0&withCredentials=true`
-    : `/api/odds?leagueCode=${encodedLeagueCode}&sportId=${sportId}&oddsType=1&version=0&periodNum=-1&locale=en_US&isHlE=true&isLive=false&eventType=0&withCredentials=true`;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-  const text = await response.text();
-  return text ? JSON.parse(text) : {};
+  const directUrl = `${PINNACLE_BASE}/odds/league?sportId=${sportId}&oddsType=1&version=0&periodNum=-1&locale=en_US&leagueCode=${encodedLeagueCode}&isHlE=true&isLive=false&eventType=0&withCredentials=true`;
+  if (IS_LOCAL) return fetchJson(directUrl);
+
+  const proxyUrl = `/api/odds?leagueCode=${encodedLeagueCode}&sportId=${sportId}&oddsType=1&version=0&periodNum=-1&locale=en_US&isHlE=true&isLive=false&eventType=0&withCredentials=true`;
+  try {
+    const data = await fetchJson(proxyUrl);
+    if (data?.upstreamStatus || data?.upstreamError) {
+      return await fetchJson(directUrl).catch((error) => {
+        console.warn('Direct odds fallback failed:', error);
+        return data;
+      });
+    }
+    return data;
+  } catch (proxyError) {
+    try {
+      return await fetchJson(directUrl);
+    } catch (directError) {
+      console.warn('Direct odds fallback failed:', directError);
+      throw proxyError;
+    }
+  }
 }
 
 export async function fetchEventOdds(eventId) {
   const url = IS_LOCAL
     ? `${PINNACLE_BASE}/odds/event?eventId=${eventId}&oddsType=1&locale=en_US&withCredentials=true`
     : `/api/odds/event/${eventId}?oddsType=1&locale=en_US&withCredentials=true`;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-  const text = await response.text();
-  return text ? JSON.parse(text) : {};
+  return fetchJson(url);
 }
 
 async function jsonRequest(url, options = {}) {
