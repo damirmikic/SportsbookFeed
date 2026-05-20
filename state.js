@@ -60,6 +60,7 @@ export const state = {
   sharedSyncLastPushedAt: null,
   sharedSyncStatus: 'unknown',
   expandedGroups: readJson('expandedGroups', []),
+  collapsedGroups: readJson('collapsedGroups', []),
   currentTraderId: currentTraderProfile?.id || null,
   currentTraderProfile,
 };
@@ -295,6 +296,8 @@ export function hydrateTraderState(traderState = {}) {
 
     replaceArray(state.expandedGroups, traderState.expandedGroups || []);
     writeJson('expandedGroups', state.expandedGroups);
+
+    replaceArray(state.collapsedGroups, readJson('collapsedGroups', []));
   });
 }
 
@@ -309,10 +312,19 @@ export function toggleFavorite(code) {
   persistTraderEntity('favorites', state.favorites);
 }
 
-export function toggleGroup(groupName) {
+export function toggleGroup(groupName, currentlyExpanded = state.expandedGroups.includes(groupName)) {
   const index = state.expandedGroups.indexOf(groupName);
-  if (index > -1) state.expandedGroups.splice(index, 1);
-  else state.expandedGroups.push(groupName);
+  const collapsedIndex = state.collapsedGroups.indexOf(groupName);
+
+  if (currentlyExpanded) {
+    if (index > -1) state.expandedGroups.splice(index, 1);
+    if (collapsedIndex === -1) state.collapsedGroups.push(groupName);
+  } else {
+    if (index === -1) state.expandedGroups.push(groupName);
+    if (collapsedIndex > -1) state.collapsedGroups.splice(collapsedIndex, 1);
+  }
+
+  writeJson('collapsedGroups', state.collapsedGroups);
   persistTraderEntity('prefs', state.expandedGroups);
 }
 

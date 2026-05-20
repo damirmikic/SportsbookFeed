@@ -55,11 +55,12 @@ export function renderLeagues(leaguesToRender) {
   sortedCountries.forEach(country => {
     // Expand when: searching by league/country, or when there's an active league in this group
     const hasActiveLeague = groups[country].some(l =>
-      (l.code || l.leagueCode || l.id) === state.currentLeagueCode
+      String(l.code || l.leagueCode || l.id) === String(state.currentLeagueCode)
     );
+    const isExplicitlyCollapsed = state.collapsedGroups.includes(country);
     const isExpanded = state.expandedGroups.includes(country)
       || (searchTerm !== '' && !teamSearch)
-      || hasActiveLeague;
+      || (hasActiveLeague && !isExplicitlyCollapsed);
     leaguesContainer.appendChild(createLeagueGroup(country, groups[country], isExpanded));
   });
 
@@ -83,7 +84,7 @@ function createLeagueGroup(country, leagues, isExpanded) {
   `;
   header.onclick = (e) => {
     e.stopPropagation();
-    toggleGroup(country);
+    toggleGroup(country, isExpanded);
     renderLeagues(state.allLeagues);
   };
 
