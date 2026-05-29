@@ -22,6 +22,23 @@ import { resolveTemplate } from './pricing.js';
 // ── Filter state ──────────────────────────────────────────
 const filters = { category: '', tournament: '', template: '', unassigned: false };
 
+// ── Active sport ──────────────────────────────────────────
+// Tracks which admin section is currently being rendered ('soccer' | 'basketball').
+let currentAdminSport = 'soccer';
+
+function getAdminLeagues() {
+  if (currentAdminSport === 'basketball') return state.basketballLeagues.length ? state.basketballLeagues : state.allLeagues.filter(l => {
+    const n = (l.name || l.leagueName || '').toLowerCase();
+    return l.sport === 'basketball' || n.includes('basketball') || n.includes('nba');
+  });
+  return state.soccerLeagues.length ? state.soccerLeagues : state.allLeagues.filter(l => {
+    const n = (l.name || l.leagueName || '').toLowerCase();
+    return !l.sport || l.sport === 'soccer' || l.sport === 'football' || (!n.includes('basketball') && !n.includes('nba'));
+  });
+}
+
+const SPORT_LABEL = { soccer: 'Soccer', basketball: 'Basketball' };
+
 // ── Helpers ───────────────────────────────────────────────
 function getCountry(league) {
   const n = league.name || league.leagueName || '';
@@ -218,7 +235,7 @@ async function refreshActiveTraders() {
 }
 
 function filteredLeagues() {
-  return state.allLeagues.filter(l => {
+  return getAdminLeagues().filter(l => {
     const s = getLeagueSetting(getCode(l));
     if (filters.category && getCountry(l) !== filters.category) return false;
     if (filters.tournament && !getLeagueName(l).toLowerCase().includes(filters.tournament.toLowerCase())) return false;
@@ -230,12 +247,13 @@ function filteredLeagues() {
 
 // ── HTML builders ─────────────────────────────────────────
 function filterBarHTML(countries, templates) {
+  const sportLeagues = getAdminLeagues();
   return `
     <div class="admin-filter-bar">
       <div class="admin-filters-left">
-        <div class="admin-sport-pill">
+        <div class="admin-sport-pill admin-sport-pill--${currentAdminSport}">
           <span class="asp-label">SPORT</span>
-          <span class="asp-badge">1</span>
+          <span class="asp-badge asp-badge--${currentAdminSport}">${SPORT_LABEL[currentAdminSport] || currentAdminSport}</span>
           <span class="asp-check">✓</span>
         </div>
         <select class="admin-sel" id="a-cat">
@@ -244,7 +262,7 @@ function filterBarHTML(countries, templates) {
         </select>
         <select class="admin-sel" id="a-trn">
           <option value="">TOURNAMENT</option>
-          ${state.allLeagues.map(l => {
+          ${sportLeagues.map(l => {
             const n = getLeagueName(l);
             return `<option value="${n}" ${filters.tournament === n ? 'selected' : ''}>${n}</option>`;
           }).join('')}
@@ -272,10 +290,11 @@ function chipsBarHTML(templates) {
     const t = templates.find(t => t.id === filters.template);
     if (t) extras.push({ key: 'template', label: t.name });
   }
+  const sportLabel = SPORT_LABEL[currentAdminSport] || currentAdminSport;
   return `
     <div class="admin-chips-bar">
       <button class="admin-clear-btn" id="a-clear">REMOVE ALL FILTERS</button>
-      <span class="admin-chip">× Soccer</span>
+      <span class="admin-chip admin-chip--sport">× ${sportLabel}</span>
       ${extras.map(e => `<span class="admin-chip admin-chip-rm" data-key="${e.key}">× ${e.label}</span>`).join('')}
     </div>`;
 }
@@ -303,10 +322,11 @@ function rowHTML(league, templates) {
   const readonly = !canDo('manage-leagues');
   const approvalThreshold = s.approvalThresholdBet ?? '';
 
+  const sportLabel = SPORT_LABEL[currentAdminSport] || currentAdminSport;
   return `
     <tr class="admin-row" data-code="${code}">
       <td class="atd-name">
-        <span class="atd-crumb">Soccer › ${getCountry(league)}</span>
+        <span class="atd-crumb">${sportLabel} › ${getCountry(league)}</span>
         <span class="atd-title">${getLeagueName(league)}</span>
         <button class="hn-edit-btn ${s.handoverNote ? 'has-note' : ''}" data-code="${code}" title="Shift note">📝</button>
       </td>
@@ -329,7 +349,7 @@ function rowHTML(league, templates) {
           <button class="act-seg ${act === 'off'  ? 'act-inactive' : ''}" data-code="${code}" data-m="off" ${readonly ? 'disabled title="Senior access required"' : ''}>OFF</button>
         </div>
       </td>
-      <td class="atd-bk">Soccer</td>
+      <td class="atd-bk">${sportLabel}</td>
       <td class="atd-af">
         ${alertSliderHTML(code, af)}
         <div class="approval-threshold-wrap">
@@ -488,12 +508,21 @@ function closeFeedTimelineModal() {
 }
 
 // ── Main render ───────────────────────────────────────────
-export function renderAdminPanel() {
+export function renderAdminPanel(sport) {
+  // Persist the sport context so all helper functions can read it.
+  if (sport) currentAdminSport = sport;
+
+  // When the sport changes, reset sport-specific filters that no longer make sense.
+  if (sport) Object.assign(filters, { category: '', tournament: '', template: '', unassigned: false });
+
   const panel = document.getElementById('admin-panel');
   if (!panel) return;
 
-  const templates = getTemplates();
-  const countries = [...new Set(state.allLeagues.map(getCountry))].sort();
+  const allTemplates = getTemplates();
+  // Filter templates to only show those relevant to the current sport.
+  const templates = allTemplates.filter(t => !t.sport || t.sport === currentAdminSport);
+  const sportLeagues = getAdminLeagues();
+  const countries = [...new Set(sportLeagues.map(getCountry))].sort();
   const leagues   = filteredLeagues();
 
   panel.innerHTML =

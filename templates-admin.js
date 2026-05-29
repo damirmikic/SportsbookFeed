@@ -20,7 +20,7 @@ const LINES_MARKETS = new Set([
 ]);
 
 // ── Filter state ──────────────────────────────────────────
-const tplFilters = { type: '', activeOnly: true };
+const tplFilters = { type: '', sport: '', activeOnly: true };
 
 // ── Helpers ───────────────────────────────────────────────
 function uid() {
@@ -29,6 +29,7 @@ function uid() {
 
 function getFiltered() {
   return getTemplates().filter(t => {
+    if (tplFilters.sport && t.sport !== tplFilters.sport) return false;
     if (tplFilters.type && t.type !== tplFilters.type) return false;
     if (tplFilters.activeOnly && !t.active) return false;
     return true;
@@ -43,12 +44,18 @@ function typeLabel(type) {
   return { prematch: 'Pre-match', live: 'Live', both: 'Both' }[type] || type;
 }
 
-// Returns the active market definition list:
+// Returns the active market definition list filtered by sport:
 // discovered markets from the feed (if any), else MARKET_DEFS fallback.
-function getActiveMarketDefs() {
+function getActiveMarketDefs(sport) {
   const disc = getDiscoveredMarkets();
   if (disc?.markets?.length) return disc.markets;
-  return MARKET_DEFS.map(d => ({ id: d.id, group: d.group, name: d.name }));
+  const defs = MARKET_DEFS.map(d => ({ id: d.id, group: d.group, name: d.name, sports: d.sports }));
+  if (!sport || sport === 'soccer') {
+    // Soccer (or no filter): show everything except basketball-exclusive markets
+    return defs.filter(d => !d.sports || d.sports.includes('soccer'));
+  }
+  // Basketball: only show markets that explicitly list basketball
+  return defs.filter(d => d.sports && d.sports.includes(sport));
 }
 
 // ── Feature helpers ───────────────────────────────────────
@@ -229,7 +236,11 @@ function filterBarHTML(canManage = true) {
   return `
     <div class="tpl-filter-bar">
       <div class="tpl-filters-left">
-        <select class="admin-sel" id="tf-sport"><option value="soccer">SPORT</option></select>
+        <select class="admin-sel" id="tf-sport">
+          <option value="">ALL SPORTS</option>
+          <option value="soccer"     ${tplFilters.sport === 'soccer'     ? 'selected' : ''}>Soccer</option>
+          <option value="basketball" ${tplFilters.sport === 'basketball' ? 'selected' : ''}>Basketball</option>
+        </select>
         <select class="admin-sel" id="tf-type">
           <option value="">TYPE</option>
           <option value="prematch" ${tplFilters.type === 'prematch' ? 'selected' : ''}>Pre-match</option>
@@ -253,6 +264,7 @@ function chipsBarHTML() {
   const chips = [];
   if (tplFilters.activeOnly) chips.push({ key: 'activeOnly', label: 'Active Templates' });
   if (tplFilters.type)       chips.push({ key: 'type', label: typeLabel(tplFilters.type) });
+  if (tplFilters.sport)      chips.push({ key: 'sport', label: tplFilters.sport === 'basketball' ? 'Basketball' : 'Soccer' });
   return `
     <div class="admin-chips-bar">
       <button class="admin-clear-btn" id="tf-clear">REMOVE ALL FILTERS</button>
@@ -285,7 +297,7 @@ function templateRowHTML(tpl, canManage = true) {
           <button class="tpl-rename-x"  data-id="${tpl.id}" title="Cancel">✕</button>
         </div>
       </td>
-      <td><span class="tpl-tag">Soccer</span></td>
+      <td><span class="tpl-tag tpl-tag-sport tpl-tag-sport--${tpl.sport || 'soccer'}">${tpl.sport === 'basketball' ? 'Basketball' : 'Soccer'}</span></td>
       <td><span class="tpl-tag tpl-tag-type">${typeLabel(tpl.type)}</span></td>
       <td class="tpl-td-markets">
         <span class="tpl-markets-count">${enabled}</span>
@@ -546,7 +558,8 @@ function collectMarketsFromForm(backdrop) {
 function formModalHTML(tpl) {
   const isEdit    = !!tpl;
   const disc      = getDiscoveredMarkets();
-  const mktDefs   = getActiveMarketDefs();
+  const selectedSport = tpl?.sport || 'soccer';
+  const mktDefs   = getActiveMarketDefs(selectedSport);
   const sourceMsg = disc
     ? `<span class="mkt-source-badge">📡 ${disc.source.matchName} — ${mktDefs.length} markets</span>`
     : `<span class="mkt-source-badge mkt-source-default">Default market set · ${mktDefs.length} markets</span>`;
@@ -573,7 +586,8 @@ function formModalHTML(tpl) {
               <div class="tpl-field">
                 <label class="tpl-label">Sport</label>
                 <select class="tpl-select" id="tf-sport-sel">
-                  <option value="soccer">Soccer</option>
+                  <option value="soccer"     ${selectedSport === 'soccer'     ? 'selected' : ''}>Soccer</option>
+                  <option value="basketball" ${selectedSport === 'basketball' ? 'selected' : ''}>Basketball</option>
                 </select>
               </div>
               <div class="tpl-field">
@@ -1284,10 +1298,11 @@ async function loadMarketsFromFeed(backdrop) {
 
 // ── Section event wiring ──────────────────────────────────
 function wireSectionEvents(panel, canManage = true) {
+  panel.querySelector('#tf-sport').addEventListener('change',  e => { tplFilters.sport      = e.target.value;   renderTemplatesSection(); });
   panel.querySelector('#tf-type').addEventListener('change',   e => { tplFilters.type      = e.target.value;   renderTemplatesSection(); });
   panel.querySelector('#tf-active').addEventListener('change', e => { tplFilters.activeOnly = e.target.checked; renderTemplatesSection(); });
   panel.querySelector('#tf-clear').addEventListener('click', () => {
-    Object.assign(tplFilters, { type: '', activeOnly: false });
+    Object.assign(tplFilters, { type: '', sport: '', activeOnly: false });
     renderTemplatesSection();
   });
   panel.querySelectorAll('.admin-chip-rm').forEach(chip =>
@@ -1387,6 +1402,21 @@ function wireFormEvents(backdrop, editingTpl) {
 
   // Market table events
   wireMarketEvents(backdrop);
+
+  // When sport changes, re-render the market cards with sport-specific market defs
+  backdrop.querySelector('#tf-sport-sel')?.addEventListener('change', e => {
+    const sport = e.target.value;
+    const currentConfig = collectMarketsFromForm(backdrop);
+    const newDefs = getActiveMarketDefs(sport);
+    const wrap = backdrop.querySelector('#mkt-cards-wrap');
+    if (wrap) {
+      wrap.innerHTML = marketConfigHTML(currentConfig, newDefs);
+      wireMarketEvents(backdrop);
+    }
+    // Update the source badge count
+    const badge = backdrop.querySelector('.mkt-source-badge');
+    if (badge) badge.textContent = badge.textContent.replace(/\d+ markets/, `${newDefs.length} markets`);
+  });
 
   // Load from Feed
   backdrop.querySelector('#tpl-discover-btn')?.addEventListener('click', () => loadMarketsFromFeed(backdrop));

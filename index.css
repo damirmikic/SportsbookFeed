@@ -1774,6 +1774,45 @@ body {
 
 .asp-check { font-size: 0.75rem; }
 
+/* Basketball sport pill variant */
+.admin-sport-pill--basketball {
+  background: linear-gradient(135deg, #f97316, #ea580c);
+  color: #fff;
+}
+.admin-sport-pill--basketball .asp-badge {
+  background: rgba(0,0,0,0.25);
+  color: #fed7aa;
+  width: auto;
+  height: auto;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+/* Template table sport tags */
+.tpl-tag-sport { font-weight: 700; }
+.tpl-tag-sport--soccer {
+  background: rgba(16,185,129,0.15);
+  color: #34d399;
+  border: 1px solid rgba(16,185,129,0.3);
+}
+.tpl-tag-sport--basketball {
+  background: rgba(249,115,22,0.15);
+  color: #fb923c;
+  border: 1px solid rgba(249,115,22,0.3);
+}
+
+/* Sport chip in admin chips bar */
+.admin-chip--sport {
+  background: rgba(249,115,22,0.12);
+  border-color: rgba(249,115,22,0.3);
+  color: #fb923c;
+  font-weight: 600;
+}
+
+
 /* Filter selects */
 .admin-sel {
   background: var(--surface-color);

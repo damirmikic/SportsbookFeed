@@ -45,6 +45,8 @@ const currentTraderProfile = getValidTraderSession();
 export const state = {
   activeEvents: [],
   allLeagues: [],
+  soccerLeagues: [],
+  basketballLeagues: [],
   manualLeagues: [],
   activeTraders: [],
   favorites: readJson('favoriteLeagues', []),
@@ -502,17 +504,17 @@ export const TIMELINE_NODES = [
 
 export const MARKET_DEFS = [
   // MATCH ODDS
-  { id: '1x2',        group: 'MATCH ODDS', name: 'Match Result',          outcomes: 3,  defaultMargin: 5.5,  defaultMaxBet: 5000,  defaultEnabled: true  },
+  { id: '1x2',        group: 'MATCH ODDS', name: 'Match Result',          outcomes: 3,  defaultMargin: 5.5,  defaultMaxBet: 5000,  defaultEnabled: true, sports: ['soccer', 'basketball'] },
   { id: 'dc',         group: 'MATCH ODDS', name: 'Double Chance',         outcomes: 3,  defaultMargin: 6.5,  defaultMaxBet: 2000,  defaultEnabled: true  },
   { id: 'dnb',        group: 'MATCH ODDS', name: 'Draw No Bet',           outcomes: 2,  defaultMargin: 5.5,  defaultMaxBet: 3000,  defaultEnabled: true  },
   // HANDICAP
-  { id: 'asian_hcp',  group: 'HANDICAP',  name: 'Asian Handicap',        outcomes: 2,  defaultMargin: 3.5,  defaultMaxBet: 8000,  defaultEnabled: true  },
+  { id: 'asian_hcp',  group: 'HANDICAP',  name: 'Asian Handicap',        outcomes: 2,  defaultMargin: 3.5,  defaultMaxBet: 8000,  defaultEnabled: true, sports: ['soccer', 'basketball'] },
   { id: 'asian_tot',  group: 'HANDICAP',  name: 'Asian Total O/U',       outcomes: 2,  defaultMargin: 4.0,  defaultMaxBet: 5000,  defaultEnabled: false },
   { id: '3way_hdp',   group: 'HANDICAP',  name: '3-Way Handicap',        outcomes: 3,  defaultMargin: 8.0,  defaultMaxBet: 1000,  defaultEnabled: false },
   // GOALS
   { id: 'ou05',       group: 'GOALS',     name: 'Over/Under 0.5',        outcomes: 2,  defaultMargin: 7.0,  defaultMaxBet: 1500,  defaultEnabled: false },
   { id: 'ou15',       group: 'GOALS',     name: 'Over/Under 1.5',        outcomes: 2,  defaultMargin: 6.0,  defaultMaxBet: 2000,  defaultEnabled: false },
-  { id: 'ou25',       group: 'GOALS',     name: 'Over/Under 2.5',        outcomes: 2,  defaultMargin: 5.0,  defaultMaxBet: 3000,  defaultEnabled: true  },
+  { id: 'ou25',       group: 'GOALS',     name: 'Over/Under 2.5',        outcomes: 2,  defaultMargin: 5.0,  defaultMaxBet: 3000,  defaultEnabled: true, sports: ['soccer', 'basketball'] },
   { id: 'ou35',       group: 'GOALS',     name: 'Over/Under 3.5',        outcomes: 2,  defaultMargin: 6.0,  defaultMaxBet: 2000,  defaultEnabled: false },
   { id: 'ou45',       group: 'GOALS',     name: 'Over/Under 4.5',        outcomes: 2,  defaultMargin: 6.5,  defaultMaxBet: 1500,  defaultEnabled: false },
   { id: 'ou55',       group: 'GOALS',     name: 'Over/Under 5.5',        outcomes: 2,  defaultMargin: 8.0,  defaultMaxBet: 1000,  defaultEnabled: false },
@@ -527,7 +529,7 @@ export const MARKET_DEFS = [
   { id: 'both_halves_under15', group: 'GOALS', name: 'Both Halves Under 1.5',   outcomes: 2,  defaultMargin: 9.0,  defaultMaxBet: 1000,  defaultEnabled: false },
   { id: 'h1h2_btts',        group: 'GOALS', name: '1st/2nd Half BTTS',          outcomes: 4,  defaultMargin: 10.0, defaultMaxBet: 500,   defaultEnabled: false },
   // TEAM GOALS
-  { id: 'team_total',      group: 'TEAM GOALS', name: 'Team Totals',      outcomes: 2, defaultMargin: 6.0,  defaultMaxBet: 2000, defaultEnabled: false },
+  { id: 'team_total',      group: 'TEAM GOALS', name: 'Team Totals',      outcomes: 2, defaultMargin: 6.0,  defaultMaxBet: 2000, defaultEnabled: false, sports: ['soccer', 'basketball'] },
   { id: 'team_multigoals', group: 'TEAM GOALS', name: 'Team Multigoals',  outcomes: 4, defaultMargin: 10.0, defaultMaxBet: 500,  defaultEnabled: false },
   // 1ST HALF
   { id: 'h1_1x2',        group: '1ST HALF', name: '1st Half Result',              outcomes: 3, defaultMargin: 7.0,  defaultMaxBet: 2000, defaultEnabled: false },
@@ -565,6 +567,13 @@ export const MARKET_DEFS = [
   { id: 'result_or_over25',group: 'SPECIALS', name: 'Result or Over 2.5',          outcomes: 2,  defaultMargin: 9.0,  defaultMaxBet: 500, defaultEnabled: false },
   { id: 'htft_total',      group: 'SPECIALS', name: 'HT/FT & Total',               outcomes: 18, defaultMargin: 18.0, defaultMaxBet: 100, defaultEnabled: false },
   { id: 'h1_or_ft',        group: 'SPECIALS', name: '1st Half or Full Time Result', outcomes: 3,  defaultMargin: 10.0, defaultMaxBet: 500, defaultEnabled: false },
+  // BASKETBALL SPECIFIC
+  { id: 'q1_main', group: 'QUARTERS', name: '1st Quarter Markets', outcomes: 2, defaultMargin: 6.0, defaultMaxBet: 1000, defaultEnabled: true, sports: ['basketball'] },
+  { id: 'q2_main', group: 'QUARTERS', name: '2nd Quarter Markets', outcomes: 2, defaultMargin: 6.0, defaultMaxBet: 1000, defaultEnabled: true, sports: ['basketball'] },
+  { id: 'q3_main', group: 'QUARTERS', name: '3rd Quarter Markets', outcomes: 2, defaultMargin: 6.0, defaultMaxBet: 1000, defaultEnabled: true, sports: ['basketball'] },
+  { id: 'q4_main', group: 'QUARTERS', name: '4th Quarter Markets', outcomes: 2, defaultMargin: 6.0, defaultMaxBet: 1000, defaultEnabled: true, sports: ['basketball'] },
+  { id: 'h1_main', group: 'HALVES',   name: '1st Half Markets',    outcomes: 2, defaultMargin: 5.0, defaultMaxBet: 1500, defaultEnabled: true, sports: ['basketball'] },
+  { id: 'h2_main', group: 'HALVES',   name: '2nd Half Markets',    outcomes: 2, defaultMargin: 5.0, defaultMaxBet: 1500, defaultEnabled: true, sports: ['basketball'] },
 ];
 
 function mkMarkets(overrides = {}) {
@@ -589,9 +598,15 @@ const DEFAULT_TEMPLATES = [
     markets: mkMarkets({ 'asian_tot': { enabled: true }, 'ou15': { enabled: true }, 'ou35': { enabled: true }, 'btts_ou': { enabled: true } }) },
   { id: 'low', name: 'Low Default', sport: 'soccer', type: 'prematch', active: true, createdAt: _now, updatedAt: _now,
     markets: mkMarkets({ '1x2': { margin: 8.0, maxBet: 2000 }, 'ou25': { margin: 8.0, maxBet: 2000 }, 'asian_hcp': { margin: 6.0, maxBet: 3000 }, 'cs': { enabled: false }, 'htft': { enabled: false }, 'exact_goals': { enabled: false }, 'win_nil': { enabled: false } }) },
+  { id: 'basketball_elite', name: 'Basketball Elite Default', sport: 'basketball', type: 'prematch', active: true, createdAt: _now, updatedAt: _now,
+    markets: mkMarkets({ '1x2': { margin: 2.0, maxBet: 25000 }, 'asian_hcp': { margin: 1.8, maxBet: 35000 }, 'ou25': { margin: 2.0, maxBet: 20000 } }) },
+  { id: 'basketball_medium', name: 'Basketball Medium Default', sport: 'basketball', type: 'prematch', active: true, createdAt: _now, updatedAt: _now,
+    markets: mkMarkets({ '1x2': { margin: 4.0, maxBet: 10000 }, 'asian_hcp': { margin: 3.5, maxBet: 15000 }, 'ou25': { margin: 4.0, maxBet: 10000 } }) },
+  { id: 'basketball_low', name: 'Basketball Low Default', sport: 'basketball', type: 'prematch', active: true, createdAt: _now, updatedAt: _now,
+    markets: mkMarkets({ '1x2': { margin: 6.0, maxBet: 5000 }, 'asian_hcp': { margin: 5.0, maxBet: 8000 }, 'ou25': { margin: 6.0, maxBet: 5000 } }) },
 ];
 
-const TEMPLATE_VERSION = 7;
+const TEMPLATE_VERSION = 8;
 const _storedVersion = parseInt(localStorage.getItem('templateVersion') || '0', 10);
 const _storedTpl = readJson('templates', null);
 const _needsReset = !_storedTpl || !_storedTpl[0]?.markets || _storedVersion !== TEMPLATE_VERSION;
