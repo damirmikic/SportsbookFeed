@@ -17,6 +17,7 @@ const LINES_MARKETS = new Set([
   'corner_ou', 'corner_hdp', 'h1_corner_ou', 'h1_corner_hdp',
   'booking_ou', 'booking_hdp', 'h1_booking_ou', 'h1_booking_hdp',
   'h1_ou', 'h2_ou',
+  'h1_main', 'h2_main',
 ]);
 
 // ── Filter state ──────────────────────────────────────────

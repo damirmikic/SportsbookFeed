@@ -193,30 +193,53 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
         });
       }
       if (p.handicap && Array.isArray(p.handicap)) {
-        const h = p.handicap.filter(x => isLineAllowed(x.homeSpread))[0]; // pick first allowed main
-        if (h) {
+        const fmt = s => { const n = parseFloat(s); return (n === 0 || isNaN(n)) ? '0' : (n > 0 ? `+${n}` : `${n}`); };
+        let hdps = [...p.handicap].sort((a, b) => parseFloat(a.homeSpread) - parseFloat(b.homeSpread));
+        hdps = hdps.filter(h => isLineAllowed(h.homeSpread));
+        
+        const limit = getConfiguredLineLimit(template, `${idPrefix}_main`);
+        const selected = selectCenteredLines(
+          hdps,
+          limit,
+          h => Math.abs(parseFloat(h.homeOdds) - parseFloat(h.awayOdds))
+        );
+
+        const rows = [];
+        selected.forEach(h => {
           const shin = calculateShinNoVig([h.homeOdds, h.awayOdds]);
+          rows.push({ label: `${halfName} Home Spread ${fmt(h.homeSpread)}`, value: h.homeOdds, shinFair: shin[0], modelFair: null });
+          rows.push({ label: `${halfName} Away Spread ${fmt(h.awaySpread)}`, value: h.awayOdds, shinFair: shin[1], modelFair: null });
+        });
+        if (rows.length > 0) {
           bGroups['HALVES'].push({
             id: `${idPrefix}_main_hdp`,
             name: `${halfName} Handicap`,
-            rows: [
-              { label: `${halfName} Home Spread ${h.homeSpread > 0 ? '+' : ''}${h.homeSpread}`, value: h.homeOdds, shinFair: shin[0], modelFair: null },
-              { label: `${halfName} Away Spread ${h.awaySpread > 0 ? '+' : ''}${h.awaySpread}`, value: h.awayOdds, shinFair: shin[1], modelFair: null }
-            ]
+            rows
           });
         }
       }
       if (p.overUnder && Array.isArray(p.overUnder)) {
-        const ou = p.overUnder.filter(x => isLineAllowed(x.points))[0]; // pick first allowed main
-        if (ou) {
+        let ous = [...p.overUnder].sort((a, b) => parseFloat(a.points) - parseFloat(b.points));
+        ous = ous.filter(ou => isLineAllowed(ou.points));
+
+        const limit = getConfiguredLineLimit(template, `${idPrefix}_main`);
+        const selected = selectCenteredLines(
+          ous,
+          limit,
+          ou => Math.abs(parseFloat(ou.overOdds) - parseFloat(ou.underOdds))
+        );
+
+        const rows = [];
+        selected.forEach(ou => {
           const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
+          rows.push({ label: `${halfName} Over ${ou.points}`, value: ou.overOdds, shinFair: shin[0], modelFair: null });
+          rows.push({ label: `${halfName} Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: null });
+        });
+        if (rows.length > 0) {
           bGroups['HALVES'].push({
             id: `${idPrefix}_main_ou`,
             name: `${halfName} Total`,
-            rows: [
-              { label: `${halfName} Over ${ou.points}`, value: ou.overOdds, shinFair: shin[0], modelFair: null },
-              { label: `${halfName} Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: null }
-            ]
+            rows
           });
         }
       }

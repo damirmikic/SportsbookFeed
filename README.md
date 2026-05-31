@@ -134,7 +134,7 @@ The app currently supports four roles:
 - Template timelines for tightening or widening by time to kickoff
 - League feed timelines that switch whole templates automatically
 - Manual fixtures can be priced from entered 1X2 / totals odds or direct Dixon-Coles lambdas
-- Basketball-specific line adjustment options in templates, allowing traders to toggle half-point (X.5) and whole-number (X.0) handicap and totals lines, which dynamically filter lines in the details drawer and exclude them from published offer snapshots
+- Basketball-specific line adjustment options in templates, allowing traders to toggle half-point (X.5) and whole-number (X.0) handicap and totals lines, which dynamically filter lines in the details drawer and exclude them from published offer snapshots (with halftime markets showing all allowed lines by default if no limit is explicitly defined)
 
 ### Manual trading
 
