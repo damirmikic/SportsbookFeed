@@ -125,7 +125,7 @@ All mutable state lives in `state.js`. The `state` object holds transient runtim
 
 **Hydration guard**: `isHydrating = true` during `hydrateSharedState()` / `hydrateTraderState()` — prevents `scheduleSync()` from firing during startup population.
 
-**Template versioning**: `TEMPLATE_VERSION` constant in `state.js` (currently `7`). If the stored version doesn't match, `_templates` resets to `DEFAULT_TEMPLATES`. **Bump this constant whenever `DEFAULT_TEMPLATES` or `MARKET_DEFS` change.**
+**Template versioning**: `TEMPLATE_VERSION` constant in `state.js` (currently `9`). If the stored version doesn't match, `_templates` resets to `DEFAULT_TEMPLATES`. **Bump this constant whenever `DEFAULT_TEMPLATES` or `MARKET_DEFS` change.**
 
 ---
 
@@ -183,6 +183,7 @@ All mutable state lives in `state.js`. The `state` object holds transient runtim
   rangeLimit: null | number,
   minOdds: null | number,   // market-level floor, overrides template global
   maxOdds: null | number,   // market-level ceiling, overrides template global
+  numLines: null | number,  // for handicap/totals: max number of lines to display; null = show all from API
   timeline: {
     [nodeId]: { margin: number, enabled: boolean, maxBet: number }
   }
@@ -235,7 +236,7 @@ Each event has a configurable `ou_line` (not hardcoded to 2.5).
 | Category | Contents |
 |---|---|
 | `MATCH ODDS` | 1x2, DC, DNB, derived BTTS |
-| `HANDICAP` | Asian handicap (5 closest lines) |
+| `HANDICAP` | Asian handicap — respects `numLines` setting from template; if not set, shows all available lines |
 | `GOALS` | All OU lines, CS, BTTS, Both Halves OU |
 | `TEAM GOALS` | Home/away team totals |
 | `1ST HALF` | H1 1x2, total, team totals, BTTS, result combos |

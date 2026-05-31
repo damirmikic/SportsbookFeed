@@ -2,7 +2,35 @@ import { calculateShinNoVig, dcAsianHandicapOdds, dcAsianTotalOdds, dcAsianTeamT
 import { buildAllMarkets } from './markets.js';
 import { state } from './state.js';
 
-export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData, detailedAll, homeTeam, awayTeam) {
+function getConfiguredLineLimit(template, marketId) {
+  const config = template?.markets?.find(m => m.id === marketId);
+  const limit = Number(config?.numLines ?? config?.rangeLimit);
+  return Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : null;
+}
+
+function getFirstConfiguredLineLimit(template, marketIds) {
+  for (const marketId of marketIds) {
+    const limit = getConfiguredLineLimit(template, marketId);
+    if (limit != null) return limit;
+  }
+  return null;
+}
+
+function selectCenteredLines(lines, limit, priceDiff) {
+  if (!limit || limit >= lines.length) return lines;
+  let minDiff = Infinity, balancedIdx = 0;
+  lines.forEach((line, i) => {
+    const diff = priceDiff(line);
+    if (Number.isFinite(diff) && diff < minDiff) { minDiff = diff; balancedIdx = i; }
+  });
+  const halfCount = Math.floor((limit - 1) / 2);
+  let startIdx = Math.max(0, balancedIdx - halfCount);
+  let endIdx = Math.min(lines.length - 1, startIdx + (limit - 1));
+  if (endIdx - startIdx < limit - 1) startIdx = Math.max(0, endIdx - (limit - 1));
+  return lines.slice(startIdx, endIdx + 1);
+}
+
+export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData, detailedAll, homeTeam, awayTeam, template = null) {
   const getPeriodData = (num) => {
     if (event.periods && !Array.isArray(event.periods)) return event.periods[String(num)];
     if (event.periodOdds && !Array.isArray(event.periodOdds)) return event.periodOdds[String(num)];
@@ -44,16 +72,12 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
     if (p0?.handicap && Array.isArray(p0.handicap)) {
       const fmt = s => { const n = parseFloat(s); return (n === 0 || isNaN(n)) ? '0' : (n > 0 ? `+${n}` : `${n}`); };
       let hdps = [...p0.handicap].sort((a, b) => parseFloat(a.homeSpread) - parseFloat(b.homeSpread));
-      // Display best 5 lines
-      let minDiff = Infinity, balancedIdx = 0;
-      hdps.forEach((h, i) => {
-        const diff = Math.abs(parseFloat(h.homeOdds) - parseFloat(h.awayOdds));
-        if (diff < minDiff) { minDiff = diff; balancedIdx = i; }
-      });
-      let startIdx = Math.max(0, balancedIdx - 2);
-      let endIdx = Math.min(hdps.length - 1, startIdx + 4);
-      if (endIdx - startIdx < 4) startIdx = Math.max(0, endIdx - 4);
-      const selected = hdps.slice(startIdx, endIdx + 1);
+      
+      const selected = selectCenteredLines(
+        hdps,
+        getConfiguredLineLimit(template, 'asian_hcp'),
+        h => Math.abs(parseFloat(h.homeOdds) - parseFloat(h.awayOdds))
+      );
 
       const rows = [];
       selected.forEach(h => {
@@ -61,22 +85,17 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
         rows.push({ label: `Home ${fmt(h.homeSpread)}`, value: h.homeOdds, shinFair: shin[0], modelFair: null });
         rows.push({ label: `Away ${fmt(h.awaySpread)}`, value: h.awayOdds, shinFair: shin[1], modelFair: null });
       });
-      bGroups['HANDICAP'].push({ id: 'hdp', name: 'Handicap (Best 5)', rows });
+      bGroups['HANDICAP'].push({ id: 'hdp', name: 'Handicap', rows });
     }
 
     // 3. TOTALS
     if (p0?.overUnder && Array.isArray(p0.overUnder)) {
       let ous = [...p0.overUnder].sort((a, b) => parseFloat(a.points) - parseFloat(b.points));
-      // Display best 5 lines
-      let minDiff = Infinity, balancedIdx = 0;
-      ous.forEach((ou, i) => {
-        const diff = Math.abs(parseFloat(ou.overOdds) - parseFloat(ou.underOdds));
-        if (diff < minDiff) { minDiff = diff; balancedIdx = i; }
-      });
-      let startIdx = Math.max(0, balancedIdx - 2);
-      let endIdx = Math.min(ous.length - 1, startIdx + 4);
-      if (endIdx - startIdx < 4) startIdx = Math.max(0, endIdx - 4);
-      const selected = ous.slice(startIdx, endIdx + 1);
+      const selected = selectCenteredLines(
+        ous,
+        getFirstConfiguredLineLimit(template, ['ou25', 'asian_tot']),
+        ou => Math.abs(parseFloat(ou.overOdds) - parseFloat(ou.underOdds))
+      );
 
       const rows = [];
       selected.forEach(ou => {
@@ -84,7 +103,7 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
         rows.push({ label: `Over ${ou.points}`, value: ou.overOdds, shinFair: shin[0], modelFair: null });
         rows.push({ label: `Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: null });
       });
-      bGroups['TOTALS'].push({ id: 'ou', name: 'Over/Under (Best 5)', rows });
+      bGroups['TOTALS'].push({ id: 'ou', name: 'Game Total', rows });
     }
 
     // 4. TEAM TOTALS
@@ -274,15 +293,12 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
   if (matchPeriod.handicap && Array.isArray(matchPeriod.handicap)) {
     const fmt = s => { const n = parseFloat(s); return (n === 0 || isNaN(n)) ? '0' : (n > 0 ? `+${n}` : `${n}`); };
     let hdps = [...matchPeriod.handicap].sort((a, b) => parseFloat(a.homeSpread) - parseFloat(b.homeSpread));
-    let minDiff = Infinity, balancedIdx = 0;
-    hdps.forEach((h, i) => {
-      const diff = Math.abs(parseFloat(h.homeOdds) - parseFloat(h.awayOdds));
-      if (diff < minDiff) { minDiff = diff; balancedIdx = i; }
-    });
-    let startIdx = Math.max(0, balancedIdx - 2);
-    let endIdx = Math.min(hdps.length - 1, startIdx + 4);
-    if (endIdx - startIdx < 4) startIdx = Math.max(0, endIdx - 4);
-    const selectedHdps = hdps.slice(startIdx, endIdx + 1);
+    
+    const selectedHdps = selectCenteredLines(
+      hdps,
+      getConfiguredLineLimit(template, 'asian_hcp'),
+      h => Math.abs(parseFloat(h.homeOdds) - parseFloat(h.awayOdds))
+    );
 
     const rows = [];
     selectedHdps.forEach(h => {
@@ -297,7 +313,7 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
       rows.push({ label: `Home ${fmt(h.homeSpread)}`, value: h.homeOdds, shinFair: shin[0], modelFair: mHome });
       rows.push({ label: `Away ${fmt(h.awaySpread)}`, value: h.awayOdds, shinFair: shin[1], modelFair: mAway });
     });
-    groups['HANDICAP'].push({ id: 'hdp', name: 'Handicap (Best 5)', rows });
+    groups['HANDICAP'].push({ id: 'hdp', name: 'Handicap', rows });
   } else if (lambdaData) {
     const fmt = s => { const n = parseFloat(s); return (n === 0 || isNaN(n)) ? '0' : (n > 0 ? `+${n}` : `${n}`); };
     const candidates = [-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2].map(homeSpread => {
@@ -305,20 +321,19 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
       const awayOdds = dcAsianHandicapOdds(lambdaData.ft.grid, -homeSpread, true);
       return { homeSpread, awaySpread: -homeSpread, homeOdds, awayOdds };
     }).filter(c => c.homeOdds && c.awayOdds);
-    let minDiff = Infinity, balancedIdx = 0;
-    candidates.forEach((c, i) => {
-      const diff = Math.abs(c.homeOdds - c.awayOdds);
-      if (diff < minDiff) { minDiff = diff; balancedIdx = i; }
-    });
-    let startIdx = Math.max(0, balancedIdx - 2);
-    let endIdx = Math.min(candidates.length - 1, startIdx + 4);
-    if (endIdx - startIdx < 4) startIdx = Math.max(0, endIdx - 4);
+    
+    const selectedCandidates = selectCenteredLines(
+      candidates,
+      getConfiguredLineLimit(template, 'asian_hcp'),
+      c => Math.abs(c.homeOdds - c.awayOdds)
+    );
+    
     const hdpRows = [];
-    candidates.slice(startIdx, endIdx + 1).forEach(({ homeSpread, awaySpread, homeOdds, awayOdds }) => {
+    selectedCandidates.forEach(({ homeSpread, awaySpread, homeOdds, awayOdds }) => {
       hdpRows.push({ label: `Home ${fmt(homeSpread)}`, value: null, shinFair: null, modelFair: homeOdds.toFixed(3) });
       hdpRows.push({ label: `Away ${fmt(awaySpread)}`, value: null, shinFair: null, modelFair: awayOdds.toFixed(3) });
     });
-    if (hdpRows.length) groups['HANDICAP'].push({ id: 'hdp', name: 'Handicap (Best 5)', rows: hdpRows });
+    if (hdpRows.length) groups['HANDICAP'].push({ id: 'hdp', name: 'Handicap', rows: hdpRows });
   }
 
   if (lambdaData) {

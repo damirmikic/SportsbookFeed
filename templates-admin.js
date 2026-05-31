@@ -12,7 +12,7 @@ import { resolveActiveKey } from './pricing.js';
 
 // Markets where "Lines" (rangeLimit) is meaningful — OU and handicap markets with multiple lines
 const LINES_MARKETS = new Set([
-  'asian_hcp', 'asian_tot',
+  'asian_hcp', 'asian_tot', 'ou25',
   'team_total', 'h1_team_total', 'h2_team_total',
   'corner_ou', 'corner_hdp', 'h1_corner_ou', 'h1_corner_hdp',
   'booking_ou', 'booking_hdp', 'h1_booking_ou', 'h1_booking_hdp',
@@ -48,8 +48,18 @@ function typeLabel(type) {
 // discovered markets from the feed (if any), else MARKET_DEFS fallback.
 function getActiveMarketDefs(sport) {
   const disc = getDiscoveredMarkets();
-  if (disc?.markets?.length) return disc.markets;
-  const defs = MARKET_DEFS.map(d => ({ id: d.id, group: d.group, name: d.name, sports: d.sports }));
+  const source = disc?.markets?.length && sport !== 'basketball' ? disc.markets : MARKET_DEFS;
+  const defs = source.map(d => {
+    const base = MARKET_DEFS.find(m => m.id === d.id);
+    const label = sport ? base?.sportLabels?.[sport] : null;
+    return {
+      id: d.id,
+      group: label?.group ?? d.group,
+      name: label?.name ?? d.name,
+      outcomes: label?.outcomes ?? d.outcomes,
+      sports: d.sports ?? base?.sports,
+    };
+  });
   if (!sport || sport === 'soccer') {
     // Soccer (or no filter): show everything except basketball-exclusive markets
     return defs.filter(d => !d.sports || d.sports.includes('soccer'));
@@ -495,7 +505,8 @@ function marketConfigHTML(existingMarkets, marketDefs) {
         margin:           existing?.margin           ?? dfl.margin,
         maxBet:           existing?.maxBet           ?? dfl.maxBet,
         ladder:           existing?.ladder           ?? 'eu',
-        rangeLimit:       existing?.rangeLimit       ?? null,
+        rangeLimit:       existing?.rangeLimit       ?? existing?.numLines ?? null,
+        numLines:         existing?.numLines         ?? existing?.rangeLimit ?? null,
         timeline:         existing?.timeline         ?? {},
         requiresApproval: existing?.requiresApproval ?? false,
         minOdds:          existing?.minOdds          ?? null,
@@ -538,13 +549,15 @@ function collectMarketsFromForm(backdrop) {
     });
     const minOddsVal = parseFloat(card.querySelector('.mkt-min-odds-input')?.value);
     const maxOddsVal = parseFloat(card.querySelector('.mkt-max-odds-input')?.value);
+    const rangeLimitVal = parseFloat(card.querySelector('.mkt-range-input')?.value);
     markets.push({
       id,
       enabled:          cb ? cb.checked : false,
       margin:           parseFloat(card.querySelector('.mkt-margin-input')?.value) || 5.0,
       maxBet:           parseInt(card.querySelector('.mkt-maxbet-input')?.value, 10) || 1000,
       ladder:           card.querySelector('.mkt-ladder-sel')?.value || 'eu',
-      rangeLimit:       parseFloat(card.querySelector('.mkt-range-input')?.value) || null,
+      rangeLimit:       Number.isFinite(rangeLimitVal) && rangeLimitVal > 0 ? rangeLimitVal : null,
+      numLines:         Number.isFinite(rangeLimitVal) && rangeLimitVal > 0 ? Math.floor(rangeLimitVal) : null,
       requiresApproval: card.querySelector('.mkt-approval-cb')?.checked ?? false,
       minOdds:          (!isNaN(minOddsVal) && minOddsVal > 1) ? minOddsVal : null,
       maxOdds:          (!isNaN(maxOddsVal) && maxOddsVal > 1) ? maxOddsVal : null,

@@ -668,7 +668,7 @@ export async function buildOfferSnapshot() {
         } catch { /* model unavailable — proceed with Pinnacle-only fair prices */ }
       }
 
-      const grouped = groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData, {}, homeTeam, awayTeam);
+      const grouped = groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData, {}, homeTeam, awayTeam, offerTpl);
       const markets = [];
 
       for (const marketList of Object.values(grouped)) {

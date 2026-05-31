@@ -504,17 +504,17 @@ export const TIMELINE_NODES = [
 
 export const MARKET_DEFS = [
   // MATCH ODDS
-  { id: '1x2',        group: 'MATCH ODDS', name: 'Match Result',          outcomes: 3,  defaultMargin: 5.5,  defaultMaxBet: 5000,  defaultEnabled: true, sports: ['soccer', 'basketball'] },
+  { id: '1x2',        group: 'MATCH ODDS', name: 'Match Result',          outcomes: 3,  defaultMargin: 5.5,  defaultMaxBet: 5000,  defaultEnabled: true, sports: ['soccer', 'basketball'], sportLabels: { basketball: { name: 'Moneyline', outcomes: 2 } } },
   { id: 'dc',         group: 'MATCH ODDS', name: 'Double Chance',         outcomes: 3,  defaultMargin: 6.5,  defaultMaxBet: 2000,  defaultEnabled: true  },
   { id: 'dnb',        group: 'MATCH ODDS', name: 'Draw No Bet',           outcomes: 2,  defaultMargin: 5.5,  defaultMaxBet: 3000,  defaultEnabled: true  },
   // HANDICAP
-  { id: 'asian_hcp',  group: 'HANDICAP',  name: 'Asian Handicap',        outcomes: 2,  defaultMargin: 3.5,  defaultMaxBet: 8000,  defaultEnabled: true, sports: ['soccer', 'basketball'] },
+  { id: 'asian_hcp',  group: 'HANDICAP',  name: 'Asian Handicap',        outcomes: 2,  defaultMargin: 3.5,  defaultMaxBet: 8000,  defaultEnabled: true, sports: ['soccer', 'basketball'], sportLabels: { basketball: { name: 'Spread' } } },
   { id: 'asian_tot',  group: 'HANDICAP',  name: 'Asian Total O/U',       outcomes: 2,  defaultMargin: 4.0,  defaultMaxBet: 5000,  defaultEnabled: false },
   { id: '3way_hdp',   group: 'HANDICAP',  name: '3-Way Handicap',        outcomes: 3,  defaultMargin: 8.0,  defaultMaxBet: 1000,  defaultEnabled: false },
   // GOALS
   { id: 'ou05',       group: 'GOALS',     name: 'Over/Under 0.5',        outcomes: 2,  defaultMargin: 7.0,  defaultMaxBet: 1500,  defaultEnabled: false },
   { id: 'ou15',       group: 'GOALS',     name: 'Over/Under 1.5',        outcomes: 2,  defaultMargin: 6.0,  defaultMaxBet: 2000,  defaultEnabled: false },
-  { id: 'ou25',       group: 'GOALS',     name: 'Over/Under 2.5',        outcomes: 2,  defaultMargin: 5.0,  defaultMaxBet: 3000,  defaultEnabled: true, sports: ['soccer', 'basketball'] },
+  { id: 'ou25',       group: 'GOALS',     name: 'Over/Under 2.5',        outcomes: 2,  defaultMargin: 5.0,  defaultMaxBet: 3000,  defaultEnabled: true, sports: ['soccer', 'basketball'], sportLabels: { basketball: { group: 'TOTALS', name: 'Game Total' } } },
   { id: 'ou35',       group: 'GOALS',     name: 'Over/Under 3.5',        outcomes: 2,  defaultMargin: 6.0,  defaultMaxBet: 2000,  defaultEnabled: false },
   { id: 'ou45',       group: 'GOALS',     name: 'Over/Under 4.5',        outcomes: 2,  defaultMargin: 6.5,  defaultMaxBet: 1500,  defaultEnabled: false },
   { id: 'ou55',       group: 'GOALS',     name: 'Over/Under 5.5',        outcomes: 2,  defaultMargin: 8.0,  defaultMaxBet: 1000,  defaultEnabled: false },
@@ -529,7 +529,7 @@ export const MARKET_DEFS = [
   { id: 'both_halves_under15', group: 'GOALS', name: 'Both Halves Under 1.5',   outcomes: 2,  defaultMargin: 9.0,  defaultMaxBet: 1000,  defaultEnabled: false },
   { id: 'h1h2_btts',        group: 'GOALS', name: '1st/2nd Half BTTS',          outcomes: 4,  defaultMargin: 10.0, defaultMaxBet: 500,   defaultEnabled: false },
   // TEAM GOALS
-  { id: 'team_total',      group: 'TEAM GOALS', name: 'Team Totals',      outcomes: 2, defaultMargin: 6.0,  defaultMaxBet: 2000, defaultEnabled: false, sports: ['soccer', 'basketball'] },
+  { id: 'team_total',      group: 'TEAM GOALS', name: 'Team Totals',      outcomes: 2, defaultMargin: 6.0,  defaultMaxBet: 2000, defaultEnabled: false, sports: ['soccer', 'basketball'], sportLabels: { basketball: { group: 'TEAM TOTALS' } } },
   { id: 'team_multigoals', group: 'TEAM GOALS', name: 'Team Multigoals',  outcomes: 4, defaultMargin: 10.0, defaultMaxBet: 500,  defaultEnabled: false },
   // 1ST HALF
   { id: 'h1_1x2',        group: '1ST HALF', name: '1st Half Result',              outcomes: 3, defaultMargin: 7.0,  defaultMaxBet: 2000, defaultEnabled: false },
@@ -587,6 +587,7 @@ function mkMarkets(overrides = {}) {
     timeline: overrides[m.id]?.timeline ?? {},
     minOdds: overrides[m.id]?.minOdds ?? null,
     maxOdds: overrides[m.id]?.maxOdds ?? null,
+    numLines: overrides[m.id]?.numLines ?? null,
   }));
 }
 
@@ -606,7 +607,7 @@ const DEFAULT_TEMPLATES = [
     markets: mkMarkets({ '1x2': { margin: 6.0, maxBet: 5000 }, 'asian_hcp': { margin: 5.0, maxBet: 8000 }, 'ou25': { margin: 6.0, maxBet: 5000 } }) },
 ];
 
-const TEMPLATE_VERSION = 8;
+const TEMPLATE_VERSION = 10;
 const _storedVersion = parseInt(localStorage.getItem('templateVersion') || '0', 10);
 const _storedTpl = readJson('templates', null);
 const _needsReset = !_storedTpl || !_storedTpl[0]?.markets || _storedVersion !== TEMPLATE_VERSION;

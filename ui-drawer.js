@@ -285,12 +285,12 @@ export async function renderDrawerMarkets(event) {
   }
 
   const detailedAll    = getDetailedOdds(event.id) || {};
-  const groupedMarkets = groupMarketsByCategory(event, matchPeriod, h1Period, effectiveLambdaData, detailedAll, homeTeam, awayTeam);
+  const { template: activeTplMarkets } = resolveTemplate(event.id, state.currentLeagueCode);
+  const groupedMarkets = groupMarketsByCategory(event, matchPeriod, h1Period, effectiveLambdaData, detailedAll, homeTeam, awayTeam, activeTplMarkets);
   if (modelUnavailable) {
     showModelFallbackNotice(drawerContent);
     applyShinAsModel(groupedMarkets);
   }
-  const { template: activeTplMarkets } = resolveTemplate(event.id, state.currentLeagueCode);
 
   const categories = Object.keys(groupedMarkets);
   if (categories.length === 0) return;
