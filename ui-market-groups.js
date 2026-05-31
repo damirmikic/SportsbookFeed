@@ -167,31 +167,45 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
     // 5. HALVES (1st Half / 2nd Half)
     const addHalfMarkets = (p, halfName, idPrefix) => {
       if (!p) return;
-      const rows = [];
       if (p.moneyLine || p.moneyline) {
         const ml = p.moneyLine || p.moneyline;
         const shin = calculateShinNoVig([ml.homePrice || ml.home, ml.awayPrice || ml.away]);
-        rows.push({ label: `${halfName} Home`, value: ml.homePrice || ml.home || '-', shinFair: shin[0], modelFair: null });
-        rows.push({ label: `${halfName} Away`, value: ml.awayPrice || ml.away || '-', shinFair: shin[1], modelFair: null });
+        bGroups['HALVES'].push({
+          id: `${idPrefix}_main_ml`,
+          name: `${halfName} Moneyline`,
+          rows: [
+            { label: `${halfName} Home`, value: ml.homePrice || ml.home || '-', shinFair: shin[0], modelFair: null },
+            { label: `${halfName} Away`, value: ml.awayPrice || ml.away || '-', shinFair: shin[1], modelFair: null }
+          ]
+        });
       }
       if (p.handicap && Array.isArray(p.handicap)) {
         const h = p.handicap[0]; // pick main
         if (h) {
           const shin = calculateShinNoVig([h.homeOdds, h.awayOdds]);
-          rows.push({ label: `${halfName} Home Spread ${h.homeSpread > 0 ? '+' : ''}${h.homeSpread}`, value: h.homeOdds, shinFair: shin[0], modelFair: null });
-          rows.push({ label: `${halfName} Away Spread ${h.awaySpread > 0 ? '+' : ''}${h.awaySpread}`, value: h.awayOdds, shinFair: shin[1], modelFair: null });
+          bGroups['HALVES'].push({
+            id: `${idPrefix}_main_hdp`,
+            name: `${halfName} Handicap`,
+            rows: [
+              { label: `${halfName} Home Spread ${h.homeSpread > 0 ? '+' : ''}${h.homeSpread}`, value: h.homeOdds, shinFair: shin[0], modelFair: null },
+              { label: `${halfName} Away Spread ${h.awaySpread > 0 ? '+' : ''}${h.awaySpread}`, value: h.awayOdds, shinFair: shin[1], modelFair: null }
+            ]
+          });
         }
       }
       if (p.overUnder && Array.isArray(p.overUnder)) {
         const ou = p.overUnder[0]; // pick main
         if (ou) {
           const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
-          rows.push({ label: `${halfName} Over ${ou.points}`, value: ou.overOdds, shinFair: shin[0], modelFair: null });
-          rows.push({ label: `${halfName} Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: null });
+          bGroups['HALVES'].push({
+            id: `${idPrefix}_main_ou`,
+            name: `${halfName} Total`,
+            rows: [
+              { label: `${halfName} Over ${ou.points}`, value: ou.overOdds, shinFair: shin[0], modelFair: null },
+              { label: `${halfName} Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: null }
+            ]
+          });
         }
-      }
-      if (rows.length) {
-        bGroups['HALVES'].push({ id: `${idPrefix}_main`, name: `${halfName} Markets`, rows });
       }
     };
     addHalfMarkets(p1, '1st Half', 'h1');

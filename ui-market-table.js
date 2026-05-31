@@ -168,6 +168,15 @@ function getOfferHistoryRequest(market, row, drawerEvent) {
   if (market.id === 'hdp') {
     return { eventId, period: '0', market: 'spread', side: lower.startsWith('away') ? 'away' : 'home', title: label, subtitle };
   }
+  if (market.id === 'h1_main_ml' || market.id === 'h2_main_ml') {
+    return { eventId, period: market.id.startsWith('h1_') ? '1' : '2', market: 'moneyline', side: lower.includes('away') ? 'away' : 'home', title: label, subtitle };
+  }
+  if (market.id === 'h1_main_hdp' || market.id === 'h2_main_hdp') {
+    return { eventId, period: market.id.startsWith('h1_') ? '1' : '2', market: 'spread', side: lower.includes('away') ? 'away' : 'home', title: label, subtitle };
+  }
+  if (market.id === 'h1_main_ou' || market.id === 'h2_main_ou') {
+    return { eventId, period: market.id.startsWith('h1_') ? '1' : '2', market: 'total', side: lower.includes('over') ? 'over' : 'under', points: parseLineFromLabel(label), title: label, subtitle };
+  }
   if (market.id.includes('tt_home')) {
     return { eventId, period: market.id.startsWith('h1_') ? '1' : '0', market: 'team_total_home', side: lower.startsWith('over') ? 'over' : 'under', points: parseLineFromLabel(label), title: label, subtitle };
   }
@@ -181,6 +190,8 @@ function getOfferHistoryRequest(market, row, drawerEvent) {
 
 const DRAWER_TO_TPL = {
   ml: '1x2', dc: 'dc', dnb: 'dnb', hdp: 'asian_hcp', ou: 'asian_tot',
+  h1_main_ml: 'h1_main', h1_main_hdp: 'h1_main', h1_main_ou: 'h1_main',
+  h2_main_ml: 'h2_main', h2_main_hdp: 'h2_main', h2_main_ou: 'h2_main',
   ou05: 'ou05', ou15: 'ou15', ou25: 'ou25', ou35: 'ou35', ou45: 'ou45', ou55: 'ou55', ou65: 'ou65', btts: 'btts',
   btts_ou: 'btts_ou', cs: 'cs', exact_goals: 'exact_goals', win_nil: 'win_nil', htft: 'htft',
 };
@@ -291,9 +302,11 @@ export function renderMarketTable(market) {
     tt_home: 'team_total', tt_away: 'team_total',
     home_multigoals: 'team_multigoals', away_multigoals: 'team_multigoals',
     h1_ml: 'h1_1x2', h1_tt_home: 'h1_team_total', h1_tt_away: 'h1_team_total',
+    h1_main_ml: 'h1_main', h1_main_hdp: 'h1_main', h1_main_ou: 'h1_main',
     h1_result_ou_15: 'h1_result_ou', h1_result_ou_25: 'h1_result_ou',
     h1_dc_total_05: 'h1_dc_total', h1_dc_total_15: 'h1_dc_total', h1_dc_total_25: 'h1_dc_total',
     h2_ml: 'h2_1x2', h2_tt_home: 'h2_team_total', h2_tt_away: 'h2_team_total',
+    h2_main_ml: 'h2_main', h2_main_hdp: 'h2_main', h2_main_ou: 'h2_main',
     corner_tt_home: 'corner_team_total', corner_tt_away: 'corner_team_total',
     booking_tt_home: 'booking_team_total', booking_tt_away: 'booking_team_total',
     home_score_both_halves: 'score_both_halves', away_score_both_halves: 'score_both_halves',

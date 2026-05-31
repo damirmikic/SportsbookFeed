@@ -36,6 +36,9 @@ export const DRAWER_TO_TPL_ID = {
   // 1st Half
   'h1_ml':           'h1_1x2',
   'h1_ou':           'h1_ou',
+  'h1_main_ml':      'h1_main',
+  'h1_main_hdp':     'h1_main',
+  'h1_main_ou':      'h1_main',
   'h1_tt_home':      'h1_team_total',   'h1_tt_away':      'h1_team_total',
   'h1_btts':         'h1_btts',
   'h1_result_btts':  'h1_result_btts',
@@ -44,6 +47,9 @@ export const DRAWER_TO_TPL_ID = {
   // 2nd Half
   'h2_ml':      'h2_1x2',
   'h2_ou':      'h2_ou',
+  'h2_main_ml':  'h2_main',
+  'h2_main_hdp': 'h2_main',
+  'h2_main_ou':  'h2_main',
   'h2_tt_home': 'h2_team_total',        'h2_tt_away': 'h2_team_total',
   // Corners
   'corner_ou':      'corner_ou',
