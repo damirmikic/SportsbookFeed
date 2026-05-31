@@ -599,15 +599,15 @@ const DEFAULT_TEMPLATES = [
     markets: mkMarkets({ 'asian_tot': { enabled: true }, 'ou15': { enabled: true }, 'ou35': { enabled: true }, 'btts_ou': { enabled: true } }) },
   { id: 'low', name: 'Low Default', sport: 'soccer', type: 'prematch', active: true, createdAt: _now, updatedAt: _now,
     markets: mkMarkets({ '1x2': { margin: 8.0, maxBet: 2000 }, 'ou25': { margin: 8.0, maxBet: 2000 }, 'asian_hcp': { margin: 6.0, maxBet: 3000 }, 'cs': { enabled: false }, 'htft': { enabled: false }, 'exact_goals': { enabled: false }, 'win_nil': { enabled: false } }) },
-  { id: 'basketball_elite', name: 'Basketball Elite Default', sport: 'basketball', type: 'prematch', active: true, createdAt: _now, updatedAt: _now,
+  { id: 'basketball_elite', name: 'Basketball Elite Default', sport: 'basketball', type: 'prematch', active: true, showHalf: true, showWhole: true, createdAt: _now, updatedAt: _now,
     markets: mkMarkets({ '1x2': { margin: 2.0, maxBet: 25000 }, 'asian_hcp': { margin: 1.8, maxBet: 35000 }, 'ou25': { margin: 2.0, maxBet: 20000 } }) },
-  { id: 'basketball_medium', name: 'Basketball Medium Default', sport: 'basketball', type: 'prematch', active: true, createdAt: _now, updatedAt: _now,
+  { id: 'basketball_medium', name: 'Basketball Medium Default', sport: 'basketball', type: 'prematch', active: true, showHalf: true, showWhole: true, createdAt: _now, updatedAt: _now,
     markets: mkMarkets({ '1x2': { margin: 4.0, maxBet: 10000 }, 'asian_hcp': { margin: 3.5, maxBet: 15000 }, 'ou25': { margin: 4.0, maxBet: 10000 } }) },
-  { id: 'basketball_low', name: 'Basketball Low Default', sport: 'basketball', type: 'prematch', active: true, createdAt: _now, updatedAt: _now,
+  { id: 'basketball_low', name: 'Basketball Low Default', sport: 'basketball', type: 'prematch', active: true, showHalf: true, showWhole: true, createdAt: _now, updatedAt: _now,
     markets: mkMarkets({ '1x2': { margin: 6.0, maxBet: 5000 }, 'asian_hcp': { margin: 5.0, maxBet: 8000 }, 'ou25': { margin: 6.0, maxBet: 5000 } }) },
 ];
 
-const TEMPLATE_VERSION = 10;
+const TEMPLATE_VERSION = 11;
 const _storedVersion = parseInt(localStorage.getItem('templateVersion') || '0', 10);
 const _storedTpl = readJson('templates', null);
 const _needsReset = !_storedTpl || !_storedTpl[0]?.markets || _storedVersion !== TEMPLATE_VERSION;

@@ -635,18 +635,32 @@ export async function buildOfferSnapshot() {
           }
         }
         if (!isSuspended(event.id, 'ou')) {
+          const isBasketball = state.currentSportId === 4;
           const ouEntry = Array.isArray(matchPeriod.overUnder)
-            ? (matchPeriod.overUnder.find(ou => parseFloat(ou.points) === 2.5) ?? (event.isManual ? matchPeriod.overUnder[0] : null))
+            ? (matchPeriod.overUnder.find(ou => ou.isMain) ||
+               matchPeriod.overUnder.find(ou => parseFloat(ou.points) === 2.5) ||
+               matchPeriod.overUnder[0])
             : null;
           if (ouEntry) {
-            const lineLabel = String(ouEntry.points ?? 2.5);
-            const ov = getOverride(`${event.id}|ou|Over ${lineLabel}`);
-            const un = getOverride(`${event.id}|ou|Under ${lineLabel}`);
-            if (ov && un) {
-              markets.push({ id: 'ou25', name: `Over/Under ${lineLabel}`, line: parseFloat(lineLabel), selections: [
-                { label: `Over ${lineLabel}`,  price: parseFloat(ov) },
-                { label: `Under ${lineLabel}`, price: parseFloat(un) },
-              ] });
+            const lineLabel = String(ouEntry.points ?? (isBasketball ? 220.5 : 2.5));
+            const lineVal = parseFloat(lineLabel);
+            let allowed = true;
+            if (isBasketball && offerTpl) {
+              const showHalf = offerTpl.showHalf !== false;
+              const showWhole = offerTpl.showWhole !== false;
+              const rem = Math.abs(lineVal % 1);
+              if (rem === 0 && !showWhole) allowed = false;
+              if (rem === 0.5 && !showHalf) allowed = false;
+            }
+            if (allowed) {
+              const ov = getOverride(`${event.id}|ou|Over ${lineLabel}`);
+              const un = getOverride(`${event.id}|ou|Under ${lineLabel}`);
+              if (ov && un) {
+                markets.push({ id: 'ou25', name: `Over/Under ${lineLabel}`, line: lineVal, selections: [
+                  { label: `Over ${lineLabel}`,  price: parseFloat(ov) },
+                  { label: `Under ${lineLabel}`, price: parseFloat(un) },
+                ] });
+              }
             }
           }
         }

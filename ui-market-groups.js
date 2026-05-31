@@ -40,6 +40,15 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
 
   // --- Basketball (sportId=4) Specific Market Grouping ---
   if (state.currentSportId === 4) {
+    const showHalf = template?.showHalf !== false;
+    const showWhole = template?.showWhole !== false;
+    const isLineAllowed = (lineVal) => {
+      const rem = Math.abs(parseFloat(lineVal) % 1);
+      if (rem === 0 && !showWhole) return false;
+      if (rem === 0.5 && !showHalf) return false;
+      return true;
+    };
+
     const bGroups = {
       'MATCH ODDS': [],
       'HANDICAP': [],
@@ -72,6 +81,7 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
     if (p0?.handicap && Array.isArray(p0.handicap)) {
       const fmt = s => { const n = parseFloat(s); return (n === 0 || isNaN(n)) ? '0' : (n > 0 ? `+${n}` : `${n}`); };
       let hdps = [...p0.handicap].sort((a, b) => parseFloat(a.homeSpread) - parseFloat(b.homeSpread));
+      hdps = hdps.filter(h => isLineAllowed(h.homeSpread));
       
       const selected = selectCenteredLines(
         hdps,
@@ -91,6 +101,7 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
     // 3. TOTALS
     if (p0?.overUnder && Array.isArray(p0.overUnder)) {
       let ous = [...p0.overUnder].sort((a, b) => parseFloat(a.points) - parseFloat(b.points));
+      ous = ous.filter(ou => isLineAllowed(ou.points));
       const selected = selectCenteredLines(
         ous,
         getFirstConfiguredLineLimit(template, ['ou25', 'asian_tot']),
@@ -121,7 +132,8 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
         if (!ousArray || !Array.isArray(ousArray)) return;
 
         const rows = [];
-        const ous = [...ousArray].sort((a, b) => parseFloat(a.points) - parseFloat(b.points));
+        const ous = [...ousArray].sort((a, b) => parseFloat(a.points) - parseFloat(b.points))
+                      .filter(ou => isLineAllowed(ou.points));
         ous.forEach(ou => {
           const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
           rows.push({ label: `Over ${ou.points}`,  value: ou.overOdds,  shinFair: shin[0], modelFair: null });
@@ -147,7 +159,8 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
           if (!ousArray || !Array.isArray(ousArray)) return;
 
           const rows = [];
-          const ous = [...ousArray].sort((a, b) => parseFloat(a.points) - parseFloat(b.points));
+          const ous = [...ousArray].sort((a, b) => parseFloat(a.points) - parseFloat(b.points))
+                        .filter(ou => isLineAllowed(ou.points));
           ous.forEach(ou => {
             const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
             rows.push({ label: `${halfName} Over ${ou.points}`,  value: ou.overOdds,  shinFair: shin[0], modelFair: null });
@@ -180,7 +193,7 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
         });
       }
       if (p.handicap && Array.isArray(p.handicap)) {
-        const h = p.handicap[0]; // pick main
+        const h = p.handicap.filter(x => isLineAllowed(x.homeSpread))[0]; // pick first allowed main
         if (h) {
           const shin = calculateShinNoVig([h.homeOdds, h.awayOdds]);
           bGroups['HALVES'].push({
@@ -194,7 +207,7 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
         }
       }
       if (p.overUnder && Array.isArray(p.overUnder)) {
-        const ou = p.overUnder[0]; // pick main
+        const ou = p.overUnder.filter(x => isLineAllowed(x.points))[0]; // pick first allowed main
         if (ou) {
           const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
           bGroups['HALVES'].push({
@@ -223,7 +236,7 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
         rows.push({ label: `${qName} Away`, value: ml.awayPrice || ml.away || '-', shinFair: shin[1], modelFair: null });
       }
       if (p.handicap && Array.isArray(p.handicap)) {
-        const h = p.handicap[0];
+        const h = p.handicap.filter(x => isLineAllowed(x.homeSpread))[0];
         if (h) {
           const shin = calculateShinNoVig([h.homeOdds, h.awayOdds]);
           rows.push({ label: `${qName} Home Spread ${h.homeSpread > 0 ? '+' : ''}${h.homeSpread}`, value: h.homeOdds, shinFair: shin[0], modelFair: null });
@@ -231,7 +244,7 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
         }
       }
       if (p.overUnder && Array.isArray(p.overUnder)) {
-        const ou = p.overUnder[0];
+        const ou = p.overUnder.filter(x => isLineAllowed(x.points))[0];
         if (ou) {
           const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
           rows.push({ label: `${qName} Over ${ou.points}`, value: ou.overOdds, shinFair: shin[0], modelFair: null });

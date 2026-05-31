@@ -640,6 +640,23 @@ function formModalHTML(tpl) {
             </div>
           </section>
 
+          <section class="tpl-form-section" id="tf-line-adjustment-section" style="${selectedSport === 'basketball' ? '' : 'display: none;'}">
+            <h4 class="tpl-form-section-title">Line adjustment</h4>
+            <div class="tpl-form-grid">
+              <div class="tpl-field">
+                <label class="tpl-label">Lines</label>
+                <div style="display: flex; gap: 24px; margin-top: 6px;">
+                  <label class="admin-cb-label">
+                    <input type="checkbox" id="tf-show-half" ${(!tpl || tpl.showHalf !== false) ? 'checked' : ''}> X.5
+                  </label>
+                  <label class="admin-cb-label">
+                    <input type="checkbox" id="tf-show-whole" ${(!tpl || tpl.showWhole !== false) ? 'checked' : ''}> X.0
+                  </label>
+                </div>
+              </div>
+            </div>
+          </section>
+
           <section class="tpl-form-section">
             <div class="mkt-config-header">
               <div>
@@ -1419,6 +1436,10 @@ function wireFormEvents(backdrop, editingTpl) {
   // When sport changes, re-render the market cards with sport-specific market defs
   backdrop.querySelector('#tf-sport-sel')?.addEventListener('change', e => {
     const sport = e.target.value;
+    const lineAdjSec = backdrop.querySelector('#tf-line-adjustment-section');
+    if (lineAdjSec) {
+      lineAdjSec.style.display = sport === 'basketball' ? '' : 'none';
+    }
     const currentConfig = collectMarketsFromForm(backdrop);
     const newDefs = getActiveMarketDefs(sport);
     const wrap = backdrop.querySelector('#mkt-cards-wrap');
@@ -1450,13 +1471,18 @@ function wireFormEvents(backdrop, editingTpl) {
 
     const tplMinVal = parseFloat(backdrop.querySelector('#tf-min-odds')?.value);
     const tplMaxVal = parseFloat(backdrop.querySelector('#tf-max-odds')?.value);
+    const sport     = backdrop.querySelector('#tf-sport-sel').value;
+    const showHalf  = backdrop.querySelector('#tf-show-half')?.checked ?? true;
+    const showWhole = backdrop.querySelector('#tf-show-whole')?.checked ?? true;
     const data = {
       name,
-      sport:    backdrop.querySelector('#tf-sport-sel').value,
+      sport,
       type:     backdrop.querySelector('#tf-type-sel').value,
       active:   backdrop.querySelector('#tf-active-toggle').checked,
       minOdds:  (!isNaN(tplMinVal) && tplMinVal > 1) ? tplMinVal : null,
       maxOdds:  (!isNaN(tplMaxVal) && tplMaxVal > 1) ? tplMaxVal : null,
+      showHalf,
+      showWhole,
       markets,
     };
 

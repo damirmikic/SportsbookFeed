@@ -1,10 +1,10 @@
 # SportsbookFeed
 
-Browser-based football trading terminal for managing sportsbook prices against the Pinnacle feed. The app runs as plain ES modules in the browser, uses Netlify Functions for persistence, and stores shared and per-trader state in Turso.
+Browser-based football (soccer) and basketball trading terminal for managing sportsbook prices against the Pinnacle feed. The app runs as plain ES modules in the browser, uses Netlify Functions for persistence, and stores shared and per-trader state in Turso.
 
 ## What It Does
 
-- Fetches football leagues and odds from Pinnacle
+- Fetches football and basketball leagues and odds from Pinnacle
 - Supports manually created leagues and fixtures when an event is not available from the feed
 - Prices markets with Dixon-Coles and Shin no-vig calculations
 - Applies per-market templates with margin, ladder, and timeline controls
@@ -66,18 +66,22 @@ TURSO_AUTH_TOKEN=your-token
 
 ### Core frontend modules
 
+- `auth-session.js`: session read/write/expiry helpers
 - `api.js`: fetch helpers for Pinnacle and Netlify Function endpoints
 - `state.js`: app state, permissions, persistence, template defaults
 - `pricing.js`: template resolution, pricing rules, override alerts/expiry
 - `math.js`: Shin no-vig, Dixon-Coles solver helpers, ladder math
 - `markets.js`: derived market builders
 - `solver.worker.js`: off-thread solver work
+- `utils.js`: general helpers and utilities
 
 ### UI modules
 
+- `ui.js`: barrel exports for UI modules
 - `ui-leagues.js`: league sidebar
 - `ui-board.js`: event board
 - `ui-drawer.js`: event details drawer
+- `ui-helpers.js`: UI utilities, margin badges, effective period computation
 - `ui-market-table.js`: market comparison and editing table
 - `ui-market-groups.js`: drawer grouping logic
 - `odds-history-ui.js`: odds history modal and sparkline
@@ -88,6 +92,8 @@ TURSO_AUTH_TOKEN=your-token
 
 ### Netlify Functions
 
+- `netlify/functions/odds.js`: Pinnacle API odds proxy endpoint
+- `netlify/functions/offer.js`: offer snapshot endpoints
 - `netlify/functions/traders.js`: operator CRUD and PIN verification
 - `netlify/functions/shared-state.js`: global shared entities
 - `netlify/functions/trader-state.js`: per-trader entities
@@ -118,6 +124,7 @@ The app currently supports four roles:
 - Per-event AUTO / MANUAL state
 - Keyboard shortcuts for navigation and suspension
 - Shift note banner when a league has a handover note
+- Comprehensive market categorization (Match Odds, Handicap, Goals, Team Goals, Half markets, Specials, etc., plus Basketball-specific Match Odds, Handicap, Totals, Team Totals, Halves, and Quarters)
 
 ### Pricing
 
@@ -127,6 +134,7 @@ The app currently supports four roles:
 - Template timelines for tightening or widening by time to kickoff
 - League feed timelines that switch whole templates automatically
 - Manual fixtures can be priced from entered 1X2 / totals odds or direct Dixon-Coles lambdas
+- Basketball-specific line adjustment options in templates, allowing traders to toggle half-point (X.5) and whole-number (X.0) handicap and totals lines, which dynamically filter lines in the details drawer and exclude them from published offer snapshots
 
 ### Manual trading
 
@@ -161,6 +169,7 @@ The Turso schema is initialized by `netlify/functions/db.js` and includes:
 - Operator and access tables: `traders`, `trader_presence`
 - Pricing configuration: `templates`, `league_settings`, `match_templates`, `app_config`
 - Trading state: `suspensions`, `pending_overrides`, `trader_overrides`, `trader_override_meta`, `trader_modes`, `trader_lambdas`
+- Published prices: `offer_snapshot`
 - Trader preferences: `trader_favorites`, `trader_prefs`
 - Operational records: `audit_log`, `odds_history`
 - Manual feed data: `manual_leagues`, `manual_events`
