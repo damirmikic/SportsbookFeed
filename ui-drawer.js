@@ -142,6 +142,8 @@ function renderTemplateBar(event, drawerContent) {
   const isOverride   = source === 'match';
   const leagueTplId  = getLeagueSetting(state.currentLeagueCode)?.template || null;
   const templates    = getTemplates();
+  const currentSport = state.currentSportId === 4 ? 'basketball' : 'soccer';
+  const filteredTemplates = templates.filter(t => !t.sport || t.sport === currentSport);
 
   const bar = document.createElement('div');
   bar.className = 'drawer-tpl-bar';
@@ -161,7 +163,7 @@ function renderTemplateBar(event, drawerContent) {
     <div class="dtpl-right">
       <select class="dtpl-select" id="drawer-tpl-sel">
         <option value="">— league default${leagueTplId ? '' : ' (none)'} —</option>
-        ${templates.map(t => `<option value="${t.id}" ${isOverride && activeTpl?.id === t.id ? 'selected' : ''}>${t.name}${!t.active ? ' (inactive)' : ''}</option>`).join('')}
+        ${filteredTemplates.map(t => `<option value="${t.id}" ${isOverride && activeTpl?.id === t.id ? 'selected' : ''}>${t.name}${!t.active ? ' (inactive)' : ''}</option>`).join('')}
       </select>
       ${isOverride ? `<button class="dtpl-reset-btn" id="drawer-tpl-reset" title="Revert to league template">Reset</button>` : ''}
     </div>`;
