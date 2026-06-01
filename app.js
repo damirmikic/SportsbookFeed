@@ -37,14 +37,18 @@ async function _loadSportLeagues(sportId) {
       .filter(l => {
         if (sportId === 4) {
           return l.sport === 'basketball' || String(l.name).toLowerCase().includes('basketball') || String(l.name).toLowerCase().includes('nba');
+        } else if (sportId === 33) {
+          return l.sport === 'tennis' || String(l.name).toLowerCase().includes('tennis');
         } else {
-          return !l.sport || l.sport === 'soccer' || l.sport === 'football' || (!String(l.name).toLowerCase().includes('basketball') && !String(l.name).toLowerCase().includes('nba'));
+          return !l.sport || l.sport === 'soccer' || l.sport === 'football' || (!String(l.name).toLowerCase().includes('basketball') && !String(l.name).toLowerCase().includes('nba') && !String(l.name).toLowerCase().includes('tennis'));
         }
       })
       .map(l => ({ ...l, isManual: true }));
     state.allLeagues = [...leaguesData, ...filteredManual];
     if (sportId === 4) {
       state.basketballLeagues = state.allLeagues.slice();
+    } else if (sportId === 33) {
+      state.tennisLeagues = state.allLeagues.slice();
     } else {
       state.soccerLeagues = state.allLeagues.slice();
     }
@@ -54,6 +58,8 @@ async function _loadSportLeagues(sportId) {
     state.allLeagues = leaguesData;
     if (sportId === 4) {
       state.basketballLeagues = state.allLeagues.slice();
+    } else if (sportId === 33) {
+      state.tennisLeagues = state.allLeagues.slice();
     } else {
       state.soccerLeagues = state.allLeagues.slice();
     }
@@ -125,9 +131,9 @@ function updateSyncStatus(status) {
 function refreshAdminOverviewIfVisible() {
   const adminView = document.getElementById('admin-view');
   const activeSection = document.querySelector('.admin-section-btn.active')?.dataset.section;
-  const isTournamentsActive = activeSection === 'tournaments' || activeSection === 'tournaments-basketball';
+  const isTournamentsActive = activeSection === 'tournaments' || activeSection === 'tournaments-basketball' || activeSection === 'tournaments-tennis';
   if (adminView && !adminView.classList.contains('hidden') && isTournamentsActive) {
-    const sport = activeSection === 'tournaments-basketball' ? 'basketball' : 'soccer';
+    const sport = activeSection === 'tournaments-basketball' ? 'basketball' : activeSection === 'tournaments-tennis' ? 'tennis' : 'soccer';
     renderAdminPanel(sport);
   }
 }
@@ -189,6 +195,14 @@ function showAdminSection(section) {
       _loadSportLeagues(4).then(() => renderAdminPanel('basketball'));
     } else {
       renderAdminPanel('basketball');
+    }
+  } else if (section === 'tournaments-tennis') {
+    adminPanel.classList.remove('hidden');
+    // If tennis leagues haven't been fetched yet, load them now
+    if (!state.tennisLeagues.length) {
+      _loadSportLeagues(33).then(() => renderAdminPanel('tennis'));
+    } else {
+      renderAdminPanel('tennis');
     }
   } else {
     adminPanel.classList.remove('hidden');

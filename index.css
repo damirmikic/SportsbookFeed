@@ -1791,6 +1791,23 @@ body {
   letter-spacing: 0.5px;
 }
 
+/* Tennis sport pill variant */
+.admin-sport-pill--tennis {
+  background: linear-gradient(135deg, #d97706, #b45309);
+  color: #fff;
+}
+.admin-sport-pill--tennis .asp-badge {
+  background: rgba(0,0,0,0.25);
+  color: #fef3c7;
+  width: auto;
+  height: auto;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
 /* Template table sport tags */
 .tpl-tag-sport { font-weight: 700; }
 .tpl-tag-sport--soccer {
@@ -1802,6 +1819,11 @@ body {
   background: rgba(249,115,22,0.15);
   color: #fb923c;
   border: 1px solid rgba(249,115,22,0.3);
+}
+.tpl-tag-sport--tennis {
+  background: rgba(250,204,21,0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(250,204,21,0.3);
 }
 
 /* Sport chip in admin chips bar */

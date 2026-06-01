@@ -46,6 +46,18 @@
             <div class="sport-selector">
               <button type="button" class="sport-tab active" data-sport-id="29" title="Soccer">⚽</button>
               <button type="button" class="sport-tab" data-sport-id="4" title="Basketball">🏀</button>
+              <button type="button" class="sport-tab" data-sport-id="33" title="Tennis">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="22" height="22" aria-hidden="true">
+                  <!-- Ball body -->
+                  <circle cx="16" cy="16" r="14" fill="#c8e63c"/>
+                  <!-- Left seam arc -->
+                  <path d="M 7 4.5 Q 2 16 7 27.5" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round"/>
+                  <!-- Right seam arc -->
+                  <path d="M 25 4.5 Q 30 16 25 27.5" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round"/>
+                  <!-- Subtle shadow ring -->
+                  <circle cx="16" cy="16" r="14" fill="none" stroke="rgba(0,0,0,0.15)" stroke-width="1"/>
+                </svg>
+              </button>
             </div>
           </div>
           <div class="search-box">
@@ -75,6 +87,7 @@
       <nav class="admin-section-nav">
         <button type="button" class="admin-section-btn active" data-section="tournaments">Soccer Prematch</button>
         <button type="button" class="admin-section-btn" data-section="tournaments-basketball">Basketball Prematch</button>
+        <button type="button" class="admin-section-btn" data-section="tournaments-tennis">Tennis Prematch</button>
         <button type="button" class="admin-section-btn" data-section="templates">My Templates</button>
         <button type="button" class="admin-section-btn" data-section="custom-leagues">Custom Leagues</button>
         <button type="button" class="admin-section-btn" data-section="audit">Audit Log</button>

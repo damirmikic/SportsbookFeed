@@ -368,11 +368,12 @@ function renderEventTable(eventsToRender, { alertMoves = false, crossLeague = fa
   }
 
   const isBasketball = state.currentSportId === 4;
-  let html = `<table class="market-table ${isBasketball ? 'basketball-active' : ''}">
+  const isTennis = state.currentSportId === 33;
+  let html = `<table class="market-table ${isBasketball ? 'basketball-active' : ''} ${isTennis ? 'tennis-active' : ''}">
     <thead><tr>
       <th style="width:30%">Match</th>
-      <th>1</th><th>X</th><th>2</th>
-      <th>Over${isBasketball ? '' : ' 2.5'}</th><th>Under${isBasketball ? '' : ' 2.5'}</th>
+      <th>1</th>${isTennis ? '' : `<th>X</th>`}<th>2</th>
+      <th>Over${isBasketball ? '' : isTennis ? ' (Games)' : ' 2.5'}</th><th>Under${isBasketball ? '' : isTennis ? ' (Games)' : ' 2.5'}</th>
     </tr></thead><tbody>`;
 
   eventsToRender.forEach(event => {
@@ -398,17 +399,18 @@ function renderEventTable(eventsToRender, { alertMoves = false, crossLeague = fa
     if (matchPeriod && (matchPeriod.moneyLine || matchPeriod.moneyline)) {
       const ml = matchPeriod.moneyLine || matchPeriod.moneyline;
       raw1 = ml.homePrice || ml.home || '-';
-      rawX = ml.drawPrice || ml.draw || '-';
+      rawX = isTennis ? null : (ml.drawPrice || ml.draw || '-');
       raw2 = ml.awayPrice || ml.away || '-';
     }
     let odds1 = raw1, oddsX = rawX, odds2 = raw2;
 
     let rawOver = '-', rawUnder = '-';
     let oddsOver = '-', oddsUnder = '-';
-    let ouLineLabel = isBasketball ? '220.5' : '2.5';
+    let ouLineLabel = isBasketball ? '220.5' : isTennis ? '22.5' : '2.5';
     if (matchPeriod?.overUnder) {
+      const defaultLine = isTennis ? 22.5 : 2.5;
       const ouMain = matchPeriod.overUnder.find(ou => ou.isMain)
-        || matchPeriod.overUnder.find(ou => ou.points === '2.5' || ou.points === 2.5)
+        || matchPeriod.overUnder.find(ou => parseFloat(ou.points) === defaultLine)
         || matchPeriod.overUnder[0];
       if (ouMain) {
         rawOver = ouMain.overOdds || ouMain.over || '-';
@@ -426,10 +428,15 @@ function renderEventTable(eventsToRender, { alertMoves = false, crossLeague = fa
       const { template: offerTpl } = resolveTemplate(event.id, state.currentLeagueCode);
       if (offerTpl) {
         const eventStart = event.starts || event.startTime || event.time;
-        const mlConf = getMarketConfig(offerTpl, '1x2');
+        // For tennis use tennis_ml; for others use 1x2
+        const mlTplId = isTennis ? 'tennis_ml' : '1x2';
+        const mlConf = getMarketConfig(offerTpl, mlTplId);
         if (mlConf?.enabled && (matchPeriod.moneyLine || matchPeriod.moneyline)) {
           const ml   = matchPeriod.moneyLine || matchPeriod.moneyline;
-          const shin = calculateShinNoVig([ml.homePrice || ml.home, ml.drawPrice || ml.draw, ml.awayPrice || ml.away]);
+          const priceArr = isTennis
+            ? [ml.homePrice || ml.home, ml.awayPrice || ml.away]
+            : [ml.homePrice || ml.home, ml.drawPrice || ml.draw, ml.awayPrice || ml.away];
+          const shin = calculateShinNoVig(priceArr);
           let margin = mlConf.margin;
           const tl = eventStart ? resolveActiveKey(mlConf, eventStart) : null;
           if (tl?.key != null) margin = tl.key;
@@ -437,16 +444,22 @@ function renderEventTable(eventsToRender, { alertMoves = false, crossLeague = fa
           const mlMin = mlConf.minOdds ?? offerTpl.minOdds ?? null;
           const mlMax = mlConf.maxOdds ?? offerTpl.maxOdds ?? null;
           const o1 = clampOdds(applyMarginAndLadder(parseFloat(shin[0]), margin, ladder), mlMin, mlMax);
-          const oX = clampOdds(applyMarginAndLadder(parseFloat(shin[1]), margin, ladder), mlMin, mlMax);
-          const o2 = clampOdds(applyMarginAndLadder(parseFloat(shin[2]), margin, ladder), mlMin, mlMax);
+          const o2 = clampOdds(applyMarginAndLadder(parseFloat(shin[isTennis ? 1 : 2]), margin, ladder), mlMin, mlMax);
           if (o1 > 1) odds1 = o1.toFixed(2);
-          if (oX > 1) oddsX = oX.toFixed(2);
+          if (!isTennis) {
+            const oX = clampOdds(applyMarginAndLadder(parseFloat(shin[1]), margin, ladder), mlMin, mlMax);
+            if (oX > 1) oddsX = oX.toFixed(2);
+          }
           if (o2 > 1) odds2 = o2.toFixed(2);
         }
-        const ouConf = getMarketConfig(offerTpl, 'ou25') || getMarketConfig(offerTpl, 'asian_tot');
+        // For tennis use tennis_tot; for others use ou25/asian_tot
+        const ouTplId = isTennis ? 'tennis_tot' : null;
+        const ouConf = ouTplId
+          ? getMarketConfig(offerTpl, ouTplId)
+          : (getMarketConfig(offerTpl, 'ou25') || getMarketConfig(offerTpl, 'asian_tot'));
         if (ouConf?.enabled && Array.isArray(matchPeriod.overUnder)) {
           const ouMain = matchPeriod.overUnder.find(ou => ou.isMain)
-            || matchPeriod.overUnder.find(ou => parseFloat(ou.points) === 2.5)
+            || matchPeriod.overUnder.find(ou => parseFloat(ou.points) === (isTennis ? 22.5 : 2.5))
             || matchPeriod.overUnder[0];
           if (ouMain) {
             const shin = calculateShinNoVig([ouMain.overOdds, ouMain.underOdds]);
@@ -525,10 +538,10 @@ function renderEventTable(eventsToRender, { alertMoves = false, crossLeague = fa
         <div class="match-teams">${homeTeam} vs ${awayTeam}</div>
       </td>
       <td class="${mlSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${m1 ? ' manual-price' : t1}" data-history-market="moneyline" data-history-side="home" data-history-label="${escapeAttr(homeTeam)}">${evtSuspended || mlSuspended ? 'SUSP' : odds1}${!m1 && t1 === ' price-up' ? ' ▲' : !m1 && t1 === ' price-down' ? ' ▼' : ''}</button></td>
-      <td class="${mlSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${mX ? ' manual-price' : tX}" data-history-market="moneyline" data-history-side="draw" data-history-label="Draw">${evtSuspended || mlSuspended ? 'SUSP' : oddsX}${!mX && tX === ' price-up' ? ' ▲' : !mX && tX === ' price-down' ? ' ▼' : ''}</button></td>
+      ${isTennis ? '' : `<td class="${mlSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${mX ? ' manual-price' : tX}" data-history-market="moneyline" data-history-side="draw" data-history-label="Draw">${evtSuspended || mlSuspended ? 'SUSP' : oddsX}${!mX && tX === ' price-up' ? ' ▲' : !mX && tX === ' price-down' ? ' ▼' : ''}</button></td>`}
       <td class="${mlSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${m2 ? ' manual-price' : t2}" data-history-market="moneyline" data-history-side="away" data-history-label="${escapeAttr(awayTeam)}">${evtSuspended || mlSuspended ? 'SUSP' : odds2}${!m2 && t2 === ' price-up' ? ' ▲' : !m2 && t2 === ' price-down' ? ' ▼' : ''}</button></td>
-      <td class="${ouSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${mOver ? ' manual-price' : ''}" data-history-market="total" data-history-side="over" data-history-points="${ouLineLabel}" data-history-label="Over ${ouLineLabel}" style="border-color:${mOver ? '#fbbf24' : 'var(--accent-color)'}">${evtSuspended || ouSuspended ? 'SUSP' : oddsOver}${ouLineLabel !== '2.5' ? `<span class="ou-line-tag">${ouLineLabel}</span>` : ''}</button></td>
-      <td class="${ouSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${mUnder ? ' manual-price' : ''}" data-history-market="total" data-history-side="under" data-history-points="${ouLineLabel}" data-history-label="Under ${ouLineLabel}" style="border-color:${mUnder ? '#fbbf24' : 'var(--accent-color)'}">${evtSuspended || ouSuspended ? 'SUSP' : oddsUnder}${ouLineLabel !== '2.5' ? `<span class="ou-line-tag">${ouLineLabel}</span>` : ''}</button></td>
+      <td class="${ouSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${mOver ? ' manual-price' : ''}" data-history-market="total" data-history-side="over" data-history-points="${ouLineLabel}" data-history-label="Over ${ouLineLabel}" style="border-color:${mOver ? '#fbbf24' : 'var(--accent-color)'}">${evtSuspended || ouSuspended ? 'SUSP' : oddsOver}${ouLineLabel !== (isTennis ? '22.5' : '2.5') ? `<span class="ou-line-tag">${ouLineLabel}</span>` : ''}</button></td>
+      <td class="${ouSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${mUnder ? ' manual-price' : ''}" data-history-market="total" data-history-side="under" data-history-points="${ouLineLabel}" data-history-label="Under ${ouLineLabel}" style="border-color:${mUnder ? '#fbbf24' : 'var(--accent-color)'}">${evtSuspended || ouSuspended ? 'SUSP' : oddsUnder}${ouLineLabel !== (isTennis ? '22.5' : '2.5') ? `<span class="ou-line-tag">${ouLineLabel}</span>` : ''}</button></td>
     </tr>`;
   });
 
@@ -672,7 +685,7 @@ export async function buildOfferSnapshot() {
       if (!offerTpl) return null;
 
       let lambdaData = null;
-      if (state.currentSportId !== 4) {
+      if (state.currentSportId !== 4 && state.currentSportId !== 33) {
         try {
           lambdaData = await calculateTeamLambdasAsync(matchPeriod, h1Period);
           const ovLambdas = getOverriddenLambdas(event.id);
@@ -722,6 +735,191 @@ export async function buildOfferSnapshot() {
   return { leagueCode: String(leagueCode), events: snapshotEvents };
 }
 
+// ── Tennis: merge sibling (Sets) / (Games) event pairs ───────────────────────
+//
+// Pinnacle exposes tennis matches as two separate events:
+//   "Player A vs Player B (Sets)"  — has moneyline, handicap, set totals
+//   "Player A vs Player B (Games)" — has game over/under lines
+//
+// This function detects those sibling pairs (same base name + same start time),
+// copies the Games event's overUnder arrays into the Sets event's periods,
+// strips the "(Sets)" suffix from the display name, and drops the Games event.
+// Events that don't follow this pattern are passed through unchanged.
+
+function normalizeTennisName(name) {
+  // Strip (Sets) and (Games) from ANYWHERE in the string — Pinnacle appends
+  // these to each individual player name, e.g. "Martin Damm (Sets) vs James McCabe (Sets)"
+  return (name || '')
+    .replace(/\s*\(Sets\)\s*/gi, ' ')
+    .replace(/\s*\(Games\)\s*/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getPeriodMap(event) {
+  if (event.periods && !Array.isArray(event.periods)) return event.periods;
+  if (event.periodOdds && !Array.isArray(event.periodOdds)) return event.periodOdds;
+  // Array-of-periods: index by num/periodNumber
+  const arr = Array.isArray(event.periods) ? event.periods : Object.values(event.periods || {});
+  const map = {};
+  arr.forEach(p => {
+    const key = String(p.num ?? p.periodNumber ?? 0);
+    map[key] = p;
+  });
+  return map;
+}
+
+function cleanTennisSetsEvent(ev) {
+  // Strip "(Sets)" and "(Games)" from home/away names wherever they appear (global replace)
+  const clean = { ...ev };
+  const removeSuffixes = s => (s || '').replace(/\s*\(Sets\)\s*/gi, '').replace(/\s*\(Games\)\s*/gi, '').trim();
+  
+  if (clean.home) clean.home = removeSuffixes(clean.home);
+  if (clean.away) clean.away = removeSuffixes(clean.away);
+  if (clean.name) clean.name = removeSuffixes(clean.name);
+  if (clean.eventName) clean.eventName = removeSuffixes(clean.eventName);
+  
+  if (clean.participants) {
+    clean.participants = clean.participants.map(p => ({
+      ...p,
+      name: p.name ? removeSuffixes(p.name) : p.name,
+      englishName: p.englishName ? removeSuffixes(p.englishName) : p.englishName
+    }));
+  }
+  return clean;
+}
+
+function mergeTennisEvents(events) {
+  const getEventName = ev => {
+    const { home, away } = getTeamNames(ev);
+    return `${home} vs ${away}`;
+  };
+
+  const primaryMap = new Map(); // id -> { setsEvent, gamesEvents: [] }
+  const otherEvents = [];
+
+  // First pass: identify sets (primary) events and initialize the primaryMap
+  events.forEach(ev => {
+    const rawName = getEventName(ev);
+    const isSets = /\(Sets\)/i.test(rawName) || ev.resultingUnit === 'Sets' || !ev.parentId;
+    if (isSets && (!ev.parentId || ev.parentId === 0)) {
+      primaryMap.set(ev.id, { sets: ev, games: [] });
+    }
+  });
+
+  // Create name|time key lookup for fallback matching
+  const keyMap = new Map(); // normalizedName|startTime -> primaryMap entry
+  primaryMap.forEach((entry) => {
+    const rawName = getEventName(entry.sets);
+    const normName = normalizeTennisName(rawName);
+    const startTime = String(entry.sets.starts || entry.sets.startTime || entry.sets.time || '');
+    const key = `${normName}|${startTime}`;
+    keyMap.set(key, entry);
+  });
+
+  // Second pass: group games (secondary) events under their corresponding sets (primary) events
+  events.forEach(ev => {
+    const rawName = getEventName(ev);
+    const isSets = /\(Sets\)/i.test(rawName) || ev.resultingUnit === 'Sets' || !ev.parentId;
+    if (isSets && (!ev.parentId || ev.parentId === 0)) {
+      // Primary event itself, already processed
+      return;
+    }
+
+    const parentId = ev.parentId;
+    if (parentId && primaryMap.has(parentId)) {
+      primaryMap.get(parentId).games.push(ev);
+    } else {
+      // Fallback matching by normalized name and start time
+      const normName = normalizeTennisName(rawName);
+      const startTime = String(ev.starts || ev.startTime || ev.time || '');
+      const key = `${normName}|${startTime}`;
+      if (keyMap.has(key)) {
+        keyMap.get(key).games.push(ev);
+      } else {
+        otherEvents.push(ev);
+      }
+    }
+  });
+
+  const merged = [];
+
+  // Merge games events into their parent sets events
+  primaryMap.forEach(({ sets, games }) => {
+    const primary = cleanTennisSetsEvent(sets);
+    const periodMap = getPeriodMap(primary);
+
+    // For the primary Sets event, move its own period 0 handicap and overUnder to setHandicap and setOverUnder
+    if (periodMap['0']) {
+      if (periodMap['0'].handicap) {
+        // Filter out unavailable lines
+        const validSetHdps = periodMap['0'].handicap.filter(h => !h.unavailable && h.homeSpread !== undefined && h.homeSpread !== '');
+        if (validSetHdps.length) {
+          periodMap['0'].setHandicap = validSetHdps;
+        }
+        delete periodMap['0'].handicap;
+      }
+      if (periodMap['0'].overUnder) {
+        // Filter out unavailable lines
+        const validSetOus = periodMap['0'].overUnder.filter(ou => !ou.unavailable && ou.points !== undefined && ou.points !== '');
+        if (validSetOus.length) {
+          periodMap['0'].setOverUnder = validSetOus;
+        }
+        delete periodMap['0'].overUnder;
+      }
+    }
+
+    // Now merge any secondary sibling Games events
+    games.forEach(gamesEvent => {
+      const gamesPeriodMap = getPeriodMap(gamesEvent);
+
+      Object.entries(gamesPeriodMap).forEach(([key, gamesPeriod]) => {
+        if (!periodMap[key]) {
+          periodMap[key] = {};
+        }
+
+        // Merge handicap
+        if (gamesPeriod?.handicap?.length) {
+          const validHdps = gamesPeriod.handicap.filter(h => !h.unavailable && h.homeSpread !== undefined && h.homeSpread !== '');
+          if (validHdps.length) {
+            periodMap[key].handicap = [...(periodMap[key].handicap || []), ...validHdps];
+          }
+        }
+
+        // Merge overUnder
+        if (gamesPeriod?.overUnder?.length) {
+          const validOus = gamesPeriod.overUnder.filter(ou => !ou.unavailable && ou.points !== undefined && ou.points !== '');
+          if (validOus.length) {
+            const existing = periodMap[key].overUnder || [];
+            const existingPoints = new Set(existing.map(ou => String(parseFloat(ou.points))));
+            const toAdd = validOus.filter(ou => !existingPoints.has(String(parseFloat(ou.points))));
+            periodMap[key].overUnder = [...existing, ...toAdd];
+          }
+        }
+      });
+    });
+
+    if (Array.isArray(primary.periods)) {
+      primary.periods = periodMap;
+    }
+
+    merged.push(primary);
+  });
+
+  // Push any other unmatched events
+  otherEvents.forEach(ev => {
+    const cleaned = cleanTennisSetsEvent(ev);
+    // If it's a Games event without a Sets sibling, keep its handicap/overUnder under the regular fields
+    merged.push(cleaned);
+  });
+
+  // Maintain original order
+  const orderMap = new Map(events.map((ev, i) => [ev.id, i]));
+  merged.sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0));
+
+  return merged;
+}
+
 export function renderOdds(data, options = {}) {
   let events = [];
   if (data.leagues && Array.isArray(data.leagues)) {
@@ -729,6 +927,12 @@ export function renderOdds(data, options = {}) {
   } else {
     events = data.events || data.matches || (Array.isArray(data) ? data : []);
   }
+
+  // ── Tennis: merge (Sets) + (Games) sibling events into one ───────────────
+  if (state.currentSportId === 33) {
+    events = mergeTennisEvents(events);
+  }
+
   state.activeEvents = events;
   if (state.currentLeagueCode) {
     const _ln = state.allLeagues.find(l => (l.code || l.leagueCode || l.id) === String(state.currentLeagueCode))?.name || String(state.currentLeagueCode);

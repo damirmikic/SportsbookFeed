@@ -75,6 +75,22 @@ export const DRAWER_TO_TPL_ID = {
   'home_or_over25':'result_or_over25','away_or_over25':'result_or_over25',
   'htft_total_15': 'htft_total',  'htft_total_25': 'htft_total',  'htft_total_35': 'htft_total',
   'h1_or_ft':      'h1_or_ft',
+  // Tennis
+  'tennis_ml':         'tennis_ml',
+  'tennis_hdp':        'tennis_hdp',
+  'tennis_tot':        'tennis_tot',
+  'tennis_sets':       'tennis_sets',
+  'tennis_set_hdp':    'tennis_set_hdp',
+  'tennis_set_win':    'tennis_set_win',
+  'tennis_s1_ou':      'tennis_s1_ou',
+  'tennis_s2_ou':      'tennis_s2_ou',
+  'tennis_s3_ou':      'tennis_s3_ou',
+  'tennis_s1_winner':  'tennis_s1_winner',
+  'tennis_s2_winner':  'tennis_s2_winner',
+  'tennis_s3_winner':  'tennis_s3_winner',
+  'tennis_s1_hdp':     'tennis_s1_hdp',
+  'tennis_exact_sets': 'tennis_exact_sets',
+  'tennis_to_nil':     'tennis_to_nil',
 };
 
 // Mirrors computeOffer logic: returns true if at least one row would produce a price.
@@ -142,7 +158,7 @@ function renderTemplateBar(event, drawerContent) {
   const isOverride   = source === 'match';
   const leagueTplId  = getLeagueSetting(state.currentLeagueCode)?.template || null;
   const templates    = getTemplates();
-  const currentSport = state.currentSportId === 4 ? 'basketball' : 'soccer';
+  const currentSport = state.currentSportId === 4 ? 'basketball' : state.currentSportId === 33 ? 'tennis' : 'soccer';
   const filteredTemplates = templates.filter(t => !t.sport || t.sport === currentSport);
 
   const bar = document.createElement('div');
@@ -274,7 +290,7 @@ export async function renderDrawerMarkets(event) {
     : matchPeriod;
   let lambdaData = null;
   let modelUnavailable = false;
-  if (state.currentSportId !== 4) {
+  if (state.currentSportId !== 4 && state.currentSportId !== 33) {
     try {
       lambdaData = await calculateTeamLambdasAsync(effectivePeriod, h1Period);
     } catch (error) {

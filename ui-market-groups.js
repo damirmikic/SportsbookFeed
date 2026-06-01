@@ -38,6 +38,188 @@ export function groupMarketsByCategory(event, matchPeriod, h1Period, lambdaData,
     return arr.find(p => p.num === num || p.periodNumber === num);
   };
 
+  // --- Tennis (sportId=33) Specific Market Grouping ---
+  if (state.currentSportId === 33) {
+    const tGroups = {
+      'MATCH ODDS': [],
+      'HANDICAP':   [],
+      'TOTALS':     [],
+      'SETS':       [],
+      'SET MARKETS':[],
+      'SPECIALS':   [],
+    };
+
+    const p0 = getPeriodData(0); // Full match
+    const p1 = getPeriodData(1); // 1st Set
+    const p2 = getPeriodData(2); // 2nd Set
+    const p3 = getPeriodData(3); // 3rd Set
+
+    const fmt = s => {
+      const n = parseFloat(s);
+      return (n === 0 || isNaN(n)) ? '0' : (n > 0 ? `+${n}` : `${n}`);
+    };
+
+    // 1. MATCH ODDS — 2-way Moneyline (no draw)
+    if (p0?.moneyLine || p0?.moneyline) {
+      const ml = p0.moneyLine || p0.moneyline;
+      const odds = [ml.homePrice || ml.home, ml.awayPrice || ml.away];
+      const shin = calculateShinNoVig(odds);
+      tGroups['MATCH ODDS'].push({
+        id: 'tennis_ml',
+        name: 'Match Winner',
+        rows: [
+          { label: homeTeam, value: odds[0] || '-', shinFair: shin[0], modelFair: null },
+          { label: awayTeam, value: odds[1] || '-', shinFair: shin[1], modelFair: null },
+        ]
+      });
+    }
+    // 2. HANDICAP — Games Handicap
+    if (p0?.handicap && Array.isArray(p0.handicap)) {
+      let hdps = [...p0.handicap].sort((a, b) => parseFloat(a.homeSpread) - parseFloat(b.homeSpread));
+      const selected = selectCenteredLines(
+        hdps,
+        getConfiguredLineLimit(template, 'tennis_hdp'),
+        h => Math.abs(parseFloat(h.homeOdds) - parseFloat(h.awayOdds))
+      );
+      const rows = [];
+      selected.forEach(h => {
+        if (h.unavailable || h.homeSpread === undefined || h.homeSpread === '') return;
+        const shin = calculateShinNoVig([h.homeOdds, h.awayOdds]);
+        rows.push({ label: `${homeTeam} ${fmt(h.homeSpread)}`, value: h.homeOdds, shinFair: shin[0], modelFair: null });
+        rows.push({ label: `${awayTeam} ${fmt(h.awaySpread)}`, value: h.awayOdds, shinFair: shin[1], modelFair: null });
+      });
+      if (rows.length) tGroups['HANDICAP'].push({ id: 'tennis_hdp', name: 'Games Handicap', rows });
+    }
+
+    // 3. TOTALS — Total Games Over/Under
+    if (p0?.overUnder && Array.isArray(p0.overUnder)) {
+      let ous = [...p0.overUnder].sort((a, b) => parseFloat(a.points) - parseFloat(b.points));
+      const selected = selectCenteredLines(
+        ous,
+        getConfiguredLineLimit(template, 'tennis_tot'),
+        ou => Math.abs(parseFloat(ou.overOdds) - parseFloat(ou.underOdds))
+      );
+      const rows = [];
+      selected.forEach(ou => {
+        if (ou.unavailable || ou.points === undefined || ou.points === '') return;
+        const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
+        rows.push({ label: `Over ${ou.points} Games`,  value: ou.overOdds,  shinFair: shin[0], modelFair: null });
+        rows.push({ label: `Under ${ou.points} Games`, value: ou.underOdds, shinFair: shin[1], modelFair: null });
+      });
+      if (rows.length) tGroups['TOTALS'].push({ id: 'tennis_tot', name: 'Total Games', rows });
+    }
+
+    // 4. SETS — Set Handicap, Total Sets O/U and set winner
+    // Set Handicap
+    if (p0?.setHandicap && Array.isArray(p0.setHandicap)) {
+      let setHdps = [...p0.setHandicap].sort((a, b) => parseFloat(a.homeSpread) - parseFloat(b.homeSpread));
+      const selected = selectCenteredLines(
+        setHdps,
+        getConfiguredLineLimit(template, 'tennis_set_hdp'),
+        h => Math.abs(parseFloat(h.homeOdds) - parseFloat(h.awayOdds))
+      );
+      const rows = [];
+      selected.forEach(h => {
+        if (h.unavailable || h.homeSpread === undefined || h.homeSpread === '') return;
+        const shin = calculateShinNoVig([h.homeOdds, h.awayOdds]);
+        rows.push({ label: `${homeTeam} ${fmt(h.homeSpread)}`, value: h.homeOdds, shinFair: shin[0], modelFair: null });
+        rows.push({ label: `${awayTeam} ${fmt(h.awaySpread)}`, value: h.awayOdds, shinFair: shin[1], modelFair: null });
+      });
+      if (rows.length) tGroups['SETS'].push({ id: 'tennis_set_hdp', name: 'Set Handicap', rows });
+    }
+
+    // Total Sets O/U
+    if (p0?.setOverUnder && Array.isArray(p0.setOverUnder)) {
+      let setOus = [...p0.setOverUnder].sort((a, b) => parseFloat(a.points) - parseFloat(b.points));
+      const selected = selectCenteredLines(
+        setOus,
+        getConfiguredLineLimit(template, 'tennis_sets'),
+        ou => Math.abs(parseFloat(ou.overOdds) - parseFloat(ou.underOdds))
+      );
+      const rows = [];
+      selected.forEach(ou => {
+        if (ou.unavailable || ou.points === undefined || ou.points === '') return;
+        const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
+        rows.push({ label: `Over ${ou.points} Sets`,  value: ou.overOdds,  shinFair: shin[0], modelFair: null });
+        rows.push({ label: `Under ${ou.points} Sets`, value: ou.underOdds, shinFair: shin[1], modelFair: null });
+      });
+      if (rows.length) tGroups['SETS'].push({ id: 'tennis_sets', name: 'Total Sets', rows });
+    }
+
+    // Try to find set count market from period data
+    // Pinnacle sometimes provides this as a separate period or in the main period
+    const setWinnerData = p0?.setWinner || p0?.set_winner;
+    if (setWinnerData) {
+      const shin = calculateShinNoVig([setWinnerData.homePrice || setWinnerData.home, setWinnerData.awayPrice || setWinnerData.away]);
+      tGroups['SETS'].push({
+        id: 'tennis_set_win',
+        name: 'Set Winner',
+        rows: [
+          { label: homeTeam, value: setWinnerData.homePrice || setWinnerData.home || '-', shinFair: shin[0], modelFair: null },
+          { label: awayTeam, value: setWinnerData.awayPrice || setWinnerData.away || '-', shinFair: shin[1], modelFair: null },
+        ]
+      });
+    }
+
+    // Correct Set Score (Exact Sets)
+    const exactSets = p0?.setScore || p0?.exactSets || p0?.setScores;
+    if (exactSets && Array.isArray(exactSets)) {
+      const rows = exactSets.map(s => {
+        return { label: s.name || s.score || s.label || '', value: s.price || s.odds || '-', shinFair: null, modelFair: null };
+      });
+      if (rows.length) tGroups['SPECIALS'].push({ id: 'tennis_exact_sets', name: 'Correct Set Score', rows });
+    }
+
+    // 5. SET MARKETS — per-set winner and totals
+    const addSetMarkets = (p, setName, setIdx) => {
+      if (!p) return;
+      // Set Winner (moneyline for that set)
+      if (p.moneyLine || p.moneyline) {
+        const ml = p.moneyLine || p.moneyline;
+        const odds = [ml.homePrice || ml.home, ml.awayPrice || ml.away];
+        const shin = calculateShinNoVig(odds);
+        tGroups['SET MARKETS'].push({
+          id: `tennis_s${setIdx}_winner`,
+          name: `${setName} Winner`,
+          rows: [
+            { label: homeTeam, value: odds[0] || '-', shinFair: shin[0], modelFair: null },
+            { label: awayTeam, value: odds[1] || '-', shinFair: shin[1], modelFair: null },
+          ]
+        });
+      }
+      // Set Handicap
+      if (p.handicap && Array.isArray(p.handicap)) {
+        const rows = [];
+        const h = p.handicap[0];
+        if (h && !h.unavailable && h.homeSpread !== undefined && h.homeSpread !== '') {
+          const shin = calculateShinNoVig([h.homeOdds, h.awayOdds]);
+          rows.push({ label: `${homeTeam} ${fmt(h.homeSpread)}`, value: h.homeOdds, shinFair: shin[0], modelFair: null });
+          rows.push({ label: `${awayTeam} ${fmt(h.awaySpread)}`, value: h.awayOdds, shinFair: shin[1], modelFair: null });
+          if (setIdx === 1) tGroups['SET MARKETS'].push({ id: 'tennis_s1_hdp', name: `${setName} Handicap`, rows });
+        }
+      }
+      // Set Total Games
+      if (p.overUnder && Array.isArray(p.overUnder)) {
+        const rows = [];
+        const ous = [...p.overUnder].sort((a, b) => parseFloat(a.points) - parseFloat(b.points));
+        ous.forEach(ou => {
+          if (ou.unavailable || ou.points === undefined || ou.points === '') return;
+          const shin = calculateShinNoVig([ou.overOdds, ou.underOdds]);
+          rows.push({ label: `Over ${ou.points}`,  value: ou.overOdds,  shinFair: shin[0], modelFair: null });
+          rows.push({ label: `Under ${ou.points}`, value: ou.underOdds, shinFair: shin[1], modelFair: null });
+        });
+        if (rows.length) tGroups['SET MARKETS'].push({ id: `tennis_s${setIdx}_ou`, name: `${setName} Total Games`, rows });
+      }
+    };
+
+    addSetMarkets(p1, '1st Set', 1);
+    addSetMarkets(p2, '2nd Set', 2);
+    addSetMarkets(p3, '3rd Set', 3);
+
+    // Filter out empty categories
+    return Object.fromEntries(Object.entries(tGroups).filter(([, v]) => v.length > 0));
+  }
+
   // --- Basketball (sportId=4) Specific Market Grouping ---
   if (state.currentSportId === 4) {
     const showHalf = template?.showHalf !== false;

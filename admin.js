@@ -31,13 +31,17 @@ function getAdminLeagues() {
     const n = (l.name || l.leagueName || '').toLowerCase();
     return l.sport === 'basketball' || n.includes('basketball') || n.includes('nba');
   });
+  if (currentAdminSport === 'tennis') return state.tennisLeagues.length ? state.tennisLeagues : state.allLeagues.filter(l => {
+    const n = (l.name || l.leagueName || '').toLowerCase();
+    return l.sport === 'tennis' || n.includes('tennis');
+  });
   return state.soccerLeagues.length ? state.soccerLeagues : state.allLeagues.filter(l => {
     const n = (l.name || l.leagueName || '').toLowerCase();
-    return !l.sport || l.sport === 'soccer' || l.sport === 'football' || (!n.includes('basketball') && !n.includes('nba'));
+    return !l.sport || l.sport === 'soccer' || l.sport === 'football' || (!n.includes('basketball') && !n.includes('nba') && !n.includes('tennis'));
   });
 }
 
-const SPORT_LABEL = { soccer: 'Soccer', basketball: 'Basketball' };
+const SPORT_LABEL = { soccer: 'Soccer', basketball: 'Basketball', tennis: 'Tennis' };
 
 // ── Helpers ───────────────────────────────────────────────
 function getCountry(league) {

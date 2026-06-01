@@ -18,6 +18,8 @@ const LINES_MARKETS = new Set([
   'booking_ou', 'booking_hdp', 'h1_booking_ou', 'h1_booking_hdp',
   'h1_ou', 'h2_ou',
   'h1_main', 'h2_main',
+  'tennis_hdp', 'tennis_tot', 'tennis_sets', 'tennis_set_hdp',
+  'tennis_s1_ou', 'tennis_s2_ou', 'tennis_s3_ou', 'tennis_s1_hdp',
 ]);
 
 // ── Filter state ──────────────────────────────────────────
@@ -49,7 +51,7 @@ function typeLabel(type) {
 // discovered markets from the feed (if any), else MARKET_DEFS fallback.
 function getActiveMarketDefs(sport) {
   const disc = getDiscoveredMarkets();
-  const source = disc?.markets?.length && sport !== 'basketball' ? disc.markets : MARKET_DEFS;
+  const source = disc?.markets?.length && sport !== 'basketball' && sport !== 'tennis' ? disc.markets : MARKET_DEFS;
   const defs = source.map(d => {
     const base = MARKET_DEFS.find(m => m.id === d.id);
     const label = sport ? base?.sportLabels?.[sport] : null;
@@ -62,10 +64,10 @@ function getActiveMarketDefs(sport) {
     };
   });
   if (!sport || sport === 'soccer') {
-    // Soccer (or no filter): show everything except basketball-exclusive markets
+    // Soccer (or no filter): show everything except basketball/tennis-exclusive markets
     return defs.filter(d => !d.sports || d.sports.includes('soccer'));
   }
-  // Basketball: only show markets that explicitly list basketball
+  // Sport-specific: only show markets that explicitly list that sport
   return defs.filter(d => d.sports && d.sports.includes(sport));
 }
 
@@ -251,6 +253,7 @@ function filterBarHTML(canManage = true) {
           <option value="">ALL SPORTS</option>
           <option value="soccer"     ${tplFilters.sport === 'soccer'     ? 'selected' : ''}>Soccer</option>
           <option value="basketball" ${tplFilters.sport === 'basketball' ? 'selected' : ''}>Basketball</option>
+          <option value="tennis"     ${tplFilters.sport === 'tennis'     ? 'selected' : ''}>Tennis</option>
         </select>
         <select class="admin-sel" id="tf-type">
           <option value="">TYPE</option>
@@ -275,7 +278,7 @@ function chipsBarHTML() {
   const chips = [];
   if (tplFilters.activeOnly) chips.push({ key: 'activeOnly', label: 'Active Templates' });
   if (tplFilters.type)       chips.push({ key: 'type', label: typeLabel(tplFilters.type) });
-  if (tplFilters.sport)      chips.push({ key: 'sport', label: tplFilters.sport === 'basketball' ? 'Basketball' : 'Soccer' });
+  if (tplFilters.sport) chips.push({ key: 'sport', label: tplFilters.sport === 'basketball' ? 'Basketball' : tplFilters.sport === 'tennis' ? 'Tennis' : 'Soccer' });
   return `
     <div class="admin-chips-bar">
       <button class="admin-clear-btn" id="tf-clear">REMOVE ALL FILTERS</button>
@@ -308,7 +311,7 @@ function templateRowHTML(tpl, canManage = true) {
           <button class="tpl-rename-x"  data-id="${tpl.id}" title="Cancel">✕</button>
         </div>
       </td>
-      <td><span class="tpl-tag tpl-tag-sport tpl-tag-sport--${tpl.sport || 'soccer'}">${tpl.sport === 'basketball' ? 'Basketball' : 'Soccer'}</span></td>
+      <td><span class="tpl-tag tpl-tag-sport tpl-tag-sport--${tpl.sport || 'soccer'}">${tpl.sport === 'basketball' ? 'Basketball' : tpl.sport === 'tennis' ? 'Tennis' : 'Soccer'}</span></td>
       <td><span class="tpl-tag tpl-tag-type">${typeLabel(tpl.type)}</span></td>
       <td class="tpl-td-markets">
         <span class="tpl-markets-count">${enabled}</span>
@@ -602,6 +605,7 @@ function formModalHTML(tpl) {
                 <select class="tpl-select" id="tf-sport-sel">
                   <option value="soccer"     ${selectedSport === 'soccer'     ? 'selected' : ''}>Soccer</option>
                   <option value="basketball" ${selectedSport === 'basketball' ? 'selected' : ''}>Basketball</option>
+                  <option value="tennis"     ${selectedSport === 'tennis'     ? 'selected' : ''}>Tennis</option>
                 </select>
               </div>
               <div class="tpl-field">

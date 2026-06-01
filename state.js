@@ -47,6 +47,7 @@ export const state = {
   allLeagues: [],
   soccerLeagues: [],
   basketballLeagues: [],
+  tennisLeagues: [],
   manualLeagues: [],
   activeTraders: [],
   favorites: readJson('favoriteLeagues', []),
@@ -574,6 +575,22 @@ export const MARKET_DEFS = [
   { id: 'q4_main', group: 'QUARTERS', name: '4th Quarter Markets', outcomes: 2, defaultMargin: 6.0, defaultMaxBet: 1000, defaultEnabled: true, sports: ['basketball'] },
   { id: 'h1_main', group: 'HALVES',   name: '1st Half Markets',    outcomes: 2, defaultMargin: 5.0, defaultMaxBet: 1500, defaultEnabled: true, sports: ['basketball'] },
   { id: 'h2_main', group: 'HALVES',   name: '2nd Half Markets',    outcomes: 2, defaultMargin: 5.0, defaultMaxBet: 1500, defaultEnabled: true, sports: ['basketball'] },
+  // TENNIS SPECIFIC
+  { id: 'tennis_ml',        group: 'MATCH ODDS',   name: 'Moneyline (Match Winner)', outcomes: 2,  defaultMargin: 3.5,  defaultMaxBet: 10000, defaultEnabled: true,  sports: ['tennis'] },
+  { id: 'tennis_hdp',       group: 'HANDICAP',     name: 'Games Handicap',           outcomes: 2,  defaultMargin: 4.0,  defaultMaxBet: 5000,  defaultEnabled: true,  sports: ['tennis'] },
+  { id: 'tennis_tot',       group: 'TOTALS',       name: 'Total Games O/U',          outcomes: 2,  defaultMargin: 4.5,  defaultMaxBet: 4000,  defaultEnabled: true,  sports: ['tennis'] },
+  { id: 'tennis_sets',      group: 'SETS',         name: 'Total Sets O/U',           outcomes: 2,  defaultMargin: 5.0,  defaultMaxBet: 3000,  defaultEnabled: true,  sports: ['tennis'] },
+  { id: 'tennis_set_hdp',   group: 'SETS',         name: 'Set Handicap',             outcomes: 2,  defaultMargin: 4.0,  defaultMaxBet: 3000,  defaultEnabled: true,  sports: ['tennis'] },
+  { id: 'tennis_set_win',   group: 'SETS',         name: 'Set Winner',               outcomes: 2,  defaultMargin: 5.5,  defaultMaxBet: 2000,  defaultEnabled: false, sports: ['tennis'] },
+  { id: 'tennis_s1_ou',     group: 'SET TOTALS',   name: '1st Set Total Games',      outcomes: 2,  defaultMargin: 6.0,  defaultMaxBet: 2000,  defaultEnabled: false, sports: ['tennis'] },
+  { id: 'tennis_s2_ou',     group: 'SET TOTALS',   name: '2nd Set Total Games',      outcomes: 2,  defaultMargin: 6.5,  defaultMaxBet: 1500,  defaultEnabled: false, sports: ['tennis'] },
+  { id: 'tennis_s3_ou',     group: 'SET TOTALS',   name: '3rd Set Total Games',      outcomes: 2,  defaultMargin: 7.0,  defaultMaxBet: 1000,  defaultEnabled: false, sports: ['tennis'] },
+  { id: 'tennis_s1_winner', group: 'SET MARKETS',  name: '1st Set Winner',           outcomes: 2,  defaultMargin: 5.0,  defaultMaxBet: 3000,  defaultEnabled: true,  sports: ['tennis'] },
+  { id: 'tennis_s2_winner', group: 'SET MARKETS',  name: '2nd Set Winner',           outcomes: 2,  defaultMargin: 5.5,  defaultMaxBet: 2000,  defaultEnabled: false, sports: ['tennis'] },
+  { id: 'tennis_s3_winner', group: 'SET MARKETS',  name: '3rd Set Winner',           outcomes: 2,  defaultMargin: 6.0,  defaultMaxBet: 1500,  defaultEnabled: false, sports: ['tennis'] },
+  { id: 'tennis_s1_hdp',    group: 'SET MARKETS',  name: '1st Set Handicap',         outcomes: 2,  defaultMargin: 6.0,  defaultMaxBet: 1500,  defaultEnabled: false, sports: ['tennis'] },
+  { id: 'tennis_exact_sets',group: 'SPECIALS',     name: 'Correct Set Score',        outcomes: 3,  defaultMargin: 8.0,  defaultMaxBet: 1000,  defaultEnabled: false, sports: ['tennis'] },
+  { id: 'tennis_to_nil',    group: 'SPECIALS',     name: 'Win Without Losing Set',   outcomes: 2,  defaultMargin: 8.0,  defaultMaxBet: 1000,  defaultEnabled: false, sports: ['tennis'] },
 ];
 
 function mkMarkets(overrides = {}) {
@@ -605,9 +622,15 @@ const DEFAULT_TEMPLATES = [
     markets: mkMarkets({ '1x2': { margin: 4.0, maxBet: 10000 }, 'asian_hcp': { margin: 3.5, maxBet: 15000 }, 'ou25': { margin: 4.0, maxBet: 10000 } }) },
   { id: 'basketball_low', name: 'Basketball Low Default', sport: 'basketball', type: 'prematch', active: true, showHalf: true, showWhole: true, createdAt: _now, updatedAt: _now,
     markets: mkMarkets({ '1x2': { margin: 6.0, maxBet: 5000 }, 'asian_hcp': { margin: 5.0, maxBet: 8000 }, 'ou25': { margin: 6.0, maxBet: 5000 } }) },
+  { id: 'tennis_elite', name: 'Tennis Elite Default', sport: 'tennis', type: 'prematch', active: true, createdAt: _now, updatedAt: _now,
+    markets: mkMarkets({ 'tennis_ml': { margin: 2.0, maxBet: 15000 }, 'tennis_hdp': { margin: 2.5, maxBet: 8000 }, 'tennis_tot': { margin: 3.0, maxBet: 6000 }, 'tennis_sets': { margin: 3.5, maxBet: 5000, enabled: true }, 'tennis_s1_winner': { enabled: true }, 'tennis_exact_sets': { enabled: true } }) },
+  { id: 'tennis_medium', name: 'Tennis Medium Default', sport: 'tennis', type: 'prematch', active: true, createdAt: _now, updatedAt: _now,
+    markets: mkMarkets({ 'tennis_ml': { margin: 4.0, maxBet: 8000 }, 'tennis_hdp': { margin: 5.0, maxBet: 4000 }, 'tennis_tot': { margin: 5.5, maxBet: 3000 }, 'tennis_sets': { enabled: true }, 'tennis_s1_winner': { enabled: true } }) },
+  { id: 'tennis_low', name: 'Tennis Low Default', sport: 'tennis', type: 'prematch', active: true, createdAt: _now, updatedAt: _now,
+    markets: mkMarkets({ 'tennis_ml': { margin: 6.0, maxBet: 3000 }, 'tennis_hdp': { margin: 7.0, maxBet: 2000 }, 'tennis_tot': { margin: 7.5, maxBet: 1500 } }) },
 ];
 
-const TEMPLATE_VERSION = 11;
+const TEMPLATE_VERSION = 12;
 const _storedVersion = parseInt(localStorage.getItem('templateVersion') || '0', 10);
 const _storedTpl = readJson('templates', null);
 const _needsReset = !_storedTpl || !_storedTpl[0]?.markets || _storedVersion !== TEMPLATE_VERSION;
