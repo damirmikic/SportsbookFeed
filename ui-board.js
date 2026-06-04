@@ -356,6 +356,46 @@ function eventMatchesSearch(event, term) {
   return title.includes(term);
 }
 
+function getMatchPeriod(event) {
+  if (event.periods && !Array.isArray(event.periods)) {
+    return event.periods['0'];
+  }
+  if (event.periodOdds && !Array.isArray(event.periodOdds)) {
+    return event.periodOdds['0'];
+  }
+  const arr = Array.isArray(event.periods) ? event.periods : Object.values(event.periods || {});
+  return arr.find(p => p.num === 0 || p.periodNumber === 0) || arr[0];
+}
+
+function totalBalanceScore(total) {
+  const over = parseFloat(total?.overOdds ?? total?.over);
+  const under = parseFloat(total?.underOdds ?? total?.under);
+  if (!Number.isFinite(over) || !Number.isFinite(under) || over <= 1 || under <= 1) return Infinity;
+  return Math.abs((1 / over) - (1 / under));
+}
+
+function selectBalancedTotal(overUnder, defaultLine = null) {
+  if (!Array.isArray(overUnder) || !overUnder.length) return null;
+  const ranked = overUnder
+    .map((ou, index) => ({
+      ou,
+      index,
+      score: totalBalanceScore(ou),
+      isDefault: defaultLine != null && parseFloat(ou.points) === defaultLine,
+    }))
+    .sort((a, b) => {
+      if (a.score !== b.score) return a.score - b.score;
+      if (a.ou.isMain !== b.ou.isMain) return a.ou.isMain ? -1 : 1;
+      if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1;
+      return a.index - b.index;
+    });
+  return Number.isFinite(ranked[0]?.score)
+    ? ranked[0].ou
+    : overUnder.find(ou => ou.isMain)
+      || (defaultLine == null ? null : overUnder.find(ou => parseFloat(ou.points) === defaultLine))
+      || overUnder[0];
+}
+
 function renderEventTable(eventsToRender, { alertMoves = false, crossLeague = false } = {}) {
   const oddsContainer = document.getElementById('odds-container');
 
@@ -373,7 +413,7 @@ function renderEventTable(eventsToRender, { alertMoves = false, crossLeague = fa
     <thead><tr>
       <th style="width:30%">Match</th>
       <th>1</th>${isTennis ? '' : `<th>X</th>`}<th>2</th>
-      <th>Over${isBasketball ? '' : isTennis ? ' (Games)' : ' 2.5'}</th><th>Under${isBasketball ? '' : isTennis ? ' (Games)' : ' 2.5'}</th>
+      <th>Over${isTennis ? ' (Games)' : ''}</th><th>Under${isTennis ? ' (Games)' : ''}</th>
     </tr></thead><tbody>`;
 
   eventsToRender.forEach(event => {
@@ -384,15 +424,7 @@ function renderEventTable(eventsToRender, { alertMoves = false, crossLeague = fa
       ? new Date(eventTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       : 'N/A';
 
-    let matchPeriod;
-    if (event.periods && !Array.isArray(event.periods)) {
-      matchPeriod = event.periods['0'];
-    } else if (event.periodOdds && !Array.isArray(event.periodOdds)) {
-      matchPeriod = event.periodOdds['0'];
-    } else {
-      const arr = Array.isArray(event.periods) ? event.periods : Object.values(event.periods || {});
-      matchPeriod = arr.find(p => p.num === 0 || p.periodNumber === 0) || arr[0];
-    }
+    const matchPeriod = getMatchPeriod(event);
 
     // Raw Pinnacle values — used for trend arrows regardless of display mode
     let raw1 = '-', rawX = '-', raw2 = '-';
@@ -408,10 +440,7 @@ function renderEventTable(eventsToRender, { alertMoves = false, crossLeague = fa
     let oddsOver = '-', oddsUnder = '-';
     let ouLineLabel = isBasketball ? '220.5' : isTennis ? '22.5' : '2.5';
     if (matchPeriod?.overUnder) {
-      const defaultLine = isTennis ? 22.5 : 2.5;
-      const ouMain = matchPeriod.overUnder.find(ou => ou.isMain)
-        || matchPeriod.overUnder.find(ou => parseFloat(ou.points) === defaultLine)
-        || matchPeriod.overUnder[0];
+      const ouMain = selectBalancedTotal(matchPeriod.overUnder, isTennis ? 22.5 : null);
       if (ouMain) {
         rawOver = ouMain.overOdds || ouMain.over || '-';
         rawUnder = ouMain.underOdds || ouMain.under || '-';
@@ -439,7 +468,7 @@ function renderEventTable(eventsToRender, { alertMoves = false, crossLeague = fa
           const shin = calculateShinNoVig(priceArr);
           let margin = mlConf.margin;
           const tl = eventStart ? resolveActiveKey(mlConf, eventStart) : null;
-          if (tl?.key != null) margin = tl.key;
+          if (tl?.key != null) margin = typeof tl.key === 'object' ? tl.key.margin : tl.key;
           const ladder = mlConf.ladder || 'eu';
           const mlMin = mlConf.minOdds ?? offerTpl.minOdds ?? null;
           const mlMax = mlConf.maxOdds ?? offerTpl.maxOdds ?? null;
@@ -458,14 +487,12 @@ function renderEventTable(eventsToRender, { alertMoves = false, crossLeague = fa
           ? getMarketConfig(offerTpl, ouTplId)
           : (getMarketConfig(offerTpl, 'ou25') || getMarketConfig(offerTpl, 'asian_tot'));
         if (ouConf?.enabled && Array.isArray(matchPeriod.overUnder)) {
-          const ouMain = matchPeriod.overUnder.find(ou => ou.isMain)
-            || matchPeriod.overUnder.find(ou => parseFloat(ou.points) === (isTennis ? 22.5 : 2.5))
-            || matchPeriod.overUnder[0];
+          const ouMain = selectBalancedTotal(matchPeriod.overUnder, isTennis ? 22.5 : null);
           if (ouMain) {
             const shin = calculateShinNoVig([ouMain.overOdds, ouMain.underOdds]);
             let margin = ouConf.margin;
             const tl = eventStart ? resolveActiveKey(ouConf, eventStart) : null;
-            if (tl?.key != null) margin = tl.key;
+            if (tl?.key != null) margin = typeof tl.key === 'object' ? tl.key.margin : tl.key;
             const ladder = ouConf.ladder || 'eu';
             const ouMin = ouConf.minOdds ?? offerTpl.minOdds ?? null;
             const ouMax = ouConf.maxOdds ?? offerTpl.maxOdds ?? null;
@@ -513,8 +540,8 @@ function renderEventTable(eventsToRender, { alertMoves = false, crossLeague = fa
       [raw1, prev.home],
       [rawX, prev.draw],
       [raw2, prev.away],
-      [rawOver, prev.over25],
-      [rawUnder, prev.under25],
+      [rawOver, prev.overMain ?? prev.over25],
+      [rawUnder, prev.underMain ?? prev.under25],
     ].some(([raw, previous]) => hasSignificantMove(raw, previous, alertThreshold));
 
     const allMeta = getAllOverrideMeta();
@@ -540,8 +567,8 @@ function renderEventTable(eventsToRender, { alertMoves = false, crossLeague = fa
       <td class="${mlSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${m1 ? ' manual-price' : t1}" data-history-market="moneyline" data-history-side="home" data-history-label="${escapeAttr(homeTeam)}">${evtSuspended || mlSuspended ? 'SUSP' : odds1}${!m1 && t1 === ' price-up' ? ' ▲' : !m1 && t1 === ' price-down' ? ' ▼' : ''}</button></td>
       ${isTennis ? '' : `<td class="${mlSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${mX ? ' manual-price' : tX}" data-history-market="moneyline" data-history-side="draw" data-history-label="Draw">${evtSuspended || mlSuspended ? 'SUSP' : oddsX}${!mX && tX === ' price-up' ? ' ▲' : !mX && tX === ' price-down' ? ' ▼' : ''}</button></td>`}
       <td class="${mlSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${m2 ? ' manual-price' : t2}" data-history-market="moneyline" data-history-side="away" data-history-label="${escapeAttr(awayTeam)}">${evtSuspended || mlSuspended ? 'SUSP' : odds2}${!m2 && t2 === ' price-up' ? ' ▲' : !m2 && t2 === ' price-down' ? ' ▼' : ''}</button></td>
-      <td class="${ouSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${mOver ? ' manual-price' : ''}" data-history-market="total" data-history-side="over" data-history-points="${ouLineLabel}" data-history-label="Over ${ouLineLabel}" style="border-color:${mOver ? '#fbbf24' : 'var(--accent-color)'}">${evtSuspended || ouSuspended ? 'SUSP' : oddsOver}${isTennis || ouLineLabel !== '2.5' ? `<span class="ou-line-tag">${ouLineLabel}</span>` : ''}</button></td>
-      <td class="${ouSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${mUnder ? ' manual-price' : ''}" data-history-market="total" data-history-side="under" data-history-points="${ouLineLabel}" data-history-label="Under ${ouLineLabel}" style="border-color:${mUnder ? '#fbbf24' : 'var(--accent-color)'}">${evtSuspended || ouSuspended ? 'SUSP' : oddsUnder}${isTennis || ouLineLabel !== '2.5' ? `<span class="ou-line-tag">${ouLineLabel}</span>` : ''}</button></td>
+      <td class="${ouSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${mOver ? ' manual-price' : ''}" data-history-market="total" data-history-side="over" data-history-points="${ouLineLabel}" data-history-label="Over ${ouLineLabel}" style="border-color:${mOver ? '#fbbf24' : 'var(--accent-color)'}">${evtSuspended || ouSuspended ? 'SUSP' : oddsOver}<span class="ou-line-tag">${ouLineLabel}</span></button></td>
+      <td class="${ouSuspended || evtSuspended ? 'susp-cell' : ''}"><button class="odds-btn${mUnder ? ' manual-price' : ''}" data-history-market="total" data-history-side="under" data-history-points="${ouLineLabel}" data-history-label="Under ${ouLineLabel}" style="border-color:${mUnder ? '#fbbf24' : 'var(--accent-color)'}">${evtSuspended || ouSuspended ? 'SUSP' : oddsUnder}<span class="ou-line-tag">${ouLineLabel}</span></button></td>
     </tr>`;
   });
 
@@ -649,11 +676,8 @@ export async function buildOfferSnapshot() {
         }
         if (!isSuspended(event.id, 'ou')) {
           const isBasketball = state.currentSportId === 4;
-          const ouEntry = Array.isArray(matchPeriod.overUnder)
-            ? (matchPeriod.overUnder.find(ou => ou.isMain) ||
-               matchPeriod.overUnder.find(ou => parseFloat(ou.points) === 2.5) ||
-               matchPeriod.overUnder[0])
-            : null;
+          const isTennis = state.currentSportId === 33;
+          const ouEntry = selectBalancedTotal(matchPeriod.overUnder, isTennis ? 22.5 : null);
           if (ouEntry) {
             const lineLabel = String(ouEntry.points ?? (isBasketball ? 220.5 : 2.5));
             const lineVal = parseFloat(lineLabel);

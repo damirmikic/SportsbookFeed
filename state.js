@@ -332,6 +332,27 @@ export function toggleGroup(groupName, currentlyExpanded = state.expandedGroups.
 }
 
 export function snapshotOdds() {
+  const totalBalanceScore = (total) => {
+    const over = parseFloat(total?.overOdds ?? total?.over);
+    const under = parseFloat(total?.underOdds ?? total?.under);
+    if (!Number.isFinite(over) || !Number.isFinite(under) || over <= 1 || under <= 1) return Infinity;
+    return Math.abs((1 / over) - (1 / under));
+  };
+
+  const selectBalancedTotal = (overUnder) => {
+    if (!Array.isArray(overUnder) || !overUnder.length) return null;
+    const ranked = overUnder
+      .map((ou, index) => ({ ou, index, score: totalBalanceScore(ou) }))
+      .sort((a, b) => {
+        if (a.score !== b.score) return a.score - b.score;
+        if (a.ou.isMain !== b.ou.isMain) return a.ou.isMain ? -1 : 1;
+        return a.index - b.index;
+      });
+    return Number.isFinite(ranked[0]?.score)
+      ? ranked[0].ou
+      : overUnder.find(ou => ou.isMain) || overUnder[0];
+  };
+
   const snap = {};
   state.activeEvents.forEach(event => {
     let matchPeriod;
@@ -343,16 +364,14 @@ export function snapshotOdds() {
     }
     if (!matchPeriod) return;
     const ml = matchPeriod.moneyLine || matchPeriod.moneyline;
-    const ou25 = Array.isArray(matchPeriod.overUnder)
-      ? matchPeriod.overUnder.find(ou => parseFloat(ou.points) === 2.5)
-      : null;
-    if (!ml && !ou25) return;
+    const mainTotal = selectBalancedTotal(matchPeriod.overUnder);
+    if (!ml && !mainTotal) return;
     snap[event.id] = {
       home: ml ? parseFloat(ml.homePrice || ml.home) || null : null,
       draw: ml ? parseFloat(ml.drawPrice || ml.draw) || null : null,
       away: ml ? parseFloat(ml.awayPrice || ml.away) || null : null,
-      over25: ou25 ? parseFloat(ou25.overOdds || ou25.over) || null : null,
-      under25: ou25 ? parseFloat(ou25.underOdds || ou25.under) || null : null,
+      overMain: mainTotal ? parseFloat(mainTotal.overOdds || mainTotal.over) || null : null,
+      underMain: mainTotal ? parseFloat(mainTotal.underOdds || mainTotal.under) || null : null,
     };
   });
   return snap;

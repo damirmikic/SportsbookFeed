@@ -5,6 +5,12 @@ import { calcMargin, marginBadgeHTML } from './ui-helpers.js';
 import { updateModeButton, renderDrawerMarkets } from './ui-drawer.js';
 import { openOddsHistory } from './odds-history-ui.js';
 
+function getTimelineMargin(timelineResult, fallbackMargin) {
+  const key = timelineResult?.key;
+  if (key == null) return fallbackMargin;
+  return typeof key === 'object' ? key.margin : key;
+}
+
 // ── Lambda back-solve ─────────────────────────────────────────────────────────
 
 async function solveLambdasFromOverrides(eventId, changedMarketId, changedRows, drawerEvent) {
@@ -56,28 +62,52 @@ async function solveLambdasFromOverrides(eventId, changedMarketId, changedRows, 
     }
   }
 
-  // Collect OU lines (prefer overrides; fall back to raw market data for each target line).
+  // Collect OU lines around the market consensus. Prefer edited override pairs,
+  // then fill from the same centered raw-line set used by the main solver.
   const seen = new Set();
-  for (const target of [1.5, 2.5, 3.5]) {
-    const labelO = `Over ${target}`, labelU = `Under ${target}`;
-    const ovO = getOverride(`${eventId}|ou|${labelO}`);
-    const ovU = getOverride(`${eventId}|ou|${labelU}`);
-    if (ovO && ovU) {
-      const shins = calculateShinNoVig([parseFloat(ovO), parseFloat(ovU)]);
-      const f = parseFloat(shins[0]);
-      if (!isNaN(f) && f > 1 && !seen.has(target)) { seen.add(target); ouLines.push({ line: target, pOver: 1 / f }); }
-    } else if (mp?.overUnder) {
-      const ou = mp.overUnder.find(o => parseFloat(o.points) === target)
-        ?? mp.overUnder.reduce((b, o) =>
-          Math.abs(parseFloat(o.points) - target) < Math.abs(parseFloat(b.points) - target) ? o : b
-        );
-      if (ou) {
-        const line = parseFloat(ou.points);
-        if (!seen.has(line)) {
-          const shins = calculateShinNoVig([ou.overOdds, ou.underOdds]);
-          const f = parseFloat(shins[0]);
-          if (!isNaN(f) && f > 1) { seen.add(line); ouLines.push({ line, pOver: 1 / f }); }
-        }
+  const addOuLine = (line, overPrice, underPrice) => {
+    if (isNaN(line) || seen.has(line)) return;
+    const shins = calculateShinNoVig([overPrice, underPrice]);
+    const f = parseFloat(shins[0]);
+    if (!isNaN(f) && f > 1) {
+      seen.add(line);
+      ouLines.push({ line, pOver: 1 / f });
+    }
+  };
+
+  if (changedMarketId === 'ou') {
+    const changedLines = [...new Set(changedRows
+      .map(r => parseFloat(parseLineFromLabel(r.label)))
+      .filter(line => !isNaN(line)))];
+    changedLines.forEach(line => {
+      const labelO = `Over ${line}`, labelU = `Under ${line}`;
+      const ovO = getOverride(`${eventId}|ou|${labelO}`);
+      const ovU = getOverride(`${eventId}|ou|${labelU}`);
+      if (ovO && ovU) addOuLine(line, parseFloat(ovO), parseFloat(ovU));
+    });
+  }
+
+  if (mp?.overUnder) {
+    const rawLines = [];
+    for (const ou of mp.overUnder) {
+      if (ou.unavailable || ou.offline) continue;
+      const line = parseFloat(ou.points);
+      if (isNaN(line) || seen.has(line)) continue;
+      const fair = calculateShinNoVig([ou.overOdds, ou.underOdds]);
+      const fOver = parseFloat(fair[0]);
+      if (!isNaN(fOver) && fOver > 1) {
+        rawLines.push({ line, pOver: 1 / fOver, overOdds: ou.overOdds, underOdds: ou.underOdds });
+      }
+    }
+    rawLines.sort((a, b) => a.line - b.line);
+    if (rawLines.length) {
+      let centerIdx = 0;
+      for (let i = 1; i < rawLines.length; i++) {
+        if (Math.abs(rawLines[i].pOver - 0.5) < Math.abs(rawLines[centerIdx].pOver - 0.5)) centerIdx = i;
+      }
+      for (const offset of [-2, -1, 0, 1, 2]) {
+        const ou = rawLines[centerIdx + offset];
+        if (ou) addOuLine(ou.line, ou.overOdds, ou.underOdds);
       }
     }
   }
@@ -336,7 +366,7 @@ export function renderMarketTable(market) {
           let marginPct = offerMktConf.margin;
           if (eventStart) {
             const tl = resolveActiveKey(offerMktConf, eventStart);
-            if (tl?.key != null) marginPct = tl.key;
+            marginPct = getTimelineMargin(tl, marginPct);
           }
           if (marginPct != null) {
             const effMin = offerMktConf.minOdds ?? offerTpl?.minOdds ?? null;
@@ -363,7 +393,7 @@ export function renderMarketTable(market) {
       let marginPct = offerMktConf.margin;
       if (eventStart) {
         const tl = resolveActiveKey(offerMktConf, eventStart);
-        if (tl?.key != null) marginPct = tl.key;
+        marginPct = getTimelineMargin(tl, marginPct);
       }
       if (marginPct != null) {
         const shin  = parseFloat(row.shinFair);

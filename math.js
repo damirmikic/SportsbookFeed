@@ -235,13 +235,13 @@ function warmStart(pH, pD, pA, ouLines) {
 
   let lTotal = 2.5;
   if (ref && ref.pOver > 0 && ref.pOver < 1) {
-    const k = Math.floor(ref.line);
     let lo = 0.3, hi = 9.0;
     for (let i = 0; i < 50; i++) {
       const mid = (lo + hi) / 2;
-      let pUnder = 0;
-      for (let j = 0; j <= k; j++) pUnder += poissonPmf(j, mid);
-      if (1 - pUnder > ref.pOver) hi = mid; else lo = mid;
+      const grid = buildScoreGrid(mid / 2, mid / 2, 0);
+      const odds = dcAsianTotalOdds(grid, ref.line, true);
+      const modelPOver = odds && odds > 1 ? 1 / odds : 0;
+      if (modelPOver > ref.pOver) hi = mid; else lo = mid;
     }
     lTotal = (lo + hi) / 2;
   }
@@ -314,11 +314,10 @@ function solverLoss(params, pH, pD, pA, ouLines, hcpSpread, hcpPHome, maxG) {
   let loss = (pH_m - pH) ** 2 + (pD_m - pD) ** 2 + (pA_m - pA) ** 2;
 
   for (const { line, pOver } of ouLines) {
-    let pOver_m = 0;
-    for (const { home, away, prob } of grid) {
-      if (home + away > line) pOver_m += prob;
+    const overOdds = dcAsianTotalOdds(grid, line, true);
+    if (overOdds !== null && overOdds > 1) {
+      loss += W_OU * ((1 / overOdds) - pOver) ** 2;
     }
-    loss += W_OU * (pOver_m - pOver) ** 2;
   }
 
   if (hcpSpread !== null && hcpPHome !== null) {
